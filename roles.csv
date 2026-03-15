@@ -1,5 +1,0 @@
-name,description
-employee,Basic employee role with limited access
-manager,Manager role with team management permissions
-hr_admin,HR Administrator with full HR access
-super_admin,Super Administrator with all permissions

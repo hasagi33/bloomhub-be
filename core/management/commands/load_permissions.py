@@ -3,15 +3,15 @@ import os
 
 from django.core.management.base import BaseCommand, CommandError
 
-from core.models import Role
+from core.models import Permission
 
 
 class Command(BaseCommand):
-    help = "Load roles from a CSV file"
+    help = "Load permissions from a CSV file"
 
     def add_arguments(self, parser):
         parser.add_argument(
-            "csv_file", type=str, help="Path to the CSV file containing roles"
+            "csv_file", type=str, help="Path to the CSV file containing permissions"
         )
 
     def handle(self, *args, **options):
@@ -22,19 +22,21 @@ class Command(BaseCommand):
         with open(csv_file, encoding="utf-8") as file:
             reader = csv.DictReader(file)
             for row in reader:
-                name = row.get("name")
-                description = row.get("description", "")
-                if not name:
+                module_name = row.get("module_name")
+                feature_action = row.get("feature_action")
+                if not module_name or not feature_action:
                     self.stdout.write(
-                        self.style.WARNING(f"Skipping row with missing name: {row}")
+                        self.style.WARNING(f"Skipping row with missing data: {row}")
                     )
                     continue
-                role, created = Role.objects.get_or_create(
-                    name=name, defaults={"description": description}
+                permission, created = Permission.objects.get_or_create(
+                    module_name=module_name, feature_action=feature_action
                 )
                 if created:
-                    self.stdout.write(self.style.SUCCESS(f"Created role: {name}"))
+                    self.stdout.write(
+                        self.style.SUCCESS(f"Created permission: {permission}")
+                    )
                 else:
-                    self.stdout.write(f"Role {name} already exists")
+                    self.stdout.write(f"Permission {permission} already exists")
 
-        self.stdout.write(self.style.SUCCESS("Finished loading roles from CSV"))
+        self.stdout.write(self.style.SUCCESS("Finished loading permissions from CSV"))

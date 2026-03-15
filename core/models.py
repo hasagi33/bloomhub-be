@@ -4,24 +4,48 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 
 
-class Role(models.Model):
-    EMPLOYEE = "employee"
-    MANAGER = "manager"
-    HR_ADMIN = "hr_admin"
-    SUPER_ADMIN = "super_admin"
+class Permission(models.Model):
+    module_name = models.CharField(max_length=100)
+    feature_action = models.CharField(max_length=100)
+    bit_position = models.PositiveIntegerField(unique=True, editable=False)
 
-    ROLE_CHOICES = [
-        (EMPLOYEE, "Employee"),
-        (MANAGER, "Manager"),
-        (HR_ADMIN, "HR Admin"),
-        (SUPER_ADMIN, "Super Admin"),
-    ]
-
-    name = models.CharField(max_length=50, choices=ROLE_CHOICES, unique=True)
-    description = models.TextField(blank=True, null=True)
+    class Meta:
+        unique_together = ("module_name", "feature_action")
+        verbose_name = "Permission"
+        verbose_name_plural = "Permissions"
 
     def __str__(self):
-        return self.get_name_display()
+        return f"{self.module_name}: {self.feature_action}"
+
+    def save(self, *args, **kwargs):
+        if not self.bit_position:
+            # Assign the next available bit position
+            max_bit = (
+                Permission.objects.aggregate(models.Max("bit_position"))[
+                    "bit_position__max"
+                ]
+                or 0
+            )
+            self.bit_position = max_bit + 1
+        super().save(*args, **kwargs)
+
+
+class Role(models.Model):
+    name = models.CharField(max_length=50, unique=True)
+    description = models.TextField(blank=True, null=True)
+    permissions = models.ManyToManyField(Permission, blank=True, related_name="roles")
+
+    def __str__(self):
+        return self.name
+
+    def has_permission(self, permission):
+        return self.permissions.filter(id=permission.id).exists()
+
+    def add_permission(self, permission):
+        self.permissions.add(permission)
+
+    def remove_permission(self, permission):
+        self.permissions.remove(permission)
 
     class Meta:
         verbose_name = "Role"
@@ -78,9 +102,24 @@ class UserProfile(models.Model):
     career_level = models.CharField(max_length=100, blank=True, null=True)
     cpf_level = models.CharField(max_length=100, blank=True, null=True)
     tech_tags = models.ManyToManyField(TechnologyTag, blank=True, related_name="users")
+    permissions = models.BigIntegerField(default=0)  # Bitmap for additional permissions
 
     def __str__(self):
         return f"{self.user.get_full_name() or self.user.username} - {self.role.name if self.role else 'No Role'}"
+
+    def has_permission(self, permission):
+        # Check role permissions or user permissions
+        if self.role and self.role.has_permission(permission):
+            return True
+        return (self.permissions & (1 << permission.bit_position)) != 0
+
+    def add_permission(self, permission):
+        self.permissions |= 1 << permission.bit_position
+        self.save()
+
+    def remove_permission(self, permission):
+        self.permissions &= ~(1 << permission.bit_position)
+        self.save()
 
     @property
     def current_salary(self):

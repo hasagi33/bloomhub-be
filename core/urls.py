@@ -6,6 +6,7 @@ from .views import (
     LogoutView,
     RegisterView,
     TokenRefreshViewCustom,
+    UploadRolePermissionsView,
     UserProfileView,
 )
 
@@ -18,4 +19,9 @@ urlpatterns = [
     path("auth/logout/", LogoutView.as_view(), name="logout"),
     path("auth/refresh/", TokenRefreshViewCustom.as_view(), name="token_refresh"),
     path("auth/profile/", UserProfileView.as_view(), name="profile"),
+    path(
+        "admin/upload-role-permissions/",
+        UploadRolePermissionsView.as_view(),
+        name="upload_role_permissions",
+    ),
 ]
