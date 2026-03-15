@@ -24,7 +24,7 @@ def api_root(request):
     return JsonResponse(
         {
             "message": "BloomHub Backend API",
-            "version": "1.0.0",
+            "version": "1",
             "documentation": "/api/",
             "endpoints": {
                 "api": "/api/",

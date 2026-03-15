@@ -131,3 +131,4 @@ Labels are applied automatically by [gitStream](https://gitstream.cm) based on t
 | `ruff check .` | Lint |
 | `black .` / `black --check .` | Format / check format |
 | `pytest` | Run tests |
+| `python manage.py load_permissions <csv_file>` | Load roles/permissions from a CSV (expects `name,description` headers) |
