@@ -92,15 +92,16 @@ This creates the public tenant and domains for `localhost` and `127.0.0.1`. Safe
 
 ### 404 on deployed dev (e.g. bloomhub-be.onrender.com)
 
-With Postgres, every hostname must be registered as a domain for the public tenant. Add your dev hostname so the site and `/api/schema/swagger-ui/` work:
+With Postgres + django-tenants, every hostname must be registered as a domain for the public tenant. On Render free tier (no Shell/Pre-Deploy), use one of these:
 
-1. **GitHub Actions (recommended):** In the repo go to **Settings → Secrets and variables → Actions**, add a secret **DEV_PUBLIC_DOMAIN** with value `bloomhub-be.onrender.com` (your actual dev hostname). The next deploy will run `setup_public_tenant --domain bloomhub-be.onrender.com` and the 404 will go away.
+1. **GitHub Actions (recommended):** In the repo go to **Settings → Secrets and variables → Actions**, add a secret **DEV_PUBLIC_DOMAIN** with value `bloomhub-be.onrender.com`. Push to `main` (or re-run the Deploy Dev workflow); the workflow will run `setup_public_tenant --domain bloomhub-be.onrender.com` and the 404 will go away.
 
-2. **One-off fix:** Connect to the dev DB and run:
+2. **One-off from your machine:** Copy the dev database URL from Render (Environment), then locally run:
    ```bash
-   DATABASE_URL='<dev-database-url>' python manage.py setup_public_tenant --domain bloomhub-be.onrender.com
+   DATABASE_URL='postgres://...' python manage.py setup_public_tenant --domain bloomhub-be.onrender.com
    ```
-   Or in Render’s **Shell** (or a one-off job), run the same command.
+   The domain is stored in the DB, so you only need to do this once per hostname.
+
 
 ---
 
