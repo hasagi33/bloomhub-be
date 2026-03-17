@@ -48,3 +48,19 @@ class TokenSerializer(serializers.Serializer):
     refresh = serializers.CharField()
     access = serializers.CharField()
     user = UserSerializer()
+
+
+class APIRootResponseSerializer(serializers.Serializer):
+    """Response shape for GET /api/."""
+
+    message = serializers.CharField()
+    endpoints = serializers.JSONField(
+        help_text="Nested map of endpoint names to paths or options."
+    )
+
+
+class UploadRolePermissionsResponseSerializer(serializers.Serializer):
+    """Response shape for successful role permissions upload."""
+
+    message = serializers.CharField()
+    file_path = serializers.CharField()
