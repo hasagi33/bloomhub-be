@@ -29,11 +29,15 @@ jobs:
           DATABASE_URL: ${{ secrets.DEV_DATABASE_URL }}
           DEV_PUBLIC_DOMAIN: ${{ secrets.DEV_PUBLIC_DOMAIN }}
         run: |
-          python manage.py migrate_schemas --shared --noinput
-          if [ -n "$DEV_PUBLIC_DOMAIN" ]; then
-            python manage.py setup_public_tenant --domain "$DEV_PUBLIC_DOMAIN"
+          if python manage.py help migrate_schemas &>/dev/null; then
+            python manage.py migrate_schemas --shared --noinput
+            if [ -n "$DEV_PUBLIC_DOMAIN" ]; then
+              python manage.py setup_public_tenant --domain "$DEV_PUBLIC_DOMAIN"
+            else
+              python manage.py setup_public_tenant
+            fi
           else
-            python manage.py setup_public_tenant
+            python manage.py migrate --noinput
           fi
 
       - name: Deploy to dev
