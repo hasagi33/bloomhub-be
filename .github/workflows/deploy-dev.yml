@@ -1,5 +1,5 @@
 # Deploy to DEV when main changes (push/merge to main).
-# Intentionally does not use GitHub environment: dev so this is never a PR merge requirement.
+# Uses environment: dev so the job has access to the dev environment's secrets.
 name: Deploy Dev
 
 on:
@@ -10,6 +10,7 @@ jobs:
   deploy-dev:
     name: Migrate and deploy to dev
     runs-on: ubuntu-latest
+    environment: dev
     steps:
       - uses: actions/checkout@v4
 

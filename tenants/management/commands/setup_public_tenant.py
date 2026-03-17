@@ -45,6 +45,10 @@ class Command(BaseCommand):
         env_domains = os.environ.get("PUBLIC_TENANT_EXTRA_DOMAINS", "").strip()
         if env_domains:
             extra.extend(d.strip() for d in env_domains.split(",") if d.strip())
+        # Render sets RENDER_EXTERNAL_HOSTNAME (e.g. bloomhub-be.onrender.com)
+        render_host = os.environ.get("RENDER_EXTERNAL_HOSTNAME", "").strip()
+        if render_host and render_host not in extra:
+            extra.append(render_host)
         all_domains = list(LOCALHOST_DOMAINS) + extra
 
         if Tenant.objects.filter(schema_name=PUBLIC_SCHEMA_NAME).exists():
