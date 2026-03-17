@@ -27,7 +27,14 @@ jobs:
       - name: Run migrations (dev)
         env:
           DATABASE_URL: ${{ secrets.DEV_DATABASE_URL }}
-        run: python manage.py migrate --noinput
+          DEV_PUBLIC_DOMAIN: ${{ secrets.DEV_PUBLIC_DOMAIN }}
+        run: |
+          python manage.py migrate_schemas --shared --noinput
+          if [ -n "$DEV_PUBLIC_DOMAIN" ]; then
+            python manage.py setup_public_tenant --domain "$DEV_PUBLIC_DOMAIN"
+          else
+            python manage.py setup_public_tenant
+          fi
 
       - name: Deploy to dev
         env:

@@ -80,7 +80,7 @@ The root URL (`/`) provides API information and available endpoints. Interactive
 
 ## Troubleshooting
 
-### "No tenant for hostname localhost" (404 when using Postgres)
+### "No tenant for hostname localhost" (404 when using Postgres locally)
 
 When using PostgreSQL, the app uses django-tenants and resolves tenants by hostname. Run once so localhost is available:
 
@@ -89,6 +89,18 @@ python manage.py setup_public_tenant
 ```
 
 This creates the public tenant and domains for `localhost` and `127.0.0.1`. Safe to run multiple times.
+
+### 404 on deployed dev (e.g. bloomhub-be.onrender.com)
+
+With Postgres, every hostname must be registered as a domain for the public tenant. Add your dev hostname so the site and `/api/schema/swagger-ui/` work:
+
+1. **GitHub Actions (recommended):** In the repo go to **Settings → Secrets and variables → Actions**, add a secret **DEV_PUBLIC_DOMAIN** with value `bloomhub-be.onrender.com` (your actual dev hostname). The next deploy will run `setup_public_tenant --domain bloomhub-be.onrender.com` and the 404 will go away.
+
+2. **One-off fix:** Connect to the dev DB and run:
+   ```bash
+   DATABASE_URL='<dev-database-url>' python manage.py setup_public_tenant --domain bloomhub-be.onrender.com
+   ```
+   Or in Render’s **Shell** (or a one-off job), run the same command.
 
 ---
 
