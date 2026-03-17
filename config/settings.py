@@ -33,20 +33,53 @@ def _get_database_url():
 
 
 DATABASE_URL = _get_database_url()
+USE_TENANTS = bool(
+    DATABASE_URL and DATABASE_URL.strip() and "postgres" in DATABASE_URL.lower()
+)
 
-INSTALLED_APPS = [
+# core before staticfiles so core's custom runserver (localhost message) overrides staticfiles'
+_SHARED_APPS = (
+    "django_tenants",
+    "tenants",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.messages",
+    "core",
     "django.contrib.staticfiles",
     "rest_framework",
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
+    "drf_spectacular",
     "storages",
-    "core",
-]
+)
+# At least one app required in TENANT_APPS; core is also in SHARED_APPS so public schema has it
+_TENANT_APPS = ("core",)
+# core before staticfiles so core's custom runserver (localhost message) overrides staticfiles'
+INSTALLED_APPS = (
+    list(_SHARED_APPS)
+    if USE_TENANTS
+    else [
+        "django.contrib.admin",
+        "django.contrib.auth",
+        "django.contrib.contenttypes",
+        "django.contrib.sessions",
+        "django.contrib.messages",
+        "core",
+        "django.contrib.staticfiles",
+        "rest_framework",
+        "rest_framework_simplejwt",
+        "rest_framework_simplejwt.token_blacklist",
+        "drf_spectacular",
+        "storages",
+    ]
+)
+if USE_TENANTS:
+    SHARED_APPS = _SHARED_APPS
+    TENANT_APPS = _TENANT_APPS
+    TENANT_MODEL = "tenants.Client"
+    TENANT_DOMAIN_MODEL = "tenants.Domain"
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
@@ -55,6 +88,25 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
     ],
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "BloomHub Backend API",
+    "DESCRIPTION": "BloomHub internal HR platform API. Auth via JWT (login/register, then Bearer token).",
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "COMPONENT_SPLIT_REQUEST": True,
+    "APPEND_COMPONENTS": {
+        "securitySchemes": {
+            "JWTAuth": {
+                "type": "http",
+                "scheme": "bearer",
+                "bearerFormat": "JWT",
+                "description": "JWT access token from POST /api/auth/login/ or /api/auth/register/",
+            }
+        }
+    },
 }
 
 SIMPLE_JWT = {
@@ -64,7 +116,13 @@ SIMPLE_JWT = {
     "BLACKLIST_AFTER_ROTATION": True,
 }
 
-MIDDLEWARE = [
+MIDDLEWARE = (
+    [
+        "django_tenants.middleware.main.TenantMainMiddleware",
+    ]
+    if USE_TENANTS
+    else []
+) + [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -94,13 +152,16 @@ TEMPLATES = [
 ]
 
 if DATABASE_URL and DATABASE_URL.strip():
-    DATABASES = {
-        "default": dj_database_url.parse(
-            DATABASE_URL,
-            conn_max_age=600,
-            conn_health_checks=(ENVIRONMENT == "prod"),
-        )
-    }
+    _db = dj_database_url.parse(
+        DATABASE_URL,
+        conn_max_age=600,
+        conn_health_checks=(ENVIRONMENT == "prod"),
+    )
+    if USE_TENANTS:
+        _db["ENGINE"] = "django_tenants.postgresql_backend"
+    DATABASES = {"default": _db}
+    if USE_TENANTS:
+        DATABASE_ROUTERS = ("django_tenants.routers.TenantSyncRouter",)
 else:
     # No URL (e.g. CI without secrets): use sqlite so ENGINE is always set
     DATABASES = {

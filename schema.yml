@@ -1,0 +1,271 @@
+openapi: 3.0.3
+info:
+  title: BloomHub Backend API
+  version: 1.0.0
+  description: BloomHub internal HR platform API. Auth via JWT (login/register, then
+    Bearer token).
+paths:
+  /api/:
+    get:
+      operationId: root_retrieve
+      description: List of available API endpoints.
+      tags:
+      - API Root
+      security:
+      - jwtAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIRootResponse'
+          description: ''
+  /api/admin/upload-role-permissions/:
+    post:
+      operationId: admin_upload_role_permissions_create
+      description: 'Upload a CSV to set role permissions. Staff/superuser only. CSV:
+        role_id, module_name, feature_action, permission (YES/NO), operation_type
+        (override/add/remove/merge).'
+      tags:
+      - Admin
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadRolePermissionsResponse'
+          description: ''
+        '400':
+          description: No response body
+        '403':
+          description: No response body
+  /api/auth/login/:
+    post:
+      operationId: auth_login_create
+      description: Login with email and password. Returns JWT refresh, access, and
+        user.
+      tags:
+      - Auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Token'
+          description: ''
+        '400':
+          description: No response body
+        '401':
+          description: No response body
+  /api/auth/logout/:
+    post:
+      operationId: auth_logout_create
+      description: 'Blacklist the refresh token. Send JSON: { "refresh": "<refresh_token>"
+        }.'
+      tags:
+      - Auth
+      security:
+      - jwtAuth: []
+      responses:
+        '205':
+          description: No response body
+        '400':
+          description: No response body
+  /api/auth/profile/:
+    get:
+      operationId: auth_profile_retrieve
+      description: Get current authenticated user profile. Requires Bearer token.
+      tags:
+      - Auth
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+          description: ''
+  /api/auth/refresh/:
+    post:
+      operationId: auth_refresh_create
+      description: 'Refresh access token. Send JSON: { "refresh": "<refresh_token>"
+        }. Returns new access + user.'
+      tags:
+      - Auth
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Token'
+          description: ''
+  /api/auth/register/:
+    post:
+      operationId: auth_register_create
+      description: Register a new user. Returns JWT refresh, access, and user.
+      tags:
+      - Auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - {}
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Token'
+          description: ''
+        '400':
+          description: No response body
+components:
+  schemas:
+    APIRootResponse:
+      type: object
+      description: Response shape for GET /api/.
+      properties:
+        message:
+          type: string
+        endpoints:
+          description: Nested map of endpoint names to paths or options.
+      required:
+      - endpoints
+      - message
+    LoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          minLength: 1
+        password:
+          type: string
+          writeOnly: true
+          minLength: 1
+      required:
+      - email
+      - password
+    RegisterRequest:
+      type: object
+      properties:
+        username:
+          type: string
+          minLength: 1
+          description: Required. 150 characters or fewer. Letters, digits and @/./+/-/_
+            only.
+          pattern: ^[\w.@+-]+$
+          maxLength: 150
+        email:
+          type: string
+          format: email
+          title: Email address
+          maxLength: 254
+        password:
+          type: string
+          writeOnly: true
+          minLength: 1
+        password_confirm:
+          type: string
+          writeOnly: true
+          minLength: 1
+        first_name:
+          type: string
+          maxLength: 150
+        last_name:
+          type: string
+          maxLength: 150
+      required:
+      - email
+      - password
+      - password_confirm
+      - username
+    Token:
+      type: object
+      properties:
+        refresh:
+          type: string
+        access:
+          type: string
+        user:
+          $ref: '#/components/schemas/User'
+      required:
+      - access
+      - refresh
+      - user
+    UploadRolePermissionsResponse:
+      type: object
+      description: Response shape for successful role permissions upload.
+      properties:
+        message:
+          type: string
+        file_path:
+          type: string
+      required:
+      - file_path
+      - message
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        username:
+          type: string
+          description: Required. 150 characters or fewer. Letters, digits and @/./+/-/_
+            only.
+          pattern: ^[\w.@+-]+$
+          maxLength: 150
+        email:
+          type: string
+          format: email
+          title: Email address
+          maxLength: 254
+        first_name:
+          type: string
+          maxLength: 150
+        last_name:
+          type: string
+          maxLength: 150
+      required:
+      - id
+      - username
+  securitySchemes:
+    JWTAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT access token from POST /api/auth/login/ or /api/auth/register/
+    jwtAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

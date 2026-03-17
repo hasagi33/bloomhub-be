@@ -6,6 +6,7 @@ from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -15,16 +16,22 @@ from rest_framework_simplejwt.views import TokenRefreshView
 
 from .models import Permission, Role
 from .serializers import (
+    APIRootResponseSerializer,
     LoginSerializer,
     RegisterSerializer,
+    TokenSerializer,
+    UploadRolePermissionsResponseSerializer,
     UserSerializer,
 )
 
 
+@extend_schema(
+    tags=["API Root"],
+    responses={200: APIRootResponseSerializer},
+    description="List of available API endpoints.",
+)
 class APIRootView(APIView):
-    """
-    API Root view showing available endpoints
-    """
+    """API Root: list of available endpoints."""
 
     permission_classes = [AllowAny]
 
@@ -50,6 +57,12 @@ class APIRootView(APIView):
         )
 
 
+@extend_schema(
+    tags=["Auth"],
+    request=RegisterSerializer,
+    responses={201: TokenSerializer, 400: None},
+    description="Register a new user. Returns JWT refresh, access, and user.",
+)
 class RegisterView(APIView):
     permission_classes = [AllowAny]
 
@@ -68,6 +81,12 @@ class RegisterView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+@extend_schema(
+    tags=["Auth"],
+    request=LoginSerializer,
+    responses={200: TokenSerializer, 400: None, 401: None},
+    description="Login with email and password. Returns JWT refresh, access, and user.",
+)
 class LoginView(APIView):
     permission_classes = [AllowAny]
 
@@ -95,6 +114,12 @@ class LoginView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+@extend_schema(
+    tags=["Auth"],
+    request=None,
+    responses={205: None, 400: None},
+    description='Blacklist the refresh token. Send JSON: { "refresh": "<refresh_token>" }.',
+)
 class LogoutView(APIView):
     def post(self, request):
         try:
@@ -106,16 +131,25 @@ class LogoutView(APIView):
             return Response(status=status.HTTP_400_BAD_REQUEST)
 
 
+@extend_schema(
+    tags=["Auth"],
+    responses={200: UserSerializer},
+    description="Get current authenticated user profile. Requires Bearer token.",
+)
 class UserProfileView(APIView):
     def get(self, request):
         serializer = UserSerializer(request.user)
         return Response(serializer.data)
 
 
+@extend_schema(
+    tags=["Auth"],
+    request=None,
+    responses={200: TokenSerializer},
+    description='Refresh access token. Send JSON: { "refresh": "<refresh_token>" }. Returns new access + user.',
+)
 class TokenRefreshViewCustom(TokenRefreshView):
-    """
-    Custom refresh view that returns user data along with new tokens
-    """
+    """Refresh JWT access token; response includes user data."""
 
     def post(self, request, *args, **kwargs):
         response = super().post(request, *args, **kwargs)
@@ -126,6 +160,16 @@ class TokenRefreshViewCustom(TokenRefreshView):
         return response
 
 
+@extend_schema(
+    tags=["Admin"],
+    request=None,
+    responses={
+        200: UploadRolePermissionsResponseSerializer,
+        400: None,
+        403: None,
+    },
+    description="Upload a CSV to set role permissions. Staff/superuser only. CSV: role_id, module_name, feature_action, permission (YES/NO), operation_type (override/add/remove/merge).",
+)
 class UploadRolePermissionsView(APIView):
     permission_classes = [IsAuthenticated]
 

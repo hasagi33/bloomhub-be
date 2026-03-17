@@ -55,14 +55,42 @@ Stop/start later: `docker stop bloomhub-db` / `docker start bloomhub-db`.
 
 Then:
 
+**SQLite** (no `DATABASE_URL`):
+
 ```bash
 python manage.py migrate
 python manage.py runserver
 ```
 
-Open http://127.0.0.1:8000/
+**PostgreSQL** (with `DATABASE_URL` set): the app uses django-tenants. Run schema migrations and create the public tenant so **localhost** and **127.0.0.1** both work:
 
-The root URL (`/`) provides API information and available endpoints.
+```bash
+python manage.py migrate_schemas --shared
+python manage.py setup_public_tenant
+python manage.py runserver
+```
+
+Open http://localhost:8000/ or http://127.0.0.1:8000/
+
+The root URL (`/`) provides API information and available endpoints. Interactive API docs:
+
+- **Swagger UI:** http://localhost:8000/api/schema/swagger-ui/
+- **ReDoc:** http://localhost:8000/api/schema/redoc/
+- **OpenAPI schema:** http://localhost:8000/api/schema/
+
+## Troubleshooting
+
+### "No tenant for hostname localhost" (404 when using Postgres)
+
+When using PostgreSQL, the app uses django-tenants and resolves tenants by hostname. Run once so localhost is available:
+
+```bash
+python manage.py setup_public_tenant
+```
+
+This creates the public tenant and domains for `localhost` and `127.0.0.1`. Safe to run multiple times.
+
+---
 
 ## Authentication API
 
@@ -433,7 +461,8 @@ This system provides flexible, granular permission management while maintaining 
 
 | Command | Description |
 |--------|-------------|
-| uff check . | Lint |
+| 
+uff check . | Lint |
 | lack . / lack --check . | Format / check format |
 | pytest | Run tests |
 | python manage.py load_permissions <csv_file> | Load base permissions from CSV (expects module_name,feature_action headers) |
