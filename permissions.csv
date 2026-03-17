@@ -1,0 +1,184 @@
+module_name,feature_action
+Employee Profiles,view_own_profile
+Employee Profiles,edit_own_basic_info
+Employee Profiles,edit_own_role_salary_cpf
+Employee Profiles,view_team_profiles
+Employee Profiles,view_all_profiles
+Employee Profiles,view_salary_history
+Employee Profiles,view_audit_log
+Employee Profiles,export_employee_data
+Employee Profiles,add_remove_employees
+Employee Profiles,upload_own_cv
+Employee Profiles,upload_any_cv
+Vacations,submit_leave_request
+Vacations,view_own_balance
+Vacations,view_own_history
+Vacations,cancel_own_request
+Vacations,approve_team_requests
+Vacations,view_team_calendar
+Vacations,view_dept_trends
+Vacations,view_org_calendar
+Vacations,adjust_balances
+Vacations,override_requests
+Vacations,configure_leave_types
+Vacations,export_leave_reports
+Vacations,setup_auto_approval
+Reviews,view_own_reviews
+Reviews,initiate_self_review
+Reviews,view_team_reviews
+Reviews,create_review_direct_report
+Reviews,schedule_reviews
+Reviews,add_private_feedback
+Reviews,add_shared_feedback
+Reviews,edit_delete_reviews
+Reviews,view_any_review_history
+Reviews,configure_review_templates
+Reviews,set_review_cycles
+Reviews,export_review_data
+Reviews,attach_documents
+Onboarding,view_own_tasks
+Onboarding,complete_own_tasks
+Onboarding,view_team_status
+Onboarding,create_checklist_templates
+Onboarding,assign_tasks
+Onboarding,track_all_onboarding
+Onboarding,view_overdue_dashboard
+Onboarding,initiate_offboarding
+Onboarding,approve_offboarding
+Onboarding,configure_templates
+Onboarding,send_reminders
+Training,view_own_history
+Training,add_own_training
+Training,upload_own_certificates
+Training,view_team_history
+Training,view_all_records
+Training,track_own_budget
+Training,track_team_budget
+Training,track_dept_budget
+Training,approve_training_requests
+Training,configure_budget
+Training,log_peer_sessions
+Training,view_peer_incentives
+Training,export_training_reports
+Compensation,view_own_compensation
+Compensation,view_team_compensation
+Compensation,view_all_compensation
+Compensation,submit_bonus_nomination
+Compensation,approve_bonus_nominations
+Compensation,track_monthly_bonuses
+Compensation,track_one_time_bonuses
+Compensation,view_bonus_payouts
+Compensation,configure_bonus_types
+Compensation,export_payroll
+Compensation,view_audit_trail
+Compensation,adjust_salary_bands
+Feedback,submit_anonymous_feedback
+Feedback,submit_named_feedback
+Feedback,view_own_feedback
+Feedback,participate_pulse_surveys
+Feedback,create_surveys
+Feedback,view_team_survey_results
+Feedback,view_dept_survey_results
+Feedback,view_org_survey_results
+Feedback,view_anonymous_details
+Feedback,export_survey_data
+Feedback,configure_survey_templates
+Feedback,setup_pulse_checks
+Feedback,view_sentiment_analysis
+Feedback,receive_negative_alerts
+Time Tracking,log_own_hours
+Time Tracking,view_own_timesheet
+Time Tracking,edit_own_hours
+Time Tracking,view_team_timesheets
+Time Tracking,approve_team_timesheets
+Time Tracking,view_dept_timesheets
+Time Tracking,export_timesheets
+Time Tracking,configure_projects
+Time Tracking,setup_billing_rates
+Time Tracking,view_billable_hours
+Time Tracking,integrate_clockify
+Internal Mobility,view_job_listings
+Internal Mobility,apply_internal_positions
+Internal Mobility,view_own_promotion_history
+Internal Mobility,view_team_promotion_history
+Internal Mobility,view_all_promotion_history
+Internal Mobility,track_cpf_advancement
+Internal Mobility,initiate_promotion
+Internal Mobility,approve_promotions
+Internal Mobility,configure_cpf_requirements
+Internal Mobility,view_application_status
+Internal Mobility,review_applicants
+Internal Mobility,schedule_interviews
+Documents,upload_own_documents
+Documents,view_own_documents
+Documents,delete_own_documents
+Documents,view_team_documents
+Documents,upload_any_documents
+Documents,set_expiry_dates
+Documents,receive_expiry_notifications
+Documents,configure_categories
+Documents,set_visibility_permissions
+Documents,initiate_signature_requests
+Documents,sign_documents
+Documents,view_signed_status
+Documents,access_contract_templates
+Asset Management,view_own_assets
+Asset Management,view_team_assets
+Asset Management,view_all_assets
+Asset Management,assign_assets
+Asset Management,update_asset_condition
+Asset Management,track_warranty
+Asset Management,initiate_asset_return
+Asset Management,process_asset_return
+Asset Management,log_asset_lost
+Asset Management,generate_qr_codes
+Asset Management,view_asset_history
+Asset Management,configure_asset_types
+Asset Management,export_inventory
+Org Chart,view_org_chart
+Org Chart,view_dept_filters
+Org Chart,view_reporting_lines
+Org Chart,view_hover_cards
+Org Chart,view_contact_info
+Org Chart,view_salary_in_hover
+Org Chart,export_org_chart
+Org Chart,edit_reporting_relationships
+Org Chart,create_teams
+Org Chart,view_historical_structure
+Leave Analytics,view_own_patterns
+Leave Analytics,view_team_trends
+Leave Analytics,view_dept_analytics
+Leave Analytics,view_company_insights
+Leave Analytics,export_leave_reports
+Leave Analytics,view_workforce_predictions
+Leave Analytics,set_leave_policies
+Leave Analytics,configure_fiscal_year
+Leave Analytics,view_forecasting
+Announcements,view_announcements
+Announcements,create_announcements
+Announcements,create_company_announcements
+Announcements,view_birthdays
+Announcements,view_anniversaries
+Announcements,add_reactions
+Announcements,moderate_comments
+Announcements,schedule_announcements
+Announcements,view_analytics
+Announcements,configure_notifications
+Discord,use_leave_balance
+Discord,use_request_leave
+Discord,use_whois
+Discord,use_team_calendar
+Discord,use_approve_leave
+Discord,use_announce
+Discord,use_add_birthday
+Discord,use_sync_roles
+Discord,use_asset_lookup
+Discord,use_survey_results
+System,configure_integrations
+System,view_system_logs
+System,manage_api_keys
+System,configure_security
+System,view_audit_logs
+System,backup_restore
+System,manage_users
+System,system_settings
