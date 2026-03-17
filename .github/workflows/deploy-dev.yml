@@ -31,13 +31,17 @@ jobs:
           DEV_PUBLIC_DOMAIN: ${{ secrets.DEV_PUBLIC_DOMAIN }}
         run: |
           if python manage.py help migrate_schemas &>/dev/null; then
+            echo "Using django-tenants: migrate_schemas + setup_public_tenant"
             python manage.py migrate_schemas --shared --noinput
             if [ -n "$DEV_PUBLIC_DOMAIN" ]; then
+              echo "Adding domain: $DEV_PUBLIC_DOMAIN"
               python manage.py setup_public_tenant --domain "$DEV_PUBLIC_DOMAIN"
             else
+              echo "DEV_PUBLIC_DOMAIN not set - add it in the dev environment secrets to fix 404 on your dev URL"
               python manage.py setup_public_tenant
             fi
           else
+            echo "Skipping tenant setup (migrate_schemas not available - is DEV_DATABASE_URL set and a Postgres URL?)"
             python manage.py migrate --noinput
           fi
 
