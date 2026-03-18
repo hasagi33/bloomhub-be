@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.utils.html import format_html
 
 from .models import (
     ChangeLog,
@@ -22,9 +23,44 @@ class RoleAdmin(admin.ModelAdmin):
 
 @admin.register(UserProfile)
 class UserProfileAdmin(admin.ModelAdmin):
-    list_display = ("user", "role", "employee_id", "department")
-    list_filter = ("role", "department")
-    search_fields = ("user__username", "employee_id", "department")
+    @admin.display(description="Avatar")
+    def avatar_thumb(self, obj: UserProfile):
+        if not getattr(obj, "avatar", None):
+            return "-"
+        try:
+            return format_html(
+                '<img src="{}" style="height:40px;width:40px;border-radius:6px;object-fit:cover;" />',
+                obj.avatar.url,
+            )
+        except Exception:
+            return "-"
+
+    list_display = (
+        "user",
+        "full_name",
+        "email_address",
+        "role",
+        "manager",
+        "avatar_thumb",
+        "employee_id",
+        "department",
+        "start_date",
+        "cpf_level",
+        "employment_status",
+    )
+    list_filter = (
+        "role",
+        "manager",
+        "department",
+        "employment_status",
+    )
+    search_fields = (
+        "user__username",
+        "employee_id",
+        "department",
+        "full_name",
+        "email_address",
+    )
 
 
 @admin.register(TechnologyTag)
