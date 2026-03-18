@@ -1,7 +1,21 @@
 from django.contrib.auth.models import User
+from django.core.files.base import ContentFile
 from django.db import models
 from django.db.models.signals import post_save
 from django.dispatch import receiver
+from django.utils.text import slugify
+
+
+def user_avatar_upload_to(instance: "UserProfile", filename: str) -> str:
+    """
+    Store avatars under a stable Cloudflare/R2 key:
+    avatars/{user_id}-{first_name}-{last_name}/avatar.png
+    """
+
+    user = instance.user
+    first = slugify(user.first_name) or "user"
+    last = slugify(user.last_name) or "user"
+    return f"avatars/{user.id}-{first}-{last}/avatar.png"
 
 
 class Permission(models.Model):
@@ -89,11 +103,26 @@ class Equipment(models.Model):
 
 
 class UserProfile(models.Model):
+    class EmploymentStatus(models.TextChoices):
+        ACTIVE = "active", "Active"
+        INACTIVE = "inactive", "Inactive"
+
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
     role = models.ForeignKey(Role, on_delete=models.SET_NULL, null=True, blank=True)
+    manager = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="direct_reports",
+    )
     employee_id = models.CharField(max_length=20, unique=True, blank=True, null=True)
+
+    full_name = models.CharField(max_length=150, blank=True, null=True)
+    email_address = models.EmailField(max_length=254, blank=True, null=True)
+
     department = models.CharField(max_length=100, blank=True, null=True)
-    hire_date = models.DateField(blank=True, null=True)
+    start_date = models.DateField(blank=True, null=True)
     phone_number = models.CharField(max_length=15, blank=True, null=True)
     address = models.TextField(blank=True, null=True)
     emergency_contact_name = models.CharField(max_length=100, blank=True, null=True)
@@ -102,10 +131,28 @@ class UserProfile(models.Model):
     career_level = models.CharField(max_length=100, blank=True, null=True)
     cpf_level = models.CharField(max_length=100, blank=True, null=True)
     tech_tags = models.ManyToManyField(TechnologyTag, blank=True, related_name="users")
+
+    is_active = models.BooleanField(default=True, editable=False)
+    employment_status = models.CharField(
+        max_length=10, choices=EmploymentStatus.choices, default=EmploymentStatus.ACTIVE
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    # Profile picture (employee avatar).
+    # Auto-generated on registration when not provided.
+    avatar = models.ImageField(
+        upload_to=user_avatar_upload_to,
+        blank=True,
+        null=True,
+    )
+
     permissions = models.BigIntegerField(default=0)  # Bitmap for additional permissions
 
     def __str__(self):
-        return f"{self.user.get_full_name() or self.user.username} - {self.role.name if self.role else 'No Role'}"
+        display_name = self.full_name or self.user.get_full_name() or self.user.username
+        return f"{display_name} - " f"{self.role.name if self.role else 'No Role'}"
 
     def has_permission(self, permission):
         # Check role permissions or user permissions
@@ -126,9 +173,13 @@ class UserProfile(models.Model):
         salary = self.salary_records.order_by("-effective_date").first()
         return salary.amount if salary else None
 
+    def save(self, *args, **kwargs):
+        self.is_active = self.employment_status == self.EmploymentStatus.ACTIVE
+        super().save(*args, **kwargs)
+
     class Meta:
-        verbose_name = "User Profile"
-        verbose_name_plural = "User Profiles"
+        verbose_name = "Employee Profile"
+        verbose_name_plural = "Employee Profiles"
 
 
 class DocumentType(models.TextChoices):
@@ -240,9 +291,37 @@ class ChangeLog(models.Model):
 @receiver(post_save, sender=User)
 def create_user_profile(sender, instance, created, **kwargs):
     if created:
-        UserProfile.objects.create(user=instance)
+        full_name = instance.get_full_name() or instance.username
+        email_address = instance.email
+
+        profile, _ = UserProfile.objects.get_or_create(
+            user=instance,
+            defaults={"full_name": full_name, "email_address": email_address},
+        )
+
+        profile.full_name = profile.full_name or full_name
+        profile.email_address = profile.email_address or email_address
+        profile.save(update_fields=["full_name", "email_address"])
+
+        if not profile.avatar:
+            try:
+                from .avatar_utils import generate_initials_avatar_png, get_initials
+
+                initials = get_initials(profile.full_name, profile.user.username)
+                seed = f"{profile.user.id}:{profile.user.username}"
+                png_bytes = generate_initials_avatar_png(initials, seed=seed)
+                profile.avatar.save(
+                    "avatar.png",
+                    ContentFile(png_bytes),
+                    save=True,
+                )
+            except Exception:
+                pass
 
 
 @receiver(post_save, sender=User)
 def save_user_profile(sender, instance, **kwargs):
-    instance.profile.save()
+    try:
+        instance.profile.save()
+    except Exception:
+        pass

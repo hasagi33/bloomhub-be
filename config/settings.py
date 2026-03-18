@@ -203,8 +203,9 @@ R2_ACCOUNT_ID = os.environ.get("R2_ACCOUNT_ID", "").strip()
 R2_ACCESS_KEY_ID = os.environ.get("R2_ACCESS_KEY_ID", "").strip()
 R2_SECRET_ACCESS_KEY = os.environ.get("R2_SECRET_ACCESS_KEY", "").strip()
 R2_BUCKET_NAME = os.environ.get("R2_BUCKET_NAME", "bloomhub").strip()
-USE_R2 = bool(
-    R2_ACCOUNT_ID and R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY and R2_BUCKET_NAME
+USE_R2 = (
+    bool(R2_ACCOUNT_ID and R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY and R2_BUCKET_NAME)
+    and ENVIRONMENT == "prod"
 )
 
 if USE_R2:
@@ -214,7 +215,8 @@ if USE_R2:
     AWS_STORAGE_BUCKET_NAME = R2_BUCKET_NAME
     AWS_S3_ENDPOINT_URL = R2_ENDPOINT_URL
     AWS_S3_REGION_NAME = "auto"
-    AWS_S3_FILE_OVERWRITE = False
+    # Keep avatar paths stable (e.g. .../avatar.png) by allowing overwrite.
+    AWS_S3_FILE_OVERWRITE = True
 
     _r2_verify_env = os.environ.get("R2_VERIFY_SSL", "").lower()
     if _r2_verify_env in ("0", "false", "no"):

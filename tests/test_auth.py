@@ -10,6 +10,20 @@ django.setup()
 
 
 class AuthTestCase(APITestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        # django-tenants routes requests by hostname. DRF's test client uses
+        # "testserver" by default, so we need a matching public tenant domain.
+        from django.core.management import call_command
+
+        call_command(
+            "setup_public_tenant",
+            "--domain",
+            "testserver",
+            verbosity=0,
+        )
+
     def test_register_user(self):
         """Test user registration"""
         data = {
