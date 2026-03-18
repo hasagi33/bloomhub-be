@@ -135,6 +135,9 @@ MIDDLEWARE = (
 ROOT_URLCONF = "config.urls"
 WSGI_APPLICATION = "config.wsgi.application"
 
+USE_X_FORWARDED_HOST = True
+USE_X_FORWARDED_PORT = True
+
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
