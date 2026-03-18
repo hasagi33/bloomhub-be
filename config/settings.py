@@ -18,7 +18,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 ENVIRONMENT = os.environ.get("ENVIRONMENT", "local")
 SECRET_KEY = os.environ.get("SECRET_KEY", "django-insecure-dev-change-in-production")
 DEBUG = os.environ.get("DEBUG", "true").lower() in ("1", "true", "yes")
-ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+ALLOWED_HOSTS = os.environ.get(
+    "ALLOWED_HOSTS", "localhost,127.0.0.1,.onrender.com"
+).split(",")
 
 
 def _get_database_url():
@@ -118,6 +120,7 @@ SIMPLE_JWT = {
 
 MIDDLEWARE = (
     [
+        "config.middleware.LogTenantHostMiddleware",
         "django_tenants.middleware.main.TenantMainMiddleware",
     ]
     if USE_TENANTS
