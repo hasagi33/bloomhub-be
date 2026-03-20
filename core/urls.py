@@ -1,7 +1,9 @@
 from django.urls import path
+from rest_framework.routers import DefaultRouter
 
 from .views import (
     APIRootView,
+    EmployeeProfileViewSet,
     LoginView,
     LogoutView,
     RegisterView,
@@ -11,6 +13,9 @@ from .views import (
 )
 
 app_name = "core"
+
+router = DefaultRouter()
+router.register(r"employees", EmployeeProfileViewSet, basename="employee")
 
 urlpatterns = [
     path("", APIRootView.as_view(), name="api_root"),
@@ -25,3 +30,5 @@ urlpatterns = [
         name="upload_role_permissions",
     ),
 ]
+
+urlpatterns += router.urls

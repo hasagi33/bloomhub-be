@@ -6,23 +6,37 @@ from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
-from drf_spectacular.utils import extend_schema
-from rest_framework import status
+from django_filters.rest_framework import DjangoFilterBackend
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
+from rest_framework import filters, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView
 
-from .models import Permission, Role
+from .constants import (
+    EMPLOYEE_PROFILE_FILTERSET_FIELDS,
+    EMPLOYEE_PROFILE_ORDERING_FIELDS,
+    EMPLOYEE_PROFILE_SEARCH_FIELDS,
+)
+from .models import Permission, Role, UserProfile
+from .permissions import IsHRAdminOrReadOnlyOwnProfile
 from .serializers import (
     APIRootResponseSerializer,
+    EmployeeProfileSerializer,
     LoginSerializer,
     RegisterSerializer,
     TokenSerializer,
+    UpdatePermissionsSerializer,
+    UpdateRoleSerializer,
     UploadRolePermissionsResponseSerializer,
     UserSerializer,
 )
+from .shared.employee_utils import soft_delete_employee_profile
+from .utils import get_role_permissions_bitmap
 
 
 @extend_schema(
@@ -278,3 +292,179 @@ class UploadRolePermissionsView(APIView):
 
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+_EMPLOYEE_LIST_PARAMETERS = [
+    OpenApiParameter(
+        "role__name",
+        OpenApiTypes.STR,
+        OpenApiParameter.QUERY,
+        description="Exact match on related role name.",
+    ),
+    OpenApiParameter(
+        "department",
+        OpenApiTypes.STR,
+        OpenApiParameter.QUERY,
+        description="Exact match on department.",
+    ),
+    OpenApiParameter(
+        "is_active",
+        OpenApiTypes.BOOL,
+        OpenApiParameter.QUERY,
+        description="Filter by active flag.",
+    ),
+    OpenApiParameter(
+        "employment_status",
+        OpenApiTypes.STR,
+        OpenApiParameter.QUERY,
+        description="Exact match on employment status (e.g. active, inactive).",
+    ),
+    OpenApiParameter(
+        "search",
+        OpenApiTypes.STR,
+        OpenApiParameter.QUERY,
+        description=(
+            "Search across full name, email, username, and employee id "
+            f"({', '.join(EMPLOYEE_PROFILE_SEARCH_FIELDS)})."
+        ),
+    ),
+    OpenApiParameter(
+        "ordering",
+        OpenApiTypes.STR,
+        OpenApiParameter.QUERY,
+        description=(
+            "Order results. Prefix with `-` for descending. "
+            f"Allowed: {', '.join(EMPLOYEE_PROFILE_ORDERING_FIELDS)}."
+        ),
+    ),
+]
+
+
+@extend_schema_view(
+    list=extend_schema(
+        summary="List employee profiles",
+        description=(
+            "Returns all profiles for HR/Admin; non-admin users only see their own. "
+            "Supports filtering, search, and ordering via query parameters."
+        ),
+        parameters=_EMPLOYEE_LIST_PARAMETERS,
+        responses={200: EmployeeProfileSerializer(many=True)},
+    ),
+    create=extend_schema(
+        summary="Create employee profile",
+        description=(
+            "Creates a `User` and linked `UserProfile`. HR/Admin only. "
+            "A random password is generated server-side for the new account."
+        ),
+        request=EmployeeProfileSerializer,
+        responses={201: EmployeeProfileSerializer, 400: None, 403: None},
+    ),
+    retrieve=extend_schema(
+        summary="Retrieve employee profile",
+        description="Fetch one profile by id. HR/Admin any id; others only their own.",
+        responses={200: EmployeeProfileSerializer, 403: None, 404: None},
+    ),
+    update=extend_schema(
+        summary="Replace employee profile",
+        description="Full update (PUT). HR/Admin can edit any profile; others read-only.",
+        request=EmployeeProfileSerializer,
+        responses={200: EmployeeProfileSerializer, 400: None, 403: None, 404: None},
+    ),
+    partial_update=extend_schema(
+        summary="Patch employee profile",
+        description="Partial update (PATCH). Same permission rules as PUT.",
+        request=EmployeeProfileSerializer,
+        responses={200: EmployeeProfileSerializer, 400: None, 403: None, 404: None},
+    ),
+    destroy=extend_schema(
+        summary="Soft-delete employee profile",
+        description=(
+            "Does not remove the profile row. Deletes avatar and document files, "
+            "removes related assignments and salary rows, clears PII, marks the profile "
+            "inactive, and anonymizes plus deactivates the linked Django `User`. "
+            "HR/Admin only for arbitrary profiles."
+        ),
+        responses={204: None, 403: None, 404: None},
+    ),
+)
+@extend_schema(tags=["Employee Profiles"])
+class EmployeeProfileViewSet(viewsets.ModelViewSet):
+    """
+    CRUD endpoints for employee profiles.
+    Permissions: HR/Admin can fully manage. Employees can do read-only operations on their own profile.
+    """
+
+    serializer_class = EmployeeProfileSerializer
+    permission_classes = [IsHRAdminOrReadOnlyOwnProfile]
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.SearchFilter,
+        filters.OrderingFilter,
+    ]
+    filterset_fields = EMPLOYEE_PROFILE_FILTERSET_FIELDS
+    search_fields = EMPLOYEE_PROFILE_SEARCH_FIELDS
+    ordering_fields = EMPLOYEE_PROFILE_ORDERING_FIELDS
+
+    def get_queryset(self):
+        user = self.request.user
+        if not user.is_authenticated:
+            return UserProfile.objects.none()
+
+        perm = IsHRAdminOrReadOnlyOwnProfile()
+        if perm._is_hr_admin(user):
+            return UserProfile.objects.all()
+
+        return UserProfile.objects.filter(user=user)
+
+    def perform_destroy(self, instance):
+        soft_delete_employee_profile(instance)
+
+    @extend_schema(
+        summary="Update employee role",
+        description=(
+            "Sets `role` and recomputes the permissions bitmap from that role's permissions. "
+            "HR/Admin only."
+        ),
+        request=UpdateRoleSerializer,
+        responses={200: EmployeeProfileSerializer, 400: None, 404: None, 403: None},
+    )
+    @action(detail=True, methods=["post"], url_path="update-role")
+    def update_role(self, request, pk=None):
+        instance = self.get_object()
+        serializer = UpdateRoleSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        role_id = serializer.validated_data["role_id"]
+        try:
+            role = Role.objects.get(id=role_id)
+        except Role.DoesNotExist:
+            return Response(
+                {"error": "Role does not exist."}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        instance.role = role
+        instance.permissions = get_role_permissions_bitmap(role)
+
+        instance.save()
+        return Response(self.get_serializer(instance).data)
+
+    @extend_schema(
+        summary="Override permissions bitmap",
+        description=(
+            "Replaces the profile's stored permissions string with the given binary bitmap. "
+            "HR/Admin only."
+        ),
+        request=UpdatePermissionsSerializer,
+        responses={200: EmployeeProfileSerializer, 400: None, 403: None},
+    )
+    @action(detail=True, methods=["post"], url_path="update-permissions")
+    def update_permissions(self, request, pk=None):
+        instance = self.get_object()
+        serializer = UpdatePermissionsSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        # Override the additional permissions bitmap (it came in as a valid binary string)
+        instance.permissions = serializer.validated_data["permissions_bitmap"]
+        instance.save()
+
+        return Response(self.get_serializer(instance).data)
