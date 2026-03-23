@@ -1,7 +1,4 @@
-import urllib.request
-
 from django.contrib.auth.models import User
-from django.core.files.base import ContentFile
 from rest_framework import serializers
 
 from core.constants import (
@@ -13,24 +10,50 @@ from core.constants import (
 from core.models import UserProfile
 from core.utils import (
     apply_profile_updates_and_save,
+    download_and_save_avatar,
     generate_secure_password,
     generate_unique_username,
     get_role_permissions_bitmap,
+    verify_google_id_token,
 )
+
+
+class GoogleExchangeSerializer(serializers.Serializer):
+    id_token = serializers.CharField(required=True)
+
+    def validate_id_token(self, value):
+        try:
+            payload = verify_google_id_token(value)
+            return payload
+        except Exception as e:
+            raise serializers.ValidationError(f"Invalid Google token: {str(e)}")
 
 
 class UserSerializer(serializers.ModelSerializer):
     avatar_url = serializers.SerializerMethodField()
+    career_level = serializers.CharField(source="profile.career_level", read_only=True)
 
     class Meta:
         model = User
-        fields = ["id", "username", "email", "first_name", "last_name", "avatar_url"]
+        fields = [
+            "id",
+            "username",
+            "email",
+            "first_name",
+            "last_name",
+            "avatar_url",
+            "career_level",
+        ]
 
     def get_avatar_url(self, obj: User) -> str | None:
         try:
             profile = obj.profile
         except Exception:
             return None
+        # Prefer the direct URL field (set by Google OAuth, etc.)
+        if getattr(profile, "avatar_url", None):
+            return profile.avatar_url
+        # Fall back to the ImageField presigned URL
         if not getattr(profile, "avatar", None):
             return None
         try:
@@ -80,14 +103,7 @@ class RegisterSerializer(serializers.ModelSerializer):
                     save=True,
                 )
             elif avatar_url:
-                with urllib.request.urlopen(avatar_url, timeout=10) as resp:
-                    raw = resp.read()
-
-                profile.avatar.save(
-                    "avatar.png",
-                    ContentFile(raw, name=f"avatar-{user.id}.png"),
-                    save=True,
-                )
+                download_and_save_avatar(profile, avatar_url)
         except Exception:
             # Keep registration functional; avatar can be generated later.
             pass
@@ -98,6 +114,18 @@ class RegisterSerializer(serializers.ModelSerializer):
 class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField(required=True)
     password = serializers.CharField(required=True, write_only=True)
+
+
+class AvatarUploadSerializer(serializers.Serializer):
+    avatar = serializers.ImageField(required=True)
+
+    def validate_avatar(self, value):
+        max_size_mb = 5
+        if value.size > max_size_mb * 1024 * 1024:
+            raise serializers.ValidationError(
+                f"Avatar image must be under {max_size_mb} MB."
+            )
+        return value
 
 
 class TokenSerializer(serializers.Serializer):

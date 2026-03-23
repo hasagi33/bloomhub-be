@@ -42,6 +42,38 @@ paths:
           description: No response body
         '403':
           description: No response body
+  /api/auth/google/exchange/:
+    post:
+      operationId: auth_google_exchange_create
+      description: Exchange a Google ID token for native JWT access/refresh tokens.
+      tags:
+      - Auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoogleExchangeRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/GoogleExchangeRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/GoogleExchangeRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Token'
+          description: ''
+        '400':
+          description: No response body
+        '401':
+          description: No response body
   /api/auth/login/:
     post:
       operationId: auth_login_create
@@ -148,6 +180,303 @@ paths:
           description: ''
         '400':
           description: No response body
+  /api/employees/:
+    get:
+      operationId: employees_list
+      description: Returns all profiles for HR/Admin; non-admin users only see their
+        own. Supports filtering, search, and ordering via query parameters.
+      summary: List employee profiles
+      parameters:
+      - in: query
+        name: department
+        schema:
+          type: string
+        description: Exact match on department.
+      - in: query
+        name: employment_status
+        schema:
+          type: string
+        description: Exact match on employment status (e.g. active, inactive).
+      - in: query
+        name: is_active
+        schema:
+          type: boolean
+        description: Filter by active flag.
+      - in: query
+        name: ordering
+        schema:
+          type: string
+        description: 'Order results. Prefix with `-` for descending. Allowed: full_name,
+          start_date, created_at.'
+      - in: query
+        name: role__name
+        schema:
+          type: string
+        description: Exact match on related role name.
+      - in: query
+        name: search
+        schema:
+          type: string
+        description: Search across full name, email, username, and employee id (full_name,
+          email_address, user__username, employee_id).
+      tags:
+      - Employee Profiles
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EmployeeProfile'
+          description: ''
+    post:
+      operationId: employees_create
+      description: Creates a `User` and linked `UserProfile`. HR/Admin only. A random
+        password is generated server-side for the new account.
+      summary: Create employee profile
+      tags:
+      - Employee Profiles
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmployeeProfileRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/EmployeeProfileRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/EmployeeProfileRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeProfile'
+          description: ''
+        '400':
+          description: No response body
+        '403':
+          description: No response body
+  /api/employees/{id}/:
+    get:
+      operationId: employees_retrieve
+      description: Fetch one profile by id. HR/Admin any id; others only their own.
+      summary: Retrieve employee profile
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Employee Profile.
+        required: true
+      tags:
+      - Employee Profiles
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeProfile'
+          description: ''
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+    put:
+      operationId: employees_update
+      description: Full update (PUT). HR/Admin can edit any profile; others read-only.
+      summary: Replace employee profile
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Employee Profile.
+        required: true
+      tags:
+      - Employee Profiles
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmployeeProfileRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/EmployeeProfileRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/EmployeeProfileRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeProfile'
+          description: ''
+        '400':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+    patch:
+      operationId: employees_partial_update
+      description: Partial update (PATCH). Same permission rules as PUT.
+      summary: Patch employee profile
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Employee Profile.
+        required: true
+      tags:
+      - Employee Profiles
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedEmployeeProfileRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedEmployeeProfileRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedEmployeeProfileRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeProfile'
+          description: ''
+        '400':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+    delete:
+      operationId: employees_destroy
+      description: Does not remove the profile row. Deletes avatar and document files,
+        removes related assignments and salary rows, clears PII, marks the profile
+        inactive, and anonymizes plus deactivates the linked Django `User`. HR/Admin
+        only for arbitrary profiles.
+      summary: Soft-delete employee profile
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Employee Profile.
+        required: true
+      tags:
+      - Employee Profiles
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+  /api/employees/{id}/update-permissions/:
+    post:
+      operationId: employees_update_permissions_create
+      description: Replaces the profile's stored permissions string with the given
+        binary bitmap. HR/Admin only.
+      summary: Override permissions bitmap
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Employee Profile.
+        required: true
+      tags:
+      - Employee Profiles
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePermissionsRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/UpdatePermissionsRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UpdatePermissionsRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeProfile'
+          description: ''
+        '400':
+          description: No response body
+        '403':
+          description: No response body
+  /api/employees/{id}/update-role/:
+    post:
+      operationId: employees_update_role_create
+      description: Sets `role` and recomputes the permissions bitmap from that role's
+        permissions. HR/Admin only.
+      summary: Update employee role
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Employee Profile.
+        required: true
+      tags:
+      - Employee Profiles
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRoleRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/UpdateRoleRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UpdateRoleRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeProfile'
+          description: ''
+        '400':
+          description: No response body
+        '404':
+          description: No response body
+        '403':
+          description: No response body
 components:
   schemas:
     APIRootResponse:
@@ -161,6 +490,153 @@ components:
       required:
       - endpoints
       - message
+    EmployeeProfile:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        username:
+          type: string
+          readOnly: true
+        employee_id:
+          type: string
+          nullable: true
+          maxLength: 20
+        email:
+          type: string
+          format: email
+        first_name:
+          type: string
+        last_name:
+          type: string
+        full_name:
+          type: string
+          nullable: true
+          maxLength: 150
+        email_address:
+          type: string
+          format: email
+          nullable: true
+          maxLength: 254
+        department:
+          type: string
+          nullable: true
+          maxLength: 100
+        role:
+          type: integer
+          nullable: true
+        role_name:
+          type: string
+          readOnly: true
+        manager:
+          type: integer
+          nullable: true
+        manager_name:
+          type: string
+          readOnly: true
+        start_date:
+          type: string
+          format: date
+          nullable: true
+        phone_number:
+          type: string
+          nullable: true
+          maxLength: 15
+        address:
+          type: string
+          nullable: true
+        employment_status:
+          $ref: '#/components/schemas/EmploymentStatusEnum'
+        avatar:
+          type: string
+          format: uri
+          nullable: true
+        is_active:
+          type: boolean
+          readOnly: true
+        permissions_bitmap:
+          type: string
+          readOnly: true
+      required:
+      - email
+      - id
+      - is_active
+      - manager_name
+      - permissions_bitmap
+      - role_name
+      - username
+    EmployeeProfileRequest:
+      type: object
+      properties:
+        employee_id:
+          type: string
+          nullable: true
+          maxLength: 20
+        email:
+          type: string
+          format: email
+          minLength: 1
+        first_name:
+          type: string
+          minLength: 1
+        last_name:
+          type: string
+          minLength: 1
+        full_name:
+          type: string
+          nullable: true
+          maxLength: 150
+        email_address:
+          type: string
+          format: email
+          nullable: true
+          maxLength: 254
+        department:
+          type: string
+          nullable: true
+          maxLength: 100
+        role:
+          type: integer
+          nullable: true
+        manager:
+          type: integer
+          nullable: true
+        start_date:
+          type: string
+          format: date
+          nullable: true
+        phone_number:
+          type: string
+          nullable: true
+          maxLength: 15
+        address:
+          type: string
+          nullable: true
+        employment_status:
+          $ref: '#/components/schemas/EmploymentStatusEnum'
+        avatar:
+          type: string
+          format: binary
+          nullable: true
+      required:
+      - email
+    EmploymentStatusEnum:
+      enum:
+      - active
+      - inactive
+      type: string
+      description: |-
+        * `active` - Active
+        * `inactive` - Inactive
+    GoogleExchangeRequest:
+      type: object
+      properties:
+        id_token:
+          type: string
+          minLength: 1
+      required:
+      - id_token
     LoginRequest:
       type: object
       properties:
@@ -175,6 +651,59 @@ components:
       required:
       - email
       - password
+    PatchedEmployeeProfileRequest:
+      type: object
+      properties:
+        employee_id:
+          type: string
+          nullable: true
+          maxLength: 20
+        email:
+          type: string
+          format: email
+          minLength: 1
+        first_name:
+          type: string
+          minLength: 1
+        last_name:
+          type: string
+          minLength: 1
+        full_name:
+          type: string
+          nullable: true
+          maxLength: 150
+        email_address:
+          type: string
+          format: email
+          nullable: true
+          maxLength: 254
+        department:
+          type: string
+          nullable: true
+          maxLength: 100
+        role:
+          type: integer
+          nullable: true
+        manager:
+          type: integer
+          nullable: true
+        start_date:
+          type: string
+          format: date
+          nullable: true
+        phone_number:
+          type: string
+          nullable: true
+          maxLength: 15
+        address:
+          type: string
+          nullable: true
+        employment_status:
+          $ref: '#/components/schemas/EmploymentStatusEnum'
+        avatar:
+          type: string
+          format: binary
+          nullable: true
     RegisterRequest:
       type: object
       properties:
@@ -204,6 +733,15 @@ components:
         last_name:
           type: string
           maxLength: 150
+        avatar:
+          type: string
+          format: binary
+          nullable: true
+        avatar_url:
+          type: string
+          format: uri
+          nullable: true
+          minLength: 1
       required:
       - email
       - password
@@ -222,6 +760,24 @@ components:
       - access
       - refresh
       - user
+    UpdatePermissionsRequest:
+      type: object
+      properties:
+        permissions_bitmap:
+          type: string
+          minLength: 1
+          description: Binary string (1s and 0s) representing the user's additional
+            permissions.
+      required:
+      - permissions_bitmap
+    UpdateRoleRequest:
+      type: object
+      properties:
+        role_id:
+          type: integer
+          description: ID of the Role to assign to the user.
+      required:
+      - role_id
     UploadRolePermissionsResponse:
       type: object
       description: Response shape for successful role permissions upload.
@@ -256,7 +812,12 @@ components:
         last_name:
           type: string
           maxLength: 150
+        avatar_url:
+          type: string
+          nullable: true
+          readOnly: true
       required:
+      - avatar_url
       - id
       - username
   securitySchemes:

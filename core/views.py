@@ -9,7 +9,7 @@ from django.core.files.storage import default_storage
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
-from rest_framework import filters, status, viewsets
+from rest_framework import filters, parsers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -26,7 +26,9 @@ from .models import Permission, Role, UserProfile
 from .permissions import IsHRAdminOrReadOnlyOwnProfile
 from .serializers import (
     APIRootResponseSerializer,
+    AvatarUploadSerializer,
     EmployeeProfileSerializer,
+    GoogleExchangeSerializer,
     LoginSerializer,
     RegisterSerializer,
     TokenSerializer,
@@ -36,7 +38,12 @@ from .serializers import (
     UserSerializer,
 )
 from .shared.employee_utils import soft_delete_employee_profile
-from .utils import get_role_permissions_bitmap
+from .utils import (
+    generate_secure_password,
+    generate_unique_username,
+    get_role_permissions_bitmap,
+    upgrade_google_picture_url,
+)
 
 
 @extend_schema(
@@ -57,6 +64,7 @@ class APIRootView(APIView):
                     "auth": {
                         "register": "POST /api/auth/register/",
                         "login": "POST /api/auth/login/",
+                        "google_exchange": "POST /api/auth/google/exchange/",
                         "refresh": "POST /api/auth/refresh/",
                         "logout": "POST /api/auth/logout/",
                         "profile": "GET /api/auth/profile/",
@@ -130,6 +138,75 @@ class LoginView(APIView):
 
 @extend_schema(
     tags=["Auth"],
+    request=GoogleExchangeSerializer,
+    responses={200: TokenSerializer, 400: None, 401: None},
+    description="Exchange a Google ID token for native JWT access/refresh tokens.",
+)
+class GoogleExchangeView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = GoogleExchangeSerializer(data=request.data)
+        if serializer.is_valid():
+            payload = serializer.validated_data["id_token"]
+
+            email = payload.get("email")
+            first_name = payload.get("given_name", "")
+            last_name = payload.get("family_name", "")
+            picture_url = payload.get("picture", "")
+            # Upgrade to high-quality version of the Google photo
+            if picture_url:
+                picture_url = upgrade_google_picture_url(picture_url)
+
+            if not email:
+                return Response(
+                    {"error": "Token payload missing email"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            try:
+                user = User.objects.get(email=email)
+                profile = user.profile
+                # Always refresh avatar_url from Google on every login
+                if picture_url:
+                    profile.avatar_url = picture_url
+                    profile.save(update_fields=["avatar"])
+            except User.DoesNotExist:
+                # Provision new user
+                username = generate_unique_username(email)
+                password = generate_secure_password()
+
+                user = User.objects.create_user(
+                    username=username,
+                    email=email,
+                    password=password,
+                    first_name=first_name,
+                    last_name=last_name,
+                )
+
+                # The post_save signal already creates the UserProfile
+                profile = user.profile
+                update_fields = ["email_address", "full_name"]
+                profile.email_address = email
+                profile.full_name = f"{first_name} {last_name}".strip()
+                if picture_url:
+                    profile.avatar_url = picture_url
+                    update_fields.append("avatar")
+                profile.save(update_fields=update_fields)
+
+            refresh = RefreshToken.for_user(cast(User, user))
+            token_data = {
+                "refresh": str(refresh),
+                "access": str(refresh.access_token),
+                "user": UserSerializer(user).data,
+            }
+            return Response(token_data, status=status.HTTP_200_OK)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@extend_schema(
+    tags=["Auth"],
     request=None,
     responses={205: None, 400: None},
     description='Blacklist the refresh token. Send JSON: { "refresh": "<refresh_token>" }.',
@@ -154,6 +231,38 @@ class UserProfileView(APIView):
     def get(self, request):
         serializer = UserSerializer(request.user)
         return Response(serializer.data)
+
+
+@extend_schema(
+    tags=["Auth"],
+    request={"multipart/form-data": AvatarUploadSerializer},
+    responses={200: UserSerializer, 400: None},
+    description=(
+        "Upload a new avatar for the current user. "
+        "Accepts multipart/form-data with an `avatar` image file (max 5 MB). "
+        "Stores the file via the configured storage backend (Cloudflare R2 when credentials "
+        "are set). Returns the updated user object including the new `avatar_url`."
+    ),
+)
+class AvatarUploadView(APIView):
+    permission_classes = [IsAuthenticated]
+    parser_classes = [parsers.MultiPartParser, parsers.FormParser]
+
+    def post(self, request):
+        serializer = AvatarUploadSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        avatar_file = serializer.validated_data["avatar"]
+        profile = request.user.profile
+
+        # Save the uploaded file to the storage backend (R2 or local)
+        profile.avatar.save("avatar.png", avatar_file, save=False)
+        # Clear any stored external URL so the uploaded file takes precedence
+        profile.avatar_url = None
+        profile.save(update_fields=["avatar", "avatar_url"])
+
+        return Response(UserSerializer(request.user).data, status=status.HTTP_200_OK)
 
 
 @extend_schema(
