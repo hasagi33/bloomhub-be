@@ -1,0 +1,450 @@
+from datetime import date, timedelta
+from decimal import Decimal
+
+from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
+from django.db import IntegrityError
+from django.test import TestCase
+from django.utils import timezone
+
+from core.models import (
+    Asset,
+    AssetCondition,
+    AssetStatus,
+    Assignment,
+    ReplacementLog,
+)
+
+
+class AssetModelTestCase(TestCase):
+    """Test cases for the Asset model"""
+
+    def setUp(self):
+        """Set up test data"""
+        self.user = User.objects.create_user(
+            username="testuser",
+            email="test@example.com",
+            password="testpass123",
+            first_name="Test",
+            last_name="User",
+        )
+        self.profile = self.user.profile
+
+        self.asset_data = {
+            "asset_id": "LAPTOP001",
+            "name": "Dell Laptop",
+            "condition": AssetCondition.GOOD,
+            "warranty_until": date.today() + timedelta(days=365),
+            "purchase_date": date.today() - timedelta(days=30),
+            "status": AssetStatus.ACTIVE,
+            "serial_number": "DL123456789",
+            "model": "Dell Inspiron 15",
+            "manufacturer": "Dell",
+            "purchase_price": Decimal("1200.00"),
+            "description": "Standard work laptop",
+        }
+
+    def test_asset_creation(self):
+        """Test basic asset creation"""
+        asset = Asset.objects.create(**self.asset_data)
+
+        self.assertEqual(asset.asset_id, "LAPTOP001")
+        self.assertEqual(asset.name, "Dell Laptop")
+        self.assertEqual(asset.condition, AssetCondition.GOOD)
+        self.assertEqual(asset.status, AssetStatus.ACTIVE)
+        self.assertEqual(asset.purchase_price, Decimal("1200.00"))
+        self.assertIsNotNone(asset.created_at)
+        self.assertIsNotNone(asset.updated_at)
+
+    def test_asset_str_representation(self):
+        """Test asset string representation"""
+        asset = Asset.objects.create(**self.asset_data)
+        expected_str = f"{asset.asset_id} - {asset.name}"
+        self.assertEqual(str(asset), expected_str)
+
+    def test_asset_unique_asset_id_constraint(self):
+        """Test unique constraint on asset_id"""
+        Asset.objects.create(**self.asset_data)
+
+        # Test duplicate asset_id
+        with self.assertRaises(IntegrityError):
+            duplicate_data = self.asset_data.copy()
+            duplicate_data["serial_number"] = "DIFFERENT123"
+            Asset.objects.create(**duplicate_data)
+
+    def test_asset_unique_serial_number_constraint(self):
+        """Test unique constraint on serial_number"""
+        Asset.objects.create(**self.asset_data)
+
+        # Test duplicate serial_number
+        with self.assertRaises(IntegrityError):
+            duplicate_data = self.asset_data.copy()
+            duplicate_data["asset_id"] = "LAPTOP002"
+            Asset.objects.create(**duplicate_data)
+
+    def test_asset_is_under_warranty_property(self):
+        """Test warranty status property"""
+        # Asset under warranty
+        asset = Asset.objects.create(**self.asset_data)
+        self.assertTrue(asset.is_under_warranty)
+
+        # Asset warranty expired
+        asset.warranty_until = date.today() - timedelta(days=1)
+        asset.save()
+        self.assertFalse(asset.is_under_warranty)
+
+        # Asset with no warranty date
+        asset.warranty_until = None
+        asset.save()
+        self.assertFalse(asset.is_under_warranty)
+
+    def test_asset_is_available_property(self):
+        """Test asset availability property"""
+        asset = Asset.objects.create(**self.asset_data)
+
+        # Asset should be available when active and not assigned
+        self.assertTrue(asset.is_available)
+
+        # Asset should not be available when not active
+        asset.status = AssetStatus.DAMAGED
+        asset.save()
+        self.assertFalse(asset.is_available)
+
+    def test_asset_current_assignment_property(self):
+        """Test current assignment property"""
+        asset = Asset.objects.create(**self.asset_data)
+
+        # No assignment initially
+        self.assertIsNone(asset.current_assignment)
+
+        # Create an assignment
+        assignment = Assignment.objects.create(asset=asset, employee=self.profile)
+
+        # Should return the current assignment
+        self.assertEqual(asset.current_assignment, assignment)
+
+        # Return the asset
+        assignment.returned_at = timezone.now()
+        assignment.save()
+
+        # Should be None after return
+        self.assertIsNone(asset.current_assignment)
+
+
+class AssignmentModelTestCase(TestCase):
+    """Test cases for the Assignment model"""
+
+    def setUp(self):
+        """Set up test data"""
+        self.user = User.objects.create_user(
+            username="testuser", email="test@example.com", password="testpass123"
+        )
+        self.profile = self.user.profile
+
+        self.manager = User.objects.create_user(
+            username="manager", email="manager@example.com", password="testpass123"
+        )
+        self.manager_profile = self.manager.profile
+
+        self.asset = Asset.objects.create(
+            asset_id="LAPTOP001",
+            name="Dell Laptop",
+            condition=AssetCondition.GOOD,
+            purchase_date=date.today() - timedelta(days=30),
+            status=AssetStatus.ACTIVE,
+        )
+
+    def test_assignment_creation(self):
+        """Test basic assignment creation"""
+        assignment = Assignment.objects.create(
+            asset=self.asset,
+            employee=self.profile,
+            assigned_by=self.manager_profile,
+            notes="Initial assignment",
+        )
+
+        self.assertEqual(assignment.asset, self.asset)
+        self.assertEqual(assignment.employee, self.profile)
+        self.assertEqual(assignment.assigned_by, self.manager_profile)
+        self.assertEqual(assignment.notes, "Initial assignment")
+        self.assertIsNotNone(assignment.assigned_at)
+        self.assertIsNone(assignment.returned_at)
+
+    def test_assignment_str_representation(self):
+        """Test assignment string representation"""
+        assignment = Assignment.objects.create(asset=self.asset, employee=self.profile)
+
+        expected_str = f"{self.asset.asset_id} → {self.profile.user.get_full_name() or self.profile.user.username} (Active)"
+        self.assertEqual(str(assignment), expected_str)
+
+    def test_assignment_is_active_property(self):
+        """Test assignment active status property"""
+        assignment = Assignment.objects.create(asset=self.asset, employee=self.profile)
+
+        # Should be active initially
+        self.assertTrue(assignment.is_active)
+
+        # Should not be active after return
+        assignment.returned_at = timezone.now()
+        assignment.save()
+        self.assertFalse(assignment.is_active)
+
+    def test_assignment_duration_days_property(self):
+        """Test assignment duration calculation"""
+        assignment = Assignment.objects.create(asset=self.asset, employee=self.profile)
+
+        # Duration should be 0 for same day
+        self.assertEqual(assignment.duration_days, 0)
+
+        # Test with returned assignment
+        assignment.returned_at = timezone.now() + timedelta(days=5)
+        assignment.save()
+        self.assertEqual(assignment.duration_days, 5)
+
+    def test_assignment_return_process(self):
+        """Test asset return process"""
+        assignment = Assignment.objects.create(asset=self.asset, employee=self.profile)
+
+        # Asset should not be available when assigned
+        self.assertFalse(self.asset.is_available)
+
+        # Return the asset
+        assignment.returned_at = timezone.now()
+        assignment.return_condition = AssetCondition.FAIR
+        assignment.save()
+
+        # Asset should be available after return
+        self.assertTrue(self.asset.is_available)
+        self.assertEqual(assignment.return_condition, AssetCondition.FAIR)
+
+
+class ReplacementLogModelTestCase(TestCase):
+    """Test cases for the ReplacementLog model"""
+
+    def setUp(self):
+        """Set up test data"""
+        self.user = User.objects.create_user(
+            username="testuser", email="test@example.com", password="testpass123"
+        )
+        self.profile = self.user.profile
+
+        self.asset = Asset.objects.create(
+            asset_id="LAPTOP001",
+            name="Dell Laptop",
+            condition=AssetCondition.GOOD,
+            purchase_date=date.today() - timedelta(days=30),
+            status=AssetStatus.ACTIVE,
+        )
+
+        self.replacement_asset = Asset.objects.create(
+            asset_id="LAPTOP002",
+            name="Dell Laptop Replacement",
+            condition=AssetCondition.EXCELLENT,
+            purchase_date=date.today(),
+            status=AssetStatus.ACTIVE,
+        )
+
+    def test_replacement_log_creation(self):
+        """Test basic replacement log creation"""
+        replacement_log = ReplacementLog.objects.create(
+            asset=self.asset,
+            reason="Screen damage due to coffee spill",
+            replaced_by=self.profile,
+            replacement_asset=self.replacement_asset,
+            cost=Decimal("150.00"),
+        )
+
+        self.assertEqual(replacement_log.asset, self.asset)
+        self.assertEqual(replacement_log.reason, "Screen damage due to coffee spill")
+        self.assertEqual(replacement_log.replaced_by, self.profile)
+        self.assertEqual(replacement_log.replacement_asset, self.replacement_asset)
+        self.assertEqual(replacement_log.cost, Decimal("150.00"))
+        self.assertIsNotNone(replacement_log.date)
+
+    def test_replacement_log_str_representation(self):
+        """Test replacement log string representation"""
+        replacement_log = ReplacementLog.objects.create(
+            asset=self.asset, reason="Screen damage due to coffee spill"
+        )
+
+        expected_str = f"{self.asset.asset_id} replaced on {replacement_log.date.date()} - Screen damage due to coffee spill"
+        self.assertEqual(str(replacement_log), expected_str)
+
+    def test_replacement_log_reason_truncation(self):
+        """Test reason truncation in string representation"""
+        long_reason = "This is a very long reason that should be truncated in the string representation to ensure it doesn't become too long"
+        replacement_log = ReplacementLog.objects.create(
+            asset=self.asset, reason=long_reason
+        )
+
+        str_repr = str(replacement_log)
+        # Should contain truncated reason (first 50 characters)
+        self.assertIn(long_reason[:50], str_repr)
+
+
+class AssetManagementIntegrationTestCase(TestCase):
+    """Integration tests for Asset Management models"""
+
+    def setUp(self):
+        """Set up test data"""
+        self.user = User.objects.create_user(
+            username="employee", email="employee@example.com", password="testpass123"
+        )
+        self.profile = self.user.profile
+
+        self.manager = User.objects.create_user(
+            username="manager", email="manager@example.com", password="testpass123"
+        )
+        self.manager_profile = self.manager.profile
+
+    def test_complete_asset_lifecycle(self):
+        """Test complete asset lifecycle from creation to replacement"""
+        # 1. Create asset
+        asset = Asset.objects.create(
+            asset_id="LAPTOP001",
+            name="Dell Laptop",
+            condition=AssetCondition.EXCELLENT,
+            warranty_until=date.today() + timedelta(days=365),
+            purchase_date=date.today() - timedelta(days=30),
+            status=AssetStatus.ACTIVE,
+            purchase_price=Decimal("1200.00"),
+        )
+
+        self.assertTrue(asset.is_available)
+        self.assertTrue(asset.is_under_warranty)
+
+        # 2. Assign asset to employee
+        assignment = Assignment.objects.create(
+            asset=asset,
+            employee=self.profile,
+            assigned_by=self.manager_profile,
+            notes="Initial laptop assignment",
+        )
+
+        self.assertFalse(asset.is_available)
+        self.assertEqual(asset.current_assignment, assignment)
+        self.assertTrue(assignment.is_active)
+
+        # 3. Asset gets damaged
+        asset.condition = AssetCondition.DAMAGED
+        asset.status = AssetStatus.DAMAGED
+        asset.save()
+
+        # 4. Return damaged asset
+        assignment.returned_at = timezone.now()
+        assignment.return_condition = AssetCondition.DAMAGED
+        assignment.save()
+
+        self.assertFalse(assignment.is_active)
+        self.assertIsNone(asset.current_assignment)
+        self.assertFalse(
+            asset.is_available
+        )  # Still not available because status is DAMAGED
+
+        # 5. Create replacement asset
+        replacement_asset = Asset.objects.create(
+            asset_id="LAPTOP002",
+            name="Dell Laptop Replacement",
+            condition=AssetCondition.EXCELLENT,
+            purchase_date=date.today(),
+            status=AssetStatus.ACTIVE,
+            purchase_price=Decimal("1300.00"),
+        )
+
+        # 6. Log the replacement
+        ReplacementLog.objects.create(
+            asset=asset,
+            reason="Original laptop damaged beyond repair",
+            replaced_by=self.manager_profile,
+            replacement_asset=replacement_asset,
+            cost=Decimal("1300.00"),
+        )
+
+        # 7. Assign new asset
+        Assignment.objects.create(
+            asset=replacement_asset,
+            employee=self.profile,
+            assigned_by=self.manager_profile,
+            notes="Replacement laptop assignment",
+        )
+
+        # Verify final state
+        self.assertEqual(asset.assignments.count(), 1)
+        self.assertEqual(asset.replacement_logs.count(), 1)
+        self.assertEqual(replacement_asset.assignments.count(), 1)
+        self.assertEqual(self.profile.asset_assignments.count(), 2)
+        self.assertEqual(self.manager_profile.assignments_made.count(), 2)
+        self.assertEqual(self.manager_profile.replacements_made.count(), 1)
+
+    def test_multiple_assignments_history(self):
+        """Test tracking multiple assignments for the same asset"""
+        asset = Asset.objects.create(
+            asset_id="SHARED001",
+            name="Shared Equipment",
+            condition=AssetCondition.GOOD,
+            purchase_date=date.today() - timedelta(days=100),
+            status=AssetStatus.ACTIVE,
+        )
+
+        # Create multiple users
+        users = []
+        for i in range(3):
+            user = User.objects.create_user(
+                username=f"user{i}",
+                email=f"user{i}@example.com",
+                password="testpass123",
+            )
+            users.append(user.profile)
+
+        # Create assignment history
+        assignments = []
+        for i, user_profile in enumerate(users):
+            assignment = Assignment.objects.create(
+                asset=asset, employee=user_profile, assigned_by=self.manager_profile
+            )
+            assignments.append(assignment)
+
+            # Return previous assignments (except the last one)
+            if i < len(users) - 1:
+                assignment.returned_at = timezone.now() + timedelta(days=i + 1)
+                assignment.save()
+
+        # Verify assignment history
+        self.assertEqual(asset.assignments.count(), 3)
+        self.assertEqual(asset.assignments.filter(returned_at__isnull=True).count(), 1)
+        self.assertEqual(asset.current_assignment, assignments[-1])
+
+        # Verify each user has one assignment
+        for user_profile in users:
+            self.assertEqual(user_profile.asset_assignments.count(), 1)
+
+    def test_asset_validation_constraints(self):
+        """Test model validation and constraints"""
+        # Test minimum purchase price validation
+        with self.assertRaises(ValidationError):
+            asset = Asset(
+                asset_id="INVALID001",
+                name="Invalid Asset",
+                purchase_date=date.today(),
+                purchase_price=Decimal("0.00"),  # Should fail validation
+            )
+            asset.full_clean()
+
+        # Test minimum replacement cost validation
+        asset = Asset.objects.create(
+            asset_id="VALID001", name="Valid Asset", purchase_date=date.today()
+        )
+
+        with self.assertRaises(ValidationError):
+            replacement_log = ReplacementLog(
+                asset=asset,
+                reason="Test replacement",
+                cost=Decimal("0.00"),  # Should fail validation
+            )
+            replacement_log.full_clean()
+
+
+if __name__ == "__main__":
+    import unittest
+
+    unittest.main()

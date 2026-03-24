@@ -3,14 +3,22 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     APIRootView,
+    AssetDetailView,
+    AssetListView,
+    AssignmentDetailView,
+    AssignmentListView,
+    AssignmentReturnView,
     AvatarUploadView,
     EmployeeProfileViewSet,
     GoogleExchangeView,
     LoginView,
     LogoutView,
     RegisterView,
+    ReplacementLogDetailView,
+    ReplacementLogListView,
     TokenRefreshViewCustom,
     UploadRolePermissionsView,
+    UserProfileListView,
     UserProfileView,
 )
 
@@ -33,6 +41,31 @@ urlpatterns = [
         UploadRolePermissionsView.as_view(),
         name="upload_role_permissions",
     ),
+    # Asset Management API endpoints
+    path("assets/", AssetListView.as_view(), name="asset_list"),
+    path("assets/<int:pk>/", AssetDetailView.as_view(), name="asset_detail"),
+    path("assignments/", AssignmentListView.as_view(), name="assignment_list"),
+    path(
+        "assignments/<int:pk>/",
+        AssignmentDetailView.as_view(),
+        name="assignment_detail",
+    ),
+    path(
+        "assignments/<int:pk>/return/",
+        AssignmentReturnView.as_view(),
+        name="assignment_return",
+    ),
+    path(
+        "replacement-logs/",
+        ReplacementLogListView.as_view(),
+        name="replacement_log_list",
+    ),
+    path(
+        "replacement-logs/<int:pk>/",
+        ReplacementLogDetailView.as_view(),
+        name="replacement_log_detail",
+    ),
+    path("user-profiles/", UserProfileListView.as_view(), name="user_profile_list"),
 ]
 
 urlpatterns += router.urls

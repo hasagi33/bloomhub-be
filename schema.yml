@@ -42,37 +42,285 @@ paths:
           description: No response body
         '403':
           description: No response body
-  /api/auth/google/exchange/:
-    post:
-      operationId: auth_google_exchange_create
-      description: Exchange a Google ID token for native JWT access/refresh tokens.
+  /api/assets/:
+    get:
+      operationId: assets_list
+      description: Get list of all assets with filtering options
       tags:
-      - Auth
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/GoogleExchangeRequest'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/GoogleExchangeRequest'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/GoogleExchangeRequest'
-        required: true
+      - Asset Management
       security:
       - jwtAuth: []
-      - {}
       responses:
         '200':
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Token'
+                type: array
+                items:
+                  $ref: '#/components/schemas/Asset'
+          description: ''
+    post:
+      operationId: assets_create
+      description: Create a new asset
+      tags:
+      - Asset Management
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssetCreateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AssetCreateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AssetCreateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Asset'
           description: ''
         '400':
           description: No response body
-        '401':
+  /api/assets/{id}/:
+    get:
+      operationId: assets_retrieve
+      description: Get, update, or delete a specific asset
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Asset Management
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Asset'
+          description: ''
+        '404':
+          description: No response body
+    put:
+      operationId: assets_update
+      description: Update an asset
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Asset Management
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssetCreateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AssetCreateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AssetCreateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Asset'
+          description: ''
+        '400':
+          description: No response body
+        '404':
+          description: No response body
+    delete:
+      operationId: assets_destroy
+      description: Delete an asset
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Asset Management
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+        '404':
+          description: No response body
+  /api/assignments/:
+    get:
+      operationId: assignments_list
+      description: Get list of all assignments with filtering options
+      tags:
+      - Asset Management
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Assignment'
+          description: ''
+    post:
+      operationId: assignments_create
+      description: Create a new assignment
+      tags:
+      - Asset Management
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssignmentCreateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AssignmentCreateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AssignmentCreateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Assignment'
+          description: ''
+        '400':
+          description: No response body
+  /api/assignments/{id}/:
+    get:
+      operationId: assignments_retrieve
+      description: Get, update, or delete a specific assignment
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Asset Management
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Assignment'
+          description: ''
+        '404':
+          description: No response body
+    put:
+      operationId: assignments_update
+      description: Update an assignment
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Asset Management
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssignmentRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AssignmentRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AssignmentRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Assignment'
+          description: ''
+        '400':
+          description: No response body
+        '404':
+          description: No response body
+    delete:
+      operationId: assignments_destroy
+      description: Delete an assignment
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Asset Management
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+        '404':
+          description: No response body
+  /api/assignments/{id}/return/:
+    post:
+      operationId: assignments_return_create
+      description: Return an assigned asset
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Asset Management
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssignmentReturnRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AssignmentReturnRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AssignmentReturnRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Assignment'
+          description: ''
+        '400':
+          description: No response body
+        '404':
           description: No response body
   /api/auth/login/:
     post:
@@ -180,47 +428,12 @@ paths:
           description: ''
         '400':
           description: No response body
-  /api/employees/:
+  /api/replacement-logs/:
     get:
-      operationId: employees_list
-      description: Returns all profiles for HR/Admin; non-admin users only see their
-        own. Supports filtering, search, and ordering via query parameters.
-      summary: List employee profiles
-      parameters:
-      - in: query
-        name: department
-        schema:
-          type: string
-        description: Exact match on department.
-      - in: query
-        name: employment_status
-        schema:
-          type: string
-        description: Exact match on employment status (e.g. active, inactive).
-      - in: query
-        name: is_active
-        schema:
-          type: boolean
-        description: Filter by active flag.
-      - in: query
-        name: ordering
-        schema:
-          type: string
-        description: 'Order results. Prefix with `-` for descending. Allowed: full_name,
-          start_date, created_at.'
-      - in: query
-        name: role__name
-        schema:
-          type: string
-        description: Exact match on related role name.
-      - in: query
-        name: search
-        schema:
-          type: string
-        description: Search across full name, email, username, and employee id (full_name,
-          email_address, user__username, employee_id).
+      operationId: replacement_logs_list
+      description: Get list of all replacement logs with filtering options
       tags:
-      - Employee Profiles
+      - Asset Management
       security:
       - jwtAuth: []
       responses:
@@ -230,26 +443,24 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/EmployeeProfile'
+                  $ref: '#/components/schemas/ReplacementLog'
           description: ''
     post:
-      operationId: employees_create
-      description: Creates a `User` and linked `UserProfile`. HR/Admin only. A random
-        password is generated server-side for the new account.
-      summary: Create employee profile
+      operationId: replacement_logs_create
+      description: Create a new replacement log
       tags:
-      - Employee Profiles
+      - Asset Management
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/EmployeeProfileRequest'
+              $ref: '#/components/schemas/ReplacementLogRequest'
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/EmployeeProfileRequest'
+              $ref: '#/components/schemas/ReplacementLogRequest'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/EmployeeProfileRequest'
+              $ref: '#/components/schemas/ReplacementLogRequest'
         required: true
       security:
       - jwtAuth: []
@@ -258,26 +469,22 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/EmployeeProfile'
+                $ref: '#/components/schemas/ReplacementLog'
           description: ''
         '400':
           description: No response body
-        '403':
-          description: No response body
-  /api/employees/{id}/:
+  /api/replacement-logs/{id}/:
     get:
-      operationId: employees_retrieve
-      description: Fetch one profile by id. HR/Admin any id; others only their own.
-      summary: Retrieve employee profile
+      operationId: replacement_logs_retrieve
+      description: Get, update, or delete a specific replacement log
       parameters:
       - in: path
         name: id
         schema:
           type: integer
-        description: A unique integer value identifying this Employee Profile.
         required: true
       tags:
-      - Employee Profiles
+      - Asset Management
       security:
       - jwtAuth: []
       responses:
@@ -285,36 +492,32 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/EmployeeProfile'
+                $ref: '#/components/schemas/ReplacementLog'
           description: ''
-        '403':
-          description: No response body
         '404':
           description: No response body
     put:
-      operationId: employees_update
-      description: Full update (PUT). HR/Admin can edit any profile; others read-only.
-      summary: Replace employee profile
+      operationId: replacement_logs_update
+      description: Update a replacement log
       parameters:
       - in: path
         name: id
         schema:
           type: integer
-        description: A unique integer value identifying this Employee Profile.
         required: true
       tags:
-      - Employee Profiles
+      - Asset Management
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/EmployeeProfileRequest'
+              $ref: '#/components/schemas/ReplacementLogRequest'
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/EmployeeProfileRequest'
+              $ref: '#/components/schemas/ReplacementLogRequest'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/EmployeeProfileRequest'
+              $ref: '#/components/schemas/ReplacementLogRequest'
         required: true
       security:
       - jwtAuth: []
@@ -323,105 +526,36 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/EmployeeProfile'
+                $ref: '#/components/schemas/ReplacementLog'
           description: ''
         '400':
-          description: No response body
-        '403':
-          description: No response body
-        '404':
-          description: No response body
-    patch:
-      operationId: employees_partial_update
-      description: Partial update (PATCH). Same permission rules as PUT.
-      summary: Patch employee profile
-      parameters:
-      - in: path
-        name: id
-        schema:
-          type: integer
-        description: A unique integer value identifying this Employee Profile.
-        required: true
-      tags:
-      - Employee Profiles
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/PatchedEmployeeProfileRequest'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/PatchedEmployeeProfileRequest'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/PatchedEmployeeProfileRequest'
-      security:
-      - jwtAuth: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EmployeeProfile'
-          description: ''
-        '400':
-          description: No response body
-        '403':
           description: No response body
         '404':
           description: No response body
     delete:
-      operationId: employees_destroy
-      description: Does not remove the profile row. Deletes avatar and document files,
-        removes related assignments and salary rows, clears PII, marks the profile
-        inactive, and anonymizes plus deactivates the linked Django `User`. HR/Admin
-        only for arbitrary profiles.
-      summary: Soft-delete employee profile
+      operationId: replacement_logs_destroy
+      description: Delete a replacement log
       parameters:
       - in: path
         name: id
         schema:
           type: integer
-        description: A unique integer value identifying this Employee Profile.
         required: true
       tags:
-      - Employee Profiles
+      - Asset Management
       security:
       - jwtAuth: []
       responses:
         '204':
           description: No response body
-        '403':
-          description: No response body
         '404':
           description: No response body
-  /api/employees/{id}/update-permissions/:
-    post:
-      operationId: employees_update_permissions_create
-      description: Replaces the profile's stored permissions string with the given
-        binary bitmap. HR/Admin only.
-      summary: Override permissions bitmap
-      parameters:
-      - in: path
-        name: id
-        schema:
-          type: integer
-        description: A unique integer value identifying this Employee Profile.
-        required: true
+  /api/user-profiles/:
+    get:
+      operationId: user_profiles_list
+      description: Get list of user profiles for assignment purposes
       tags:
-      - Employee Profiles
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UpdatePermissionsRequest'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/UpdatePermissionsRequest'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/UpdatePermissionsRequest'
-        required: true
+      - Asset Management
       security:
       - jwtAuth: []
       responses:
@@ -429,54 +563,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/EmployeeProfile'
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserProfile'
           description: ''
-        '400':
-          description: No response body
-        '403':
-          description: No response body
-  /api/employees/{id}/update-role/:
-    post:
-      operationId: employees_update_role_create
-      description: Sets `role` and recomputes the permissions bitmap from that role's
-        permissions. HR/Admin only.
-      summary: Update employee role
-      parameters:
-      - in: path
-        name: id
-        schema:
-          type: integer
-        description: A unique integer value identifying this Employee Profile.
-        required: true
-      tags:
-      - Employee Profiles
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UpdateRoleRequest'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/UpdateRoleRequest'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/UpdateRoleRequest'
-        required: true
-      security:
-      - jwtAuth: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EmployeeProfile'
-          description: ''
-        '400':
-          description: No response body
-        '404':
-          description: No response body
-        '403':
-          description: No response body
 components:
   schemas:
     APIRootResponse:
@@ -490,153 +580,431 @@ components:
       required:
       - endpoints
       - message
-    EmployeeProfile:
+    Asset:
       type: object
+      description: Serializer for Asset model
       properties:
         id:
           type: integer
           readOnly: true
-        username:
+        asset_id:
           type: string
-          readOnly: true
-        employee_id:
+          description: Unique identifier for the asset
+          maxLength: 50
+        name:
           type: string
-          nullable: true
-          maxLength: 20
-        email:
-          type: string
-          format: email
-        first_name:
-          type: string
-        last_name:
-          type: string
-        full_name:
-          type: string
-          nullable: true
-          maxLength: 150
-        email_address:
-          type: string
-          format: email
-          nullable: true
-          maxLength: 254
-        department:
-          type: string
-          nullable: true
-          maxLength: 100
-        role:
-          type: integer
-          nullable: true
-        role_name:
-          type: string
-          readOnly: true
-        manager:
-          type: integer
-          nullable: true
-        manager_name:
-          type: string
-          readOnly: true
-        start_date:
+          description: Asset name/type
+          maxLength: 200
+        condition:
+          allOf:
+          - $ref: '#/components/schemas/ConditionEnum'
+          default: good
+          description: |-
+            Current condition of the asset
+
+            * `excellent` - Excellent
+            * `good` - Good
+            * `fair` - Fair
+            * `poor` - Poor
+            * `damaged` - Damaged
+        warranty_until:
           type: string
           format: date
           nullable: true
-        phone_number:
+          description: Warranty expiration date
+        purchase_date:
+          type: string
+          format: date
+          description: Date when the asset was purchased
+        status:
+          allOf:
+          - $ref: '#/components/schemas/StatusEnum'
+          default: active
+          description: |-
+            Current status of the asset
+
+            * `active` - Active
+            * `lost` - Lost
+            * `returned` - Returned
+            * `damaged` - Damaged
+        serial_number:
           type: string
           nullable: true
-          maxLength: 15
-        address:
+          description: Manufacturer serial number
+          maxLength: 100
+        model:
           type: string
           nullable: true
-        employment_status:
-          $ref: '#/components/schemas/EmploymentStatusEnum'
-        avatar:
+          description: Asset model
+          maxLength: 100
+        manufacturer:
           type: string
-          format: uri
           nullable: true
+          description: Asset manufacturer
+          maxLength: 100
+        purchase_price:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+          description: Purchase price of the asset
+        description:
+          type: string
+          nullable: true
+          description: Additional description or notes
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        current_assignment:
+          type: object
+          additionalProperties: {}
+          nullable: true
+          readOnly: true
+        is_under_warranty:
+          type: boolean
+          readOnly: true
+        is_available:
+          type: boolean
+          readOnly: true
+      required:
+      - asset_id
+      - created_at
+      - current_assignment
+      - id
+      - is_available
+      - is_under_warranty
+      - name
+      - purchase_date
+      - updated_at
+    AssetCreateRequest:
+      type: object
+      description: Simplified serializer for creating assets
+      properties:
+        asset_id:
+          type: string
+          minLength: 1
+          description: Unique identifier for the asset
+          maxLength: 50
+        name:
+          type: string
+          minLength: 1
+          description: Asset name/type
+          maxLength: 200
+        condition:
+          allOf:
+          - $ref: '#/components/schemas/ConditionEnum'
+          default: good
+          description: |-
+            Current condition of the asset
+
+            * `excellent` - Excellent
+            * `good` - Good
+            * `fair` - Fair
+            * `poor` - Poor
+            * `damaged` - Damaged
+        warranty_until:
+          type: string
+          format: date
+          nullable: true
+          description: Warranty expiration date
+        purchase_date:
+          type: string
+          format: date
+          description: Date when the asset was purchased
+        status:
+          allOf:
+          - $ref: '#/components/schemas/StatusEnum'
+          default: active
+          description: |-
+            Current status of the asset
+
+            * `active` - Active
+            * `lost` - Lost
+            * `returned` - Returned
+            * `damaged` - Damaged
+        serial_number:
+          type: string
+          nullable: true
+          description: Manufacturer serial number
+          maxLength: 100
+        model:
+          type: string
+          nullable: true
+          description: Asset model
+          maxLength: 100
+        manufacturer:
+          type: string
+          nullable: true
+          description: Asset manufacturer
+          maxLength: 100
+        purchase_price:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+          description: Purchase price of the asset
+        description:
+          type: string
+          nullable: true
+          description: Additional description or notes
+      required:
+      - asset_id
+      - name
+      - purchase_date
+    AssetRequest:
+      type: object
+      description: Serializer for Asset model
+      properties:
+        asset_id:
+          type: string
+          minLength: 1
+          description: Unique identifier for the asset
+          maxLength: 50
+        name:
+          type: string
+          minLength: 1
+          description: Asset name/type
+          maxLength: 200
+        condition:
+          allOf:
+          - $ref: '#/components/schemas/ConditionEnum'
+          default: good
+          description: |-
+            Current condition of the asset
+
+            * `excellent` - Excellent
+            * `good` - Good
+            * `fair` - Fair
+            * `poor` - Poor
+            * `damaged` - Damaged
+        warranty_until:
+          type: string
+          format: date
+          nullable: true
+          description: Warranty expiration date
+        purchase_date:
+          type: string
+          format: date
+          description: Date when the asset was purchased
+        status:
+          allOf:
+          - $ref: '#/components/schemas/StatusEnum'
+          default: active
+          description: |-
+            Current status of the asset
+
+            * `active` - Active
+            * `lost` - Lost
+            * `returned` - Returned
+            * `damaged` - Damaged
+        serial_number:
+          type: string
+          nullable: true
+          description: Manufacturer serial number
+          maxLength: 100
+        model:
+          type: string
+          nullable: true
+          description: Asset model
+          maxLength: 100
+        manufacturer:
+          type: string
+          nullable: true
+          description: Asset manufacturer
+          maxLength: 100
+        purchase_price:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+          description: Purchase price of the asset
+        description:
+          type: string
+          nullable: true
+          description: Additional description or notes
+      required:
+      - asset_id
+      - name
+      - purchase_date
+    Assignment:
+      type: object
+      description: Serializer for Assignment model
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        asset:
+          type: integer
+          description: Asset being assigned
+        employee:
+          type: integer
+          description: Employee receiving the asset
+        assigned_at:
+          type: string
+          format: date-time
+          readOnly: true
+          description: When the asset was assigned
+        returned_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the asset was returned (optional)
+        assigned_by:
+          type: integer
+          nullable: true
+          description: Who made the assignment
+        return_condition:
+          nullable: true
+          description: |-
+            Condition when returned
+
+            * `excellent` - Excellent
+            * `good` - Good
+            * `fair` - Fair
+            * `poor` - Poor
+            * `damaged` - Damaged
+          oneOf:
+          - $ref: '#/components/schemas/ReturnConditionEnum'
+          - $ref: '#/components/schemas/BlankEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        notes:
+          type: string
+          nullable: true
+          description: Additional notes about the assignment
+        asset_details:
+          allOf:
+          - $ref: '#/components/schemas/Asset'
+          readOnly: true
+        employee_details:
+          allOf:
+          - $ref: '#/components/schemas/UserProfile'
+          readOnly: true
+        assigned_by_details:
+          allOf:
+          - $ref: '#/components/schemas/UserProfile'
+          readOnly: true
         is_active:
           type: boolean
           readOnly: true
-        permissions_bitmap:
-          type: string
+        duration_days:
+          type: integer
+          nullable: true
           readOnly: true
       required:
-      - email
+      - asset
+      - asset_details
+      - assigned_at
+      - assigned_by_details
+      - duration_days
+      - employee
+      - employee_details
       - id
       - is_active
-      - manager_name
-      - permissions_bitmap
-      - role_name
-      - username
-    EmployeeProfileRequest:
+    AssignmentCreateRequest:
       type: object
+      description: Simplified serializer for creating assignments
       properties:
-        employee_id:
-          type: string
-          nullable: true
-          maxLength: 20
-        email:
-          type: string
-          format: email
-          minLength: 1
-        first_name:
-          type: string
-          minLength: 1
-        last_name:
-          type: string
-          minLength: 1
-        full_name:
-          type: string
-          nullable: true
-          maxLength: 150
-        email_address:
-          type: string
-          format: email
-          nullable: true
-          maxLength: 254
-        department:
-          type: string
-          nullable: true
-          maxLength: 100
-        role:
+        asset:
+          type: integer
+          description: Asset being assigned
+        employee:
+          type: integer
+          description: Employee receiving the asset
+        assigned_by:
           type: integer
           nullable: true
-        manager:
-          type: integer
-          nullable: true
-        start_date:
-          type: string
-          format: date
-          nullable: true
-        phone_number:
+          description: Who made the assignment
+        notes:
           type: string
           nullable: true
-          maxLength: 15
-        address:
-          type: string
-          nullable: true
-        employment_status:
-          $ref: '#/components/schemas/EmploymentStatusEnum'
-        avatar:
-          type: string
-          format: binary
-          nullable: true
+          description: Additional notes about the assignment
       required:
-      - email
-    EmploymentStatusEnum:
+      - asset
+      - employee
+    AssignmentRequest:
+      type: object
+      description: Serializer for Assignment model
+      properties:
+        asset:
+          type: integer
+          description: Asset being assigned
+        employee:
+          type: integer
+          description: Employee receiving the asset
+        returned_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the asset was returned (optional)
+        assigned_by:
+          type: integer
+          nullable: true
+          description: Who made the assignment
+        return_condition:
+          nullable: true
+          description: |-
+            Condition when returned
+
+            * `excellent` - Excellent
+            * `good` - Good
+            * `fair` - Fair
+            * `poor` - Poor
+            * `damaged` - Damaged
+          oneOf:
+          - $ref: '#/components/schemas/ReturnConditionEnum'
+          - $ref: '#/components/schemas/BlankEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        notes:
+          type: string
+          nullable: true
+          description: Additional notes about the assignment
+      required:
+      - asset
+      - employee
+    AssignmentReturnRequest:
+      type: object
+      description: Serializer for returning assets
+      properties:
+        return_condition:
+          nullable: true
+          description: |-
+            Condition when returned
+
+            * `excellent` - Excellent
+            * `good` - Good
+            * `fair` - Fair
+            * `poor` - Poor
+            * `damaged` - Damaged
+          oneOf:
+          - $ref: '#/components/schemas/ReturnConditionEnum'
+          - $ref: '#/components/schemas/BlankEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        notes:
+          type: string
+          nullable: true
+          description: Additional notes about the assignment
+    BlankEnum:
       enum:
-      - active
-      - inactive
+      - ''
+    ConditionEnum:
+      enum:
+      - excellent
+      - good
+      - fair
+      - poor
+      - damaged
       type: string
       description: |-
-        * `active` - Active
-        * `inactive` - Inactive
-    GoogleExchangeRequest:
-      type: object
-      properties:
-        id_token:
-          type: string
-          minLength: 1
-      required:
-      - id_token
+        * `excellent` - Excellent
+        * `good` - Good
+        * `fair` - Fair
+        * `poor` - Poor
+        * `damaged` - Damaged
     LoginRequest:
       type: object
       properties:
@@ -651,59 +1019,9 @@ components:
       required:
       - email
       - password
-    PatchedEmployeeProfileRequest:
-      type: object
-      properties:
-        employee_id:
-          type: string
-          nullable: true
-          maxLength: 20
-        email:
-          type: string
-          format: email
-          minLength: 1
-        first_name:
-          type: string
-          minLength: 1
-        last_name:
-          type: string
-          minLength: 1
-        full_name:
-          type: string
-          nullable: true
-          maxLength: 150
-        email_address:
-          type: string
-          format: email
-          nullable: true
-          maxLength: 254
-        department:
-          type: string
-          nullable: true
-          maxLength: 100
-        role:
-          type: integer
-          nullable: true
-        manager:
-          type: integer
-          nullable: true
-        start_date:
-          type: string
-          format: date
-          nullable: true
-        phone_number:
-          type: string
-          nullable: true
-          maxLength: 15
-        address:
-          type: string
-          nullable: true
-        employment_status:
-          $ref: '#/components/schemas/EmploymentStatusEnum'
-        avatar:
-          type: string
-          format: binary
-          nullable: true
+    NullEnum:
+      enum:
+      - null
     RegisterRequest:
       type: object
       properties:
@@ -733,20 +1051,117 @@ components:
         last_name:
           type: string
           maxLength: 150
-        avatar:
-          type: string
-          format: binary
-          nullable: true
-        avatar_url:
-          type: string
-          format: uri
-          nullable: true
-          minLength: 1
       required:
       - email
       - password
       - password_confirm
       - username
+    ReplacementLog:
+      type: object
+      description: Serializer for ReplacementLog model
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        asset:
+          type: integer
+          description: Asset that was replaced
+        reason:
+          type: string
+          description: Reason for replacement
+        date:
+          type: string
+          format: date-time
+          readOnly: true
+          description: When the replacement occurred
+        replaced_by:
+          type: integer
+          nullable: true
+          description: Who performed the replacement
+        replacement_asset:
+          type: integer
+          nullable: true
+          description: New asset that replaced this one
+        cost:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+          description: Cost of replacement
+        asset_details:
+          allOf:
+          - $ref: '#/components/schemas/Asset'
+          readOnly: true
+        replacement_asset_details:
+          allOf:
+          - $ref: '#/components/schemas/Asset'
+          readOnly: true
+        replaced_by_details:
+          allOf:
+          - $ref: '#/components/schemas/UserProfile'
+          readOnly: true
+      required:
+      - asset
+      - asset_details
+      - date
+      - id
+      - reason
+      - replaced_by_details
+      - replacement_asset_details
+    ReplacementLogRequest:
+      type: object
+      description: Serializer for ReplacementLog model
+      properties:
+        asset:
+          type: integer
+          description: Asset that was replaced
+        reason:
+          type: string
+          minLength: 1
+          description: Reason for replacement
+        replaced_by:
+          type: integer
+          nullable: true
+          description: Who performed the replacement
+        replacement_asset:
+          type: integer
+          nullable: true
+          description: New asset that replaced this one
+        cost:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+          description: Cost of replacement
+      required:
+      - asset
+      - reason
+    ReturnConditionEnum:
+      enum:
+      - excellent
+      - good
+      - fair
+      - poor
+      - damaged
+      type: string
+      description: |-
+        * `excellent` - Excellent
+        * `good` - Good
+        * `fair` - Fair
+        * `poor` - Poor
+        * `damaged` - Damaged
+    StatusEnum:
+      enum:
+      - active
+      - lost
+      - returned
+      - damaged
+      type: string
+      description: |-
+        * `active` - Active
+        * `lost` - Lost
+        * `returned` - Returned
+        * `damaged` - Damaged
     Token:
       type: object
       properties:
@@ -760,24 +1175,6 @@ components:
       - access
       - refresh
       - user
-    UpdatePermissionsRequest:
-      type: object
-      properties:
-        permissions_bitmap:
-          type: string
-          minLength: 1
-          description: Binary string (1s and 0s) representing the user's additional
-            permissions.
-      required:
-      - permissions_bitmap
-    UpdateRoleRequest:
-      type: object
-      properties:
-        role_id:
-          type: integer
-          description: ID of the Role to assign to the user.
-      required:
-      - role_id
     UploadRolePermissionsResponse:
       type: object
       description: Response shape for successful role permissions upload.
@@ -812,13 +1209,89 @@ components:
         last_name:
           type: string
           maxLength: 150
-        avatar_url:
+      required:
+      - id
+      - username
+    UserProfile:
+      type: object
+      description: Serializer for UserProfile model used in Asset Management
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        user:
+          allOf:
+          - $ref: '#/components/schemas/User'
+          readOnly: true
+        employee_id:
           type: string
           nullable: true
-          readOnly: true
+          maxLength: 20
+        department:
+          type: string
+          nullable: true
+          maxLength: 100
+        hire_date:
+          type: string
+          format: date
+          nullable: true
+        phone_number:
+          type: string
+          nullable: true
+          maxLength: 15
+        career_level:
+          type: string
+          nullable: true
+          maxLength: 100
       required:
-      - avatar_url
       - id
+      - user
+    UserProfileRequest:
+      type: object
+      description: Serializer for UserProfile model used in Asset Management
+      properties:
+        employee_id:
+          type: string
+          nullable: true
+          maxLength: 20
+        department:
+          type: string
+          nullable: true
+          maxLength: 100
+        hire_date:
+          type: string
+          format: date
+          nullable: true
+        phone_number:
+          type: string
+          nullable: true
+          maxLength: 15
+        career_level:
+          type: string
+          nullable: true
+          maxLength: 100
+    UserRequest:
+      type: object
+      properties:
+        username:
+          type: string
+          minLength: 1
+          description: Required. 150 characters or fewer. Letters, digits and @/./+/-/_
+            only.
+          pattern: ^[\w.@+-]+$
+          maxLength: 150
+        email:
+          type: string
+          format: email
+          title: Email address
+          maxLength: 254
+        first_name:
+          type: string
+          maxLength: 150
+        last_name:
+          type: string
+          maxLength: 150
+      required:
       - username
   securitySchemes:
     JWTAuth:
