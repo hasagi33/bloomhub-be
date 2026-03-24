@@ -55,6 +55,7 @@ _SHARED_APPS = (
     "rest_framework_simplejwt.token_blacklist",
     "drf_spectacular",
     "storages",
+    "corsheaders",
 )
 # At least one app required in TENANT_APPS; core is also in SHARED_APPS so public schema has it
 _TENANT_APPS = ("core",)
@@ -75,6 +76,7 @@ INSTALLED_APPS = (
         "rest_framework_simplejwt.token_blacklist",
         "drf_spectacular",
         "storages",
+        "corsheaders",
     ]
 )
 if USE_TENANTS:
@@ -127,6 +129,7 @@ MIDDLEWARE = (
     else []
 ) + [
     "django.middleware.security.SecurityMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -203,9 +206,8 @@ R2_ACCOUNT_ID = os.environ.get("R2_ACCOUNT_ID", "").strip()
 R2_ACCESS_KEY_ID = os.environ.get("R2_ACCESS_KEY_ID", "").strip()
 R2_SECRET_ACCESS_KEY = os.environ.get("R2_SECRET_ACCESS_KEY", "").strip()
 R2_BUCKET_NAME = os.environ.get("R2_BUCKET_NAME", "bloomhub").strip()
-USE_R2 = (
-    bool(R2_ACCOUNT_ID and R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY and R2_BUCKET_NAME)
-    and ENVIRONMENT == "prod"
+USE_R2 = bool(
+    R2_ACCOUNT_ID and R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY and R2_BUCKET_NAME
 )
 
 if USE_R2:
@@ -243,3 +245,6 @@ else:
             "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
         },
     }
+
+CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_CREDENTIALS = True

@@ -152,6 +152,9 @@ class UserProfile(models.Model):
         blank=True,
         null=True,
     )
+    # Stores a direct, permanent URL to the avatar (e.g. Google CDN, R2 public URL).
+    # Preferred over `avatar` when set. Written by Google OAuth login.
+    avatar_url = models.URLField(blank=True, null=True)
 
     permissions = models.CharField(
         max_length=255, default=""

@@ -22,6 +22,9 @@ iniconfig==2.3.0
 jmespath==1.1.0
 jsonschema==4.26.0
 jsonschema-specifications==2025.9.1
+google-auth==2.35.0
+requests==2.32.3
+django-cors-headers>=4.7.0
 mypy_extensions==1.1.0
 nodeenv==1.10.0
 packaging==26.0
