@@ -1,3 +1,28 @@
+# Django + DB
+Django>=5.0
+psycopg[binary]>=3.1
+dj-database-url>=2.2
+python-dotenv>=1.0
+gunicorn>=23.0
+django-storages[s3]>=1.14
+boto3>=1.35
+
+# API and Auth
+djangorestframework>=3.15
+djangorestframework-simplejwt>=5.3
+drf-spectacular>=0.27
+django-tenants>=3.5
+django-cors-headers>=4.4
+
+# Avatar generation
+Pillow>=10.0.0
+
+# Dev / test / tooling (optional in prod)
+black>=24.0
+ruff>=0.8
+pytest-django>=4.8
+pre-commit>=3.0
+pyyaml>=6.0
 asgiref==3.11.1
 attrs==25.4.0
 black==26.3.0
