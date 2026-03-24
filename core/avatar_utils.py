@@ -128,7 +128,6 @@ def generate_initials_avatar_png(
         y = (size - text_h) // 2 - bbox[1]
         draw.text((x, y), text, fill=fg, font=font)
     else:
-
         tmp = Image.new("RGBA", (max_w, max_h), (0, 0, 0, 0))
         tmp_draw = ImageDraw.Draw(tmp)
         bbox = tmp_draw.textbbox((0, 0), text, font=font)
@@ -139,7 +138,6 @@ def generate_initials_avatar_png(
         content = tmp.crop(bbox)
         content_w, content_h = content.size
         if content_w <= 0 or content_h <= 0:
-
             return b""
 
         scale = min(max_w / content_w, max_h / content_h) * 0.82
