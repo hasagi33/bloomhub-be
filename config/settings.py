@@ -40,52 +40,32 @@ USE_TENANTS = bool(
 )
 
 # core before staticfiles so core's custom runserver (localhost message) overrides staticfiles'
-_SHARED_APPS = (
-    "corsheaders",
-    "django_tenants",
-    "tenants",
+# 1. Base apps for the project (always included)
+_BASE_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.messages",
-    "core",
     "django.contrib.staticfiles",
+    "corsheaders",
+    "core",
     "rest_framework",
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
     "drf_spectacular",
     "storages",
-    "corsheaders",
-)
-# At least one app required in TENANT_APPS; core is also in SHARED_APPS so public schema has it
-_TENANT_APPS = ("core",)
-# core before staticfiles so core's custom runserver (localhost message) overrides staticfiles'
-INSTALLED_APPS = (
-    list(_SHARED_APPS)
-    if USE_TENANTS
-    else [
-        "corsheaders",
-        "django.contrib.admin",
-        "django.contrib.auth",
-        "django.contrib.contenttypes",
-        "django.contrib.sessions",
-        "django.contrib.messages",
-        "core",
-        "django.contrib.staticfiles",
-        "rest_framework",
-        "rest_framework_simplejwt",
-        "rest_framework_simplejwt.token_blacklist",
-        "drf_spectacular",
-        "storages",
-        "corsheaders",
-    ]
-)
+]
+
 if USE_TENANTS:
-    SHARED_APPS = _SHARED_APPS
-    TENANT_APPS = _TENANT_APPS
+    _SHARED_APPS = ["django_tenants", "tenants"] + _BASE_APPS
+    INSTALLED_APPS = list(dict.fromkeys(_SHARED_APPS))
+    SHARED_APPS = tuple(INSTALLED_APPS)
+    TENANT_APPS = ("core",)
     TENANT_MODEL = "tenants.Client"
     TENANT_DOMAIN_MODEL = "tenants.Domain"
+else:
+    INSTALLED_APPS = list(dict.fromkeys(_BASE_APPS))
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
