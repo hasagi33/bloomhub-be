@@ -162,7 +162,7 @@ class UserProfile(models.Model):
 
     def __str__(self):
         display_name = self.full_name or self.user.get_full_name() or self.user.username
-        return f"{display_name} - " f"{self.role.name if self.role else 'No Role'}"
+        return f"{display_name} - {self.role.name if self.role else 'No Role'}"
 
     def _get_permissions_int(self):
         if not self.permissions:
@@ -365,3 +365,118 @@ def save_user_profile(sender, instance, **kwargs):
         instance.profile.save()
     except Exception:
         pass
+
+
+# ──────────────────────────────────────────
+# Onboarding / Offboarding Tracker
+# ──────────────────────────────────────────
+
+
+class ChecklistTemplate(models.Model):
+    class Type(models.TextChoices):
+        ONBOARDING = "onboarding", "Onboarding"
+        OFFBOARDING = "offboarding", "Offboarding"
+
+    name = models.CharField(max_length=150)
+    type = models.CharField(max_length=20, choices=Type.choices)
+
+    def __str__(self):
+        return f"{self.name} ({self.type})"
+
+    class Meta:
+        verbose_name = "Checklist Template"
+        verbose_name_plural = "Checklist Templates"
+
+
+class TaskTemplate(models.Model):
+    class Role(models.TextChoices):
+        HR = "HR", "HR"
+        IT = "IT", "IT"
+        MANAGER = "Manager", "Manager"
+
+    checklist_template = models.ForeignKey(
+        ChecklistTemplate,
+        on_delete=models.CASCADE,
+        related_name="task_templates",
+    )
+    title = models.CharField(max_length=200)
+    order = models.PositiveIntegerField(default=0)
+    role_responsible = models.CharField(
+        max_length=20, choices=Role.choices, default=Role.HR
+    )
+
+    def __str__(self):
+        return f"{self.title} ({self.role_responsible})"
+
+    class Meta:
+        ordering = ["order"]
+        verbose_name = "Task Template"
+        verbose_name_plural = "Task Templates"
+
+
+class ChecklistInstance(models.Model):
+    class Status(models.TextChoices):
+        IN_PROGRESS = "in_progress", "In Progress"
+        DONE = "done", "Done"
+
+    employee = models.ForeignKey(
+        UserProfile,
+        on_delete=models.CASCADE,
+        related_name="checklist_instances",
+    )
+    template = models.ForeignKey(
+        ChecklistTemplate,
+        on_delete=models.CASCADE,
+        related_name="instances",
+    )
+    status = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.IN_PROGRESS
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.employee} - {self.template.name} ({self.status})"
+
+    class Meta:
+        verbose_name = "Checklist Instance"
+        verbose_name_plural = "Checklist Instances"
+
+
+class ChecklistTask(models.Model):
+    class Status(models.TextChoices):
+        TODO = "todo", "To Do"
+        IN_PROGRESS = "in_progress", "In Progress"
+        DONE = "done", "Done"
+
+    checklist_instance = models.ForeignKey(
+        ChecklistInstance,
+        on_delete=models.CASCADE,
+        related_name="tasks",
+    )
+    task_template = models.ForeignKey(
+        TaskTemplate,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="checklist_tasks",
+    )
+    title = models.CharField(max_length=200)
+    status = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.TODO
+    )
+    assigned_to = models.ForeignKey(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="assigned_tasks",
+    )
+    due_date = models.DateField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.title} - {self.status}"
+
+    class Meta:
+        verbose_name = "Checklist Task"
+        verbose_name_plural = "Checklist Tasks"
