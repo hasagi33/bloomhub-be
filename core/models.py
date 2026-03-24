@@ -1,9 +1,14 @@
+import sys
+
+from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.files.base import ContentFile
 from django.db import models
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.utils.text import slugify
+
+from .avatar_utils import generate_initials_avatar_png, get_initials
 
 
 def user_avatar_upload_to(instance: "UserProfile", filename: str) -> str:
@@ -147,26 +152,55 @@ class UserProfile(models.Model):
         blank=True,
         null=True,
     )
+    # Stores a direct, permanent URL to the avatar (e.g. Google CDN, R2 public URL).
+    # Preferred over `avatar` when set. Written by Google OAuth login.
+    avatar_url = models.URLField(blank=True, null=True)
 
-    permissions = models.BigIntegerField(default=0)  # Bitmap for additional permissions
+    permissions = models.CharField(
+        max_length=255, default=""
+    )  # Bitmap stored as binary string
 
     def __str__(self):
         display_name = self.full_name or self.user.get_full_name() or self.user.username
         return f"{display_name} - " f"{self.role.name if self.role else 'No Role'}"
 
+    def _get_permissions_int(self):
+        if not self.permissions:
+            return 0
+        try:
+            return int(str(self.permissions), 2)
+        except ValueError:
+            # Fallback if old base-10 value survives before migration completes cleanup
+            try:
+                return int(str(self.permissions))
+            except ValueError:
+                return 0
+
     def has_permission(self, permission):
         # Check role permissions or user permissions
         if self.role and self.role.has_permission(permission):
             return True
-        return (self.permissions & (1 << permission.bit_position)) != 0
+        return (self._get_permissions_int() & (1 << permission.bit_position)) != 0
 
     def add_permission(self, permission):
-        self.permissions |= 1 << permission.bit_position
+        val = self._get_permissions_int()
+        val |= 1 << permission.bit_position
+        self.permissions = bin(val)[2:]
         self.save()
 
     def remove_permission(self, permission):
-        self.permissions &= ~(1 << permission.bit_position)
+        val = self._get_permissions_int()
+        val &= ~(1 << permission.bit_position)
+        self.permissions = bin(val)[2:]
         self.save()
+
+    @property
+    def computed_permissions_bitmap(self):
+        bitmap = self._get_permissions_int()
+        if self.role:
+            for perm in self.role.permissions.all():
+                bitmap |= 1 << perm.bit_position
+        return bitmap
 
     @property
     def current_salary(self):
@@ -305,7 +339,13 @@ def create_user_profile(sender, instance, created, **kwargs):
 
         if not profile.avatar:
             try:
-                from .avatar_utils import generate_initials_avatar_png, get_initials
+                # Prevent avatar generation locally (DEBUG=True) or during test runs
+                if (
+                    getattr(settings, "DEBUG", False)
+                    or "test" in sys.argv
+                    or any("pytest" in arg for arg in sys.argv)
+                ):
+                    return
 
                 initials = get_initials(profile.full_name, profile.user.username)
                 seed = f"{profile.user.id}:{profile.user.username}"
