@@ -104,7 +104,6 @@ SIMPLE_JWT = {
 
 MIDDLEWARE = (
     [
-        "config.middleware.LogTenantHostMiddleware",
         "django_tenants.middleware.main.TenantMainMiddleware",
     ]
     if USE_TENANTS
