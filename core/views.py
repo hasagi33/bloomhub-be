@@ -87,6 +87,7 @@ class APIRootView(APIView):
 )
 class RegisterView(APIView):
     permission_classes = [AllowAny]
+    parser_classes = [parsers.JSONParser]
 
     def post(self, request):
         serializer = RegisterSerializer(data=request.data)

@@ -3,11 +3,11 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: bloomhub_local
+      POSTGRES_USER: bloomhub
+      POSTGRES_PASSWORD: 1234
+      POSTGRES_DB: bloomhub
     ports:
-      - "5432:5432"
+      - "3333:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
 
