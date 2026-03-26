@@ -93,6 +93,10 @@ SPECTACULAR_SETTINGS = {
             }
         }
     },
+    "ENUM_NAME_OVERRIDES": {
+        "ConditionEnum": "core.models.AssetCondition",
+        "StatusEnum": "core.models.AssetStatus",
+    },
 }
 
 SIMPLE_JWT = {

@@ -46,6 +46,22 @@ paths:
     get:
       operationId: assets_list
       description: Get list of all assets with filtering options
+      parameters:
+      - in: query
+        name: available
+        schema:
+          type: boolean
+        description: Filter by availability (true/false)
+      - in: query
+        name: condition
+        schema:
+          type: string
+        description: Filter by asset condition (excellent, good, fair, poor, damaged)
+      - in: query
+        name: status
+        schema:
+          type: string
+        description: Filter by asset status (active, lost, returned, damaged)
       tags:
       - Asset Management
       security:
@@ -62,6 +78,22 @@ paths:
     post:
       operationId: assets_create
       description: Create a new asset
+      parameters:
+      - in: query
+        name: available
+        schema:
+          type: boolean
+        description: Filter by availability (true/false)
+      - in: query
+        name: condition
+        schema:
+          type: string
+        description: Filter by asset condition (excellent, good, fair, poor, damaged)
+      - in: query
+        name: status
+        schema:
+          type: string
+        description: Filter by asset status (active, lost, returned, damaged)
       tags:
       - Asset Management
       requestBody:
@@ -90,7 +122,7 @@ paths:
   /api/assets/{id}/:
     get:
       operationId: assets_retrieve
-      description: Get, update, or delete a specific asset
+      description: Get a specific asset by ID
       parameters:
       - in: path
         name: id
@@ -168,6 +200,22 @@ paths:
     get:
       operationId: assignments_list
       description: Get list of all assignments with filtering options
+      parameters:
+      - in: query
+        name: active
+        schema:
+          type: boolean
+        description: Filter by active assignments (true/false)
+      - in: query
+        name: asset
+        schema:
+          type: integer
+        description: Filter by asset ID
+      - in: query
+        name: employee
+        schema:
+          type: integer
+        description: Filter by employee ID
       tags:
       - Asset Management
       security:
@@ -184,6 +232,22 @@ paths:
     post:
       operationId: assignments_create
       description: Create a new assignment
+      parameters:
+      - in: query
+        name: active
+        schema:
+          type: boolean
+        description: Filter by active assignments (true/false)
+      - in: query
+        name: asset
+        schema:
+          type: integer
+        description: Filter by asset ID
+      - in: query
+        name: employee
+        schema:
+          type: integer
+        description: Filter by employee ID
       tags:
       - Asset Management
       requestBody:
@@ -212,7 +276,7 @@ paths:
   /api/assignments/{id}/:
     get:
       operationId: assignments_retrieve
-      description: Get, update, or delete a specific assignment
+      description: Get a specific assignment by ID
       parameters:
       - in: path
         name: id
@@ -289,7 +353,7 @@ paths:
   /api/assignments/{id}/return/:
     post:
       operationId: assignments_return_create
-      description: Return an assigned asset
+      description: Return an assigned asset (mark as returned and set condition)
       parameters:
       - in: path
         name: id
@@ -321,6 +385,38 @@ paths:
         '400':
           description: No response body
         '404':
+          description: No response body
+  /api/auth/google/exchange/:
+    post:
+      operationId: auth_google_exchange_create
+      description: Exchange a Google ID token for native JWT access/refresh tokens.
+      tags:
+      - Auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoogleExchangeRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/GoogleExchangeRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/GoogleExchangeRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Token'
+          description: ''
+        '400':
+          description: No response body
+        '401':
           description: No response body
   /api/auth/login/:
     post:
@@ -384,6 +480,32 @@ paths:
               schema:
                 $ref: '#/components/schemas/User'
           description: ''
+  /api/auth/profile/avatar/:
+    post:
+      operationId: auth_profile_avatar_create
+      description: Upload a new avatar for the current user. Accepts multipart/form-data
+        with an `avatar` image file (max 5 MB). Stores the file via the configured
+        storage backend (Cloudflare R2 when credentials are set). Returns the updated
+        user object including the new `avatar_url`.
+      tags:
+      - Auth
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AvatarUploadRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+          description: ''
+        '400':
+          description: No response body
   /api/auth/refresh/:
     post:
       operationId: auth_refresh_create
@@ -428,10 +550,318 @@ paths:
           description: ''
         '400':
           description: No response body
+  /api/employees/:
+    get:
+      operationId: employees_list
+      description: Returns all profiles for HR/Admin; non-admin users only see their
+        own. Supports filtering, search, and ordering via query parameters.
+      summary: List employee profiles
+      parameters:
+      - in: query
+        name: department
+        schema:
+          type: string
+        description: Exact match on department.
+      - in: query
+        name: employment_status
+        schema:
+          type: string
+        description: Exact match on employment status (e.g. active, inactive).
+      - in: query
+        name: is_active
+        schema:
+          type: boolean
+        description: Filter by active flag.
+      - in: query
+        name: ordering
+        schema:
+          type: string
+        description: 'Order results. Prefix with `-` for descending. Allowed: full_name,
+          start_date, created_at.'
+      - in: query
+        name: role__name
+        schema:
+          type: string
+        description: Exact match on related role name.
+      - in: query
+        name: search
+        schema:
+          type: string
+        description: Search across full name, email, username, and employee id (full_name,
+          email_address, user__username, employee_id).
+      tags:
+      - Employee Profiles
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EmployeeProfile'
+          description: ''
+    post:
+      operationId: employees_create
+      description: Creates a `User` and linked `UserProfile`. HR/Admin only. A random
+        password is generated server-side for the new account.
+      summary: Create employee profile
+      tags:
+      - Employee Profiles
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmployeeProfileRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/EmployeeProfileRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/EmployeeProfileRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeProfile'
+          description: ''
+        '400':
+          description: No response body
+        '403':
+          description: No response body
+  /api/employees/{id}/:
+    get:
+      operationId: employees_retrieve
+      description: Fetch one profile by id. HR/Admin any id; others only their own.
+      summary: Retrieve employee profile
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Employee Profile.
+        required: true
+      tags:
+      - Employee Profiles
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeProfile'
+          description: ''
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+    put:
+      operationId: employees_update
+      description: Full update (PUT). HR/Admin can edit any profile; others read-only.
+      summary: Replace employee profile
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Employee Profile.
+        required: true
+      tags:
+      - Employee Profiles
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmployeeProfileRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/EmployeeProfileRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/EmployeeProfileRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeProfile'
+          description: ''
+        '400':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+    patch:
+      operationId: employees_partial_update
+      description: Partial update (PATCH). Same permission rules as PUT.
+      summary: Patch employee profile
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Employee Profile.
+        required: true
+      tags:
+      - Employee Profiles
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedEmployeeProfileRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedEmployeeProfileRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedEmployeeProfileRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeProfile'
+          description: ''
+        '400':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+    delete:
+      operationId: employees_destroy
+      description: Does not remove the profile row. Deletes avatar and document files,
+        removes related assignments and salary rows, clears PII, marks the profile
+        inactive, and anonymizes plus deactivates the linked Django `User`. HR/Admin
+        only for arbitrary profiles.
+      summary: Soft-delete employee profile
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Employee Profile.
+        required: true
+      tags:
+      - Employee Profiles
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+  /api/employees/{id}/update-permissions/:
+    post:
+      operationId: employees_update_permissions_create
+      description: Replaces the profile's stored permissions string with the given
+        binary bitmap. HR/Admin only.
+      summary: Override permissions bitmap
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Employee Profile.
+        required: true
+      tags:
+      - Employee Profiles
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePermissionsRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/UpdatePermissionsRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UpdatePermissionsRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeProfile'
+          description: ''
+        '400':
+          description: No response body
+        '403':
+          description: No response body
+  /api/employees/{id}/update-role/:
+    post:
+      operationId: employees_update_role_create
+      description: Sets `role` and recomputes the permissions bitmap from that role's
+        permissions. HR/Admin only.
+      summary: Update employee role
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Employee Profile.
+        required: true
+      tags:
+      - Employee Profiles
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRoleRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/UpdateRoleRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UpdateRoleRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeProfile'
+          description: ''
+        '400':
+          description: No response body
+        '404':
+          description: No response body
+        '403':
+          description: No response body
   /api/replacement-logs/:
     get:
       operationId: replacement_logs_list
       description: Get list of all replacement logs with filtering options
+      parameters:
+      - in: query
+        name: asset
+        schema:
+          type: integer
+        description: Filter by asset ID
+      - in: query
+        name: replaced_by
+        schema:
+          type: integer
+        description: Filter by user who performed replacement
       tags:
       - Asset Management
       security:
@@ -448,6 +878,17 @@ paths:
     post:
       operationId: replacement_logs_create
       description: Create a new replacement log
+      parameters:
+      - in: query
+        name: asset
+        schema:
+          type: integer
+        description: Filter by asset ID
+      - in: query
+        name: replaced_by
+        schema:
+          type: integer
+        description: Filter by user who performed replacement
       tags:
       - Asset Management
       requestBody:
@@ -476,7 +917,7 @@ paths:
   /api/replacement-logs/{id}/:
     get:
       operationId: replacement_logs_retrieve
-      description: Get, update, or delete a specific replacement log
+      description: Get a specific replacement log by ID
       parameters:
       - in: path
         name: id
@@ -598,7 +1039,6 @@ components:
         condition:
           allOf:
           - $ref: '#/components/schemas/ConditionEnum'
-          default: good
           description: |-
             Current condition of the asset
 
@@ -619,7 +1059,6 @@ components:
         status:
           allOf:
           - $ref: '#/components/schemas/StatusEnum'
-          default: active
           description: |-
             Current status of the asset
 
@@ -698,7 +1137,6 @@ components:
         condition:
           allOf:
           - $ref: '#/components/schemas/ConditionEnum'
-          default: good
           description: |-
             Current condition of the asset
 
@@ -719,7 +1157,6 @@ components:
         status:
           allOf:
           - $ref: '#/components/schemas/StatusEnum'
-          default: active
           description: |-
             Current status of the asset
 
@@ -773,7 +1210,6 @@ components:
         condition:
           allOf:
           - $ref: '#/components/schemas/ConditionEnum'
-          default: good
           description: |-
             Current condition of the asset
 
@@ -794,7 +1230,6 @@ components:
         status:
           allOf:
           - $ref: '#/components/schemas/StatusEnum'
-          default: active
           description: |-
             Current status of the asset
 
@@ -869,7 +1304,7 @@ components:
             * `poor` - Poor
             * `damaged` - Damaged
           oneOf:
-          - $ref: '#/components/schemas/ReturnConditionEnum'
+          - $ref: '#/components/schemas/ConditionEnum'
           - $ref: '#/components/schemas/BlankEnum'
           - $ref: '#/components/schemas/NullEnum'
         notes:
@@ -956,7 +1391,7 @@ components:
             * `poor` - Poor
             * `damaged` - Damaged
           oneOf:
-          - $ref: '#/components/schemas/ReturnConditionEnum'
+          - $ref: '#/components/schemas/ConditionEnum'
           - $ref: '#/components/schemas/BlankEnum'
           - $ref: '#/components/schemas/NullEnum'
         notes:
@@ -981,13 +1416,21 @@ components:
             * `poor` - Poor
             * `damaged` - Damaged
           oneOf:
-          - $ref: '#/components/schemas/ReturnConditionEnum'
+          - $ref: '#/components/schemas/ConditionEnum'
           - $ref: '#/components/schemas/BlankEnum'
           - $ref: '#/components/schemas/NullEnum'
         notes:
           type: string
           nullable: true
           description: Additional notes about the assignment
+    AvatarUploadRequest:
+      type: object
+      properties:
+        avatar:
+          type: string
+          format: binary
+      required:
+      - avatar
     BlankEnum:
       enum:
       - ''
@@ -1005,6 +1448,153 @@ components:
         * `fair` - Fair
         * `poor` - Poor
         * `damaged` - Damaged
+    EmployeeProfile:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        username:
+          type: string
+          readOnly: true
+        employee_id:
+          type: string
+          nullable: true
+          maxLength: 20
+        email:
+          type: string
+          format: email
+        first_name:
+          type: string
+        last_name:
+          type: string
+        full_name:
+          type: string
+          nullable: true
+          maxLength: 150
+        email_address:
+          type: string
+          format: email
+          nullable: true
+          maxLength: 254
+        department:
+          type: string
+          nullable: true
+          maxLength: 100
+        role:
+          type: integer
+          nullable: true
+        role_name:
+          type: string
+          readOnly: true
+        manager:
+          type: integer
+          nullable: true
+        manager_name:
+          type: string
+          readOnly: true
+        start_date:
+          type: string
+          format: date
+          nullable: true
+        phone_number:
+          type: string
+          nullable: true
+          maxLength: 15
+        address:
+          type: string
+          nullable: true
+        employment_status:
+          $ref: '#/components/schemas/EmploymentStatusEnum'
+        avatar:
+          type: string
+          format: uri
+          nullable: true
+        is_active:
+          type: boolean
+          readOnly: true
+        permissions_bitmap:
+          type: string
+          readOnly: true
+      required:
+      - email
+      - id
+      - is_active
+      - manager_name
+      - permissions_bitmap
+      - role_name
+      - username
+    EmployeeProfileRequest:
+      type: object
+      properties:
+        employee_id:
+          type: string
+          nullable: true
+          maxLength: 20
+        email:
+          type: string
+          format: email
+          minLength: 1
+        first_name:
+          type: string
+          minLength: 1
+        last_name:
+          type: string
+          minLength: 1
+        full_name:
+          type: string
+          nullable: true
+          maxLength: 150
+        email_address:
+          type: string
+          format: email
+          nullable: true
+          maxLength: 254
+        department:
+          type: string
+          nullable: true
+          maxLength: 100
+        role:
+          type: integer
+          nullable: true
+        manager:
+          type: integer
+          nullable: true
+        start_date:
+          type: string
+          format: date
+          nullable: true
+        phone_number:
+          type: string
+          nullable: true
+          maxLength: 15
+        address:
+          type: string
+          nullable: true
+        employment_status:
+          $ref: '#/components/schemas/EmploymentStatusEnum'
+        avatar:
+          type: string
+          format: binary
+          nullable: true
+      required:
+      - email
+    EmploymentStatusEnum:
+      enum:
+      - active
+      - inactive
+      type: string
+      description: |-
+        * `active` - Active
+        * `inactive` - Inactive
+    GoogleExchangeRequest:
+      type: object
+      properties:
+        id_token:
+          type: string
+          minLength: 1
+      required:
+      - id_token
     LoginRequest:
       type: object
       properties:
@@ -1022,6 +1612,59 @@ components:
     NullEnum:
       enum:
       - null
+    PatchedEmployeeProfileRequest:
+      type: object
+      properties:
+        employee_id:
+          type: string
+          nullable: true
+          maxLength: 20
+        email:
+          type: string
+          format: email
+          minLength: 1
+        first_name:
+          type: string
+          minLength: 1
+        last_name:
+          type: string
+          minLength: 1
+        full_name:
+          type: string
+          nullable: true
+          maxLength: 150
+        email_address:
+          type: string
+          format: email
+          nullable: true
+          maxLength: 254
+        department:
+          type: string
+          nullable: true
+          maxLength: 100
+        role:
+          type: integer
+          nullable: true
+        manager:
+          type: integer
+          nullable: true
+        start_date:
+          type: string
+          format: date
+          nullable: true
+        phone_number:
+          type: string
+          nullable: true
+          maxLength: 15
+        address:
+          type: string
+          nullable: true
+        employment_status:
+          $ref: '#/components/schemas/EmploymentStatusEnum'
+        avatar:
+          type: string
+          format: binary
+          nullable: true
     RegisterRequest:
       type: object
       properties:
@@ -1051,6 +1694,15 @@ components:
         last_name:
           type: string
           maxLength: 150
+        avatar:
+          type: string
+          format: binary
+          nullable: true
+        avatar_url:
+          type: string
+          format: uri
+          nullable: true
+          minLength: 1
       required:
       - email
       - password
@@ -1136,20 +1788,6 @@ components:
       required:
       - asset
       - reason
-    ReturnConditionEnum:
-      enum:
-      - excellent
-      - good
-      - fair
-      - poor
-      - damaged
-      type: string
-      description: |-
-        * `excellent` - Excellent
-        * `good` - Good
-        * `fair` - Fair
-        * `poor` - Poor
-        * `damaged` - Damaged
     StatusEnum:
       enum:
       - active
@@ -1175,6 +1813,24 @@ components:
       - access
       - refresh
       - user
+    UpdatePermissionsRequest:
+      type: object
+      properties:
+        permissions_bitmap:
+          type: string
+          minLength: 1
+          description: Binary string (1s and 0s) representing the user's additional
+            permissions.
+      required:
+      - permissions_bitmap
+    UpdateRoleRequest:
+      type: object
+      properties:
+        role_id:
+          type: integer
+          description: ID of the Role to assign to the user.
+      required:
+      - role_id
     UploadRolePermissionsResponse:
       type: object
       description: Response shape for successful role permissions upload.
@@ -1209,7 +1865,16 @@ components:
         last_name:
           type: string
           maxLength: 150
+        avatar_url:
+          type: string
+          nullable: true
+          readOnly: true
+        career_level:
+          type: string
+          readOnly: true
       required:
+      - avatar_url
+      - career_level
       - id
       - username
     UserProfile:

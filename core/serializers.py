@@ -192,7 +192,7 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
     manager_name = serializers.CharField(source="manager.full_name", read_only=True)
     permissions_bitmap = serializers.SerializerMethodField()
 
-    def get_permissions_bitmap(self, obj):
+    def get_permissions_bitmap(self, obj) -> str:
         return bin(obj.computed_permissions_bitmap)[2:]
 
     class Meta:

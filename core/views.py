@@ -595,27 +595,27 @@ class EmployeeProfileViewSet(viewsets.ModelViewSet):
     responses={200: AssetSerializer(many=True)},
     description="Get list of all assets with filtering options",
     parameters=[
-        {
-            "name": "status",
-            "in": "query",
-            "description": "Filter by asset status (active, lost, returned, damaged)",
-            "required": False,
-            "schema": {"type": "string"},
-        },
-        {
-            "name": "condition",
-            "in": "query",
-            "description": "Filter by asset condition (excellent, good, fair, poor, damaged)",
-            "required": False,
-            "schema": {"type": "string"},
-        },
-        {
-            "name": "available",
-            "in": "query",
-            "description": "Filter by availability (true/false)",
-            "required": False,
-            "schema": {"type": "boolean"},
-        },
+        OpenApiParameter(
+            name="status",
+            type=OpenApiTypes.STR,
+            location=OpenApiParameter.QUERY,
+            description="Filter by asset status (active, lost, returned, damaged)",
+            required=False,
+        ),
+        OpenApiParameter(
+            name="condition",
+            type=OpenApiTypes.STR,
+            location=OpenApiParameter.QUERY,
+            description="Filter by asset condition (excellent, good, fair, poor, damaged)",
+            required=False,
+        ),
+        OpenApiParameter(
+            name="available",
+            type=OpenApiTypes.BOOL,
+            location=OpenApiParameter.QUERY,
+            description="Filter by availability (true/false)",
+            required=False,
+        ),
     ],
 )
 class AssetListView(APIView):
@@ -730,27 +730,27 @@ class AssetDetailView(APIView):
     responses={200: AssignmentSerializer(many=True)},
     description="Get list of all assignments with filtering options",
     parameters=[
-        {
-            "name": "active",
-            "in": "query",
-            "description": "Filter by active assignments (true/false)",
-            "required": False,
-            "schema": {"type": "boolean"},
-        },
-        {
-            "name": "employee",
-            "in": "query",
-            "description": "Filter by employee ID",
-            "required": False,
-            "schema": {"type": "integer"},
-        },
-        {
-            "name": "asset",
-            "in": "query",
-            "description": "Filter by asset ID",
-            "required": False,
-            "schema": {"type": "integer"},
-        },
+        OpenApiParameter(
+            name="active",
+            type=OpenApiTypes.BOOL,
+            location=OpenApiParameter.QUERY,
+            description="Filter by active assignments (true/false)",
+            required=False,
+        ),
+        OpenApiParameter(
+            name="employee",
+            type=OpenApiTypes.INT,
+            location=OpenApiParameter.QUERY,
+            description="Filter by employee ID",
+            required=False,
+        ),
+        OpenApiParameter(
+            name="asset",
+            type=OpenApiTypes.INT,
+            location=OpenApiParameter.QUERY,
+            description="Filter by asset ID",
+            required=False,
+        ),
     ],
 )
 class AssignmentListView(APIView):
@@ -909,20 +909,20 @@ class AssignmentReturnView(APIView):
     responses={200: ReplacementLogSerializer(many=True)},
     description="Get list of all replacement logs with filtering options",
     parameters=[
-        {
-            "name": "asset",
-            "in": "query",
-            "description": "Filter by asset ID",
-            "required": False,
-            "schema": {"type": "integer"},
-        },
-        {
-            "name": "replaced_by",
-            "in": "query",
-            "description": "Filter by user who performed replacement",
-            "required": False,
-            "schema": {"type": "integer"},
-        },
+        OpenApiParameter(
+            name="asset",
+            type=OpenApiTypes.INT,
+            location=OpenApiParameter.QUERY,
+            description="Filter by asset ID",
+            required=False,
+        ),
+        OpenApiParameter(
+            name="replaced_by",
+            type=OpenApiTypes.INT,
+            location=OpenApiParameter.QUERY,
+            description="Filter by user who performed replacement",
+            required=False,
+        ),
     ],
 )
 class ReplacementLogListView(APIView):
