@@ -34,7 +34,8 @@ class AuthTestCase(APITestCase):
             "first_name": "Test",
             "last_name": "User",
         }
-        response = self.client.post("/api/auth/register/", data)
+        # Register endpoint expects JSON; ensure we send JSON in tests
+        response = self.client.post("/api/auth/register/", data, format="json")
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         response_data = response.json()
         self.assertIn("access", response_data)

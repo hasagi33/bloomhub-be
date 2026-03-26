@@ -29,6 +29,36 @@ class GoogleExchangeSerializer(serializers.Serializer):
             raise serializers.ValidationError(f"Invalid Google token: {str(e)}")
 
 
+class Base64ImageField(serializers.ImageField):
+    """
+    A custom serializer field to handle base64-encoded image data.
+    """
+
+    def to_internal_value(self, data):
+        import base64
+        import uuid
+
+        from django.core.files.base import ContentFile
+
+        if isinstance(data, str):
+            if "base64," in data:
+                # Remove header if present (e.g., data:image/png;base64,)
+                data = data.split("base64,")[1]
+
+            try:
+                decoded_file = base64.b64decode(data)
+            except Exception:
+                self.fail("invalid_image")
+
+            file_name = str(uuid.uuid4())[:12]
+            file_extension = "png"  # Default to png
+            complete_file_name = f"{file_name}.{file_extension}"
+
+            data = ContentFile(decoded_file, name=complete_file_name)
+
+        return super().to_internal_value(data)
+
+
 class UserSerializer(serializers.ModelSerializer):
     avatar_url = serializers.SerializerMethodField()
     career_level = serializers.CharField(source="profile.career_level", read_only=True)
@@ -65,7 +95,7 @@ class UserSerializer(serializers.ModelSerializer):
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True)
     password_confirm = serializers.CharField(write_only=True, required=True)
-    avatar = serializers.ImageField(required=False, allow_null=True)
+    avatar = Base64ImageField(required=False, allow_null=True)
     avatar_url = serializers.URLField(required=False, allow_null=True)
 
     class Meta:
