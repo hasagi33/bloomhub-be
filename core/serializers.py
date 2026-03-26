@@ -1,4 +1,7 @@
+from typing import Any
+
 from django.contrib.auth.models import User
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from core.constants import (
@@ -7,7 +10,7 @@ from core.constants import (
     REGISTER_EXTRA_KWARGS,
     REGISTER_FIELDS,
 )
-from core.models import UserProfile
+from core.models import Asset, Assignment, ReplacementLog, UserProfile
 from core.utils import (
     apply_profile_updates_and_save,
     download_and_save_avatar,
@@ -189,7 +192,7 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
     manager_name = serializers.CharField(source="manager.full_name", read_only=True)
     permissions_bitmap = serializers.SerializerMethodField()
 
-    def get_permissions_bitmap(self, obj):
+    def get_permissions_bitmap(self, obj) -> str:
         return bin(obj.computed_permissions_bitmap)[2:]
 
     class Meta:
@@ -271,3 +274,206 @@ class UpdatePermissionsSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 "Must be a valid binary string containing only 1s and 0s."
             )
+
+
+# Asset Management Serializers
+
+
+class UserProfileSerializer(serializers.ModelSerializer):
+    """Serializer for UserProfile model used in Asset Management"""
+
+    user = UserSerializer(read_only=True)
+
+    class Meta:
+        model = UserProfile
+        fields = [
+            "id",
+            "user",
+            "employee_id",
+            "department",
+            "hire_date",
+            "phone_number",
+            "career_level",
+        ]
+
+
+class AssetSerializer(serializers.ModelSerializer):
+    """Serializer for Asset model"""
+
+    current_assignment = serializers.SerializerMethodField()
+    is_under_warranty = serializers.SerializerMethodField()
+    is_available = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Asset
+        fields = [
+            "id",
+            "asset_id",
+            "name",
+            "condition",
+            "warranty_until",
+            "purchase_date",
+            "status",
+            "serial_number",
+            "model",
+            "manufacturer",
+            "purchase_price",
+            "description",
+            "created_at",
+            "updated_at",
+            "current_assignment",
+            "is_under_warranty",
+            "is_available",
+        ]
+        read_only_fields = ["created_at", "updated_at"]
+
+    @extend_schema_field(serializers.DictField(allow_null=True))
+    def get_current_assignment(self, obj) -> dict[str, Any] | None:
+        """Get current active assignment if any"""
+        current = obj.current_assignment
+        if current:
+            return {
+                "id": current.id,
+                "employee": current.employee.user.get_full_name()
+                or current.employee.user.username,
+                "assigned_at": current.assigned_at,
+            }
+        return None
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_is_under_warranty(self, obj) -> bool:
+        """Check if asset is under warranty"""
+        return obj.is_under_warranty
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_is_available(self, obj) -> bool:
+        """Check if asset is available for assignment"""
+        return obj.is_available
+
+
+class AssignmentSerializer(serializers.ModelSerializer):
+    """Serializer for Assignment model"""
+
+    asset_details = AssetSerializer(source="asset", read_only=True)
+    employee_details = UserProfileSerializer(source="employee", read_only=True)
+    assigned_by_details = UserProfileSerializer(source="assigned_by", read_only=True)
+    is_active = serializers.SerializerMethodField()
+    duration_days = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Assignment
+        fields = [
+            "id",
+            "asset",
+            "employee",
+            "assigned_at",
+            "returned_at",
+            "assigned_by",
+            "return_condition",
+            "notes",
+            "asset_details",
+            "employee_details",
+            "assigned_by_details",
+            "is_active",
+            "duration_days",
+        ]
+        read_only_fields = ["assigned_at"]
+
+    def validate(self, data):
+        """Validate assignment data"""
+        asset = data.get("asset")
+        returned_at = data.get("returned_at")
+
+        # If this is a new assignment (no returned_at), check if asset is available
+        if not returned_at and asset and not asset.is_available:
+            raise serializers.ValidationError(
+                "Asset is not available for assignment. It may already be assigned or not in active status."
+            )
+
+        return data
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_is_active(self, obj) -> bool:
+        """Check if assignment is active (not returned)"""
+        return obj.is_active
+
+    @extend_schema_field(serializers.IntegerField(allow_null=True))
+    def get_duration_days(self, obj) -> int | None:
+        """Get duration of assignment in days"""
+        return obj.duration_days
+
+
+class ReplacementLogSerializer(serializers.ModelSerializer):
+    """Serializer for ReplacementLog model"""
+
+    asset_details = AssetSerializer(source="asset", read_only=True)
+    replacement_asset_details = AssetSerializer(
+        source="replacement_asset", read_only=True
+    )
+    replaced_by_details = UserProfileSerializer(source="replaced_by", read_only=True)
+
+    class Meta:
+        model = ReplacementLog
+        fields = [
+            "id",
+            "asset",
+            "reason",
+            "date",
+            "replaced_by",
+            "replacement_asset",
+            "cost",
+            "asset_details",
+            "replacement_asset_details",
+            "replaced_by_details",
+        ]
+        read_only_fields = ["date"]
+
+
+class AssetCreateSerializer(serializers.ModelSerializer):
+    """Simplified serializer for creating assets"""
+
+    class Meta:
+        model = Asset
+        fields = [
+            "asset_id",
+            "name",
+            "condition",
+            "warranty_until",
+            "purchase_date",
+            "status",
+            "serial_number",
+            "model",
+            "manufacturer",
+            "purchase_price",
+            "description",
+        ]
+
+
+class AssignmentCreateSerializer(serializers.ModelSerializer):
+    """Simplified serializer for creating assignments"""
+
+    class Meta:
+        model = Assignment
+        fields = ["asset", "employee", "assigned_by", "notes"]
+
+    def validate_asset(self, value):
+        """Validate that asset is available for assignment"""
+        if not value.is_available:
+            raise serializers.ValidationError(
+                "Asset is not available for assignment. It may already be assigned or not in active status."
+            )
+        return value
+
+
+class AssignmentReturnSerializer(serializers.ModelSerializer):
+    """Serializer for returning assets"""
+
+    class Meta:
+        model = Assignment
+        fields = ["return_condition", "notes"]
+
+    def validate(self, data):
+        """Validate return data"""
+        if not self.instance.is_active:
+            raise serializers.ValidationError("This assignment is already returned.")
+        return data

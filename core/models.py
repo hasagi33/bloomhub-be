@@ -1,8 +1,10 @@
 import sys
+from decimal import Decimal
 
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.files.base import ContentFile
+from django.core.validators import MinValueValidator
 from django.db import models
 from django.db.models.signals import post_save
 from django.dispatch import receiver
@@ -128,6 +130,7 @@ class UserProfile(models.Model):
 
     department = models.CharField(max_length=100, blank=True, null=True)
     start_date = models.DateField(blank=True, null=True)
+    hire_date = models.DateField(blank=True, null=True)
     phone_number = models.CharField(max_length=15, blank=True, null=True)
     address = models.TextField(blank=True, null=True)
     emergency_contact_name = models.CharField(max_length=100, blank=True, null=True)
@@ -320,6 +323,227 @@ class ChangeLog(models.Model):
 
     def __str__(self):
         return f"{self.user_profile.user.username} – {self.field_name} @ {self.changed_at.isoformat()}"
+
+
+class AssetStatus(models.TextChoices):
+    ACTIVE = "active", "Active"
+    LOST = "lost", "Lost"
+    RETURNED = "returned", "Returned"
+    DAMAGED = "damaged", "Damaged"
+
+
+class AssetCondition(models.TextChoices):
+    EXCELLENT = "excellent", "Excellent"
+    GOOD = "good", "Good"
+    FAIR = "fair", "Fair"
+    POOR = "poor", "Poor"
+    DAMAGED = "damaged", "Damaged"
+
+
+class Asset(models.Model):
+    """
+    Comprehensive Asset model for equipment management
+    """
+
+    asset_id = models.CharField(
+        max_length=50, unique=True, help_text="Unique identifier for the asset"
+    )
+    name = models.CharField(max_length=200, help_text="Asset name/type")
+    condition = models.CharField(
+        max_length=20,
+        choices=AssetCondition.choices,
+        default=AssetCondition.GOOD,
+        help_text="Current condition of the asset",
+    )
+    warranty_until = models.DateField(
+        null=True, blank=True, help_text="Warranty expiration date"
+    )
+    purchase_date = models.DateField(help_text="Date when the asset was purchased")
+    status = models.CharField(
+        max_length=20,
+        choices=AssetStatus.choices,
+        default=AssetStatus.ACTIVE,
+        help_text="Current status of the asset",
+    )
+
+    # Additional useful fields for comprehensive asset management
+    serial_number = models.CharField(
+        max_length=100,
+        unique=True,
+        null=True,
+        blank=True,
+        help_text="Manufacturer serial number",
+    )
+    model = models.CharField(
+        max_length=100, null=True, blank=True, help_text="Asset model"
+    )
+    manufacturer = models.CharField(
+        max_length=100, null=True, blank=True, help_text="Asset manufacturer"
+    )
+    purchase_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(Decimal("0.01"))],
+        help_text="Purchase price of the asset",
+    )
+    description = models.TextField(
+        blank=True, null=True, help_text="Additional description or notes"
+    )
+
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Asset"
+        verbose_name_plural = "Assets"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.asset_id} - {self.name}"
+
+    @property
+    def is_under_warranty(self):
+        """Check if asset is still under warranty"""
+        if not self.warranty_until:
+            return False
+        from django.utils import timezone
+
+        return self.warranty_until > timezone.now().date()
+
+    @property
+    def current_assignment(self):
+        """Get current active assignment if any"""
+        return self.assignments.filter(returned_at__isnull=True).first()
+
+    @property
+    def is_available(self):
+        """Check if asset is available for assignment"""
+        return self.status == AssetStatus.ACTIVE and not self.current_assignment
+
+
+class Assignment(models.Model):
+    """
+    Asset assignment to employees
+    """
+
+    asset = models.ForeignKey(
+        Asset,
+        on_delete=models.CASCADE,
+        related_name="assignments",
+        help_text="Asset being assigned",
+    )
+    employee = models.ForeignKey(
+        UserProfile,
+        on_delete=models.CASCADE,
+        related_name="asset_assignments",
+        help_text="Employee receiving the asset",
+    )
+    assigned_at = models.DateTimeField(
+        auto_now_add=True, help_text="When the asset was assigned"
+    )
+    returned_at = models.DateTimeField(
+        null=True, blank=True, help_text="When the asset was returned (optional)"
+    )
+
+    # Additional useful fields
+    assigned_by = models.ForeignKey(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="assignments_made",
+        help_text="Who made the assignment",
+    )
+    return_condition = models.CharField(
+        max_length=20,
+        choices=AssetCondition.choices,
+        null=True,
+        blank=True,
+        help_text="Condition when returned",
+    )
+    notes = models.TextField(
+        blank=True, null=True, help_text="Additional notes about the assignment"
+    )
+
+    class Meta:
+        verbose_name = "Assignment"
+        verbose_name_plural = "Assignments"
+        ordering = ["-assigned_at"]
+
+    def __str__(self):
+        status = (
+            "Active" if not self.returned_at else f"Returned {self.returned_at.date()}"
+        )
+        return f"{self.asset.asset_id} → {self.employee.user.get_full_name() or self.employee.user.username} ({status})"
+
+    @property
+    def is_active(self):
+        """Check if assignment is currently active"""
+        return self.returned_at is None
+
+    @property
+    def duration_days(self):
+        """Calculate assignment duration in days"""
+        from django.utils import timezone
+
+        end_date = self.returned_at or timezone.now()
+        return (end_date.date() - self.assigned_at.date()).days
+
+
+class ReplacementLog(models.Model):
+    """
+    Log of asset replacements and reasons
+    """
+
+    asset = models.ForeignKey(
+        Asset,
+        on_delete=models.CASCADE,
+        related_name="replacement_logs",
+        help_text="Asset that was replaced",
+    )
+    reason = models.TextField(help_text="Reason for replacement")
+    date = models.DateTimeField(
+        auto_now_add=True, help_text="When the replacement occurred"
+    )
+
+    # Additional useful fields
+    replaced_by = models.ForeignKey(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="replacements_made",
+        help_text="Who performed the replacement",
+    )
+    replacement_asset = models.ForeignKey(
+        Asset,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="replaced_assets",
+        help_text="New asset that replaced this one",
+    )
+    cost = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(Decimal("0.01"))],
+        help_text="Cost of replacement",
+    )
+
+    class Meta:
+        verbose_name = "Replacement Log"
+        verbose_name_plural = "Replacement Logs"
+        ordering = ["-date"]
+
+    def __str__(self):
+        return (
+            f"{self.asset.asset_id} replaced on {self.date.date()} - {self.reason[:50]}"
+        )
 
 
 @receiver(post_save, sender=User)

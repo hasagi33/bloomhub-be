@@ -18,7 +18,7 @@ cd BloomHub-be
 python -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env
+cp .env .env
 ```
 
 Edit `.env`:
@@ -406,6 +406,7 @@ Labels are applied automatically by [gitStream](https://gitstream.cm) based on t
 | `pytest` | Run tests |
 | `python manage.py load_permissions <csv_file>` | Load base permissions from CSV (expects `module_name,feature_action` headers) |
 | `python manage.py load_role_permissions <csv_file>` | Load role permissions from CSV with operations (override/add/remove/merge) |
+| `python manage.py spectacular --file schema.yml` | Generate OpenAPI schema using drf-spectacular |
 
    user.profile.save()
    `

@@ -93,6 +93,10 @@ SPECTACULAR_SETTINGS = {
             }
         }
     },
+    "ENUM_NAME_OVERRIDES": {
+        "ConditionEnum": "core.models.AssetCondition",
+        "StatusEnum": "core.models.AssetStatus",
+    },
 }
 
 SIMPLE_JWT = {
@@ -104,7 +108,6 @@ SIMPLE_JWT = {
 
 MIDDLEWARE = (
     [
-        "config.middleware.LogTenantHostMiddleware",
         "django_tenants.middleware.main.TenantMainMiddleware",
     ]
     if USE_TENANTS

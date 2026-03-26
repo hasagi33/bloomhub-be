@@ -22,19 +22,26 @@ from .constants import (
     EMPLOYEE_PROFILE_ORDERING_FIELDS,
     EMPLOYEE_PROFILE_SEARCH_FIELDS,
 )
-from .models import Permission, Role, UserProfile
+from .models import Asset, Assignment, Permission, ReplacementLog, Role, UserProfile
 from .permissions import IsHRAdminOrReadOnlyOwnProfile
 from .serializers import (
     APIRootResponseSerializer,
+    AssetCreateSerializer,
+    AssetSerializer,
+    AssignmentCreateSerializer,
+    AssignmentReturnSerializer,
+    AssignmentSerializer,
     AvatarUploadSerializer,
     EmployeeProfileSerializer,
     GoogleExchangeSerializer,
     LoginSerializer,
     RegisterSerializer,
+    ReplacementLogSerializer,
     TokenSerializer,
     UpdatePermissionsSerializer,
     UpdateRoleSerializer,
     UploadRolePermissionsResponseSerializer,
+    UserProfileSerializer,
     UserSerializer,
 )
 from .shared.employee_utils import soft_delete_employee_profile
@@ -578,3 +585,454 @@ class EmployeeProfileViewSet(viewsets.ModelViewSet):
         instance.save()
 
         return Response(self.get_serializer(instance).data)
+
+
+# Asset Management API Views
+
+
+@extend_schema(
+    tags=["Asset Management"],
+    responses={200: AssetSerializer(many=True)},
+    description="Get list of all assets with filtering options",
+    parameters=[
+        OpenApiParameter(
+            name="status",
+            type=OpenApiTypes.STR,
+            location=OpenApiParameter.QUERY,
+            description="Filter by asset status (active, lost, returned, damaged)",
+            required=False,
+        ),
+        OpenApiParameter(
+            name="condition",
+            type=OpenApiTypes.STR,
+            location=OpenApiParameter.QUERY,
+            description="Filter by asset condition (excellent, good, fair, poor, damaged)",
+            required=False,
+        ),
+        OpenApiParameter(
+            name="available",
+            type=OpenApiTypes.BOOL,
+            location=OpenApiParameter.QUERY,
+            description="Filter by availability (true/false)",
+            required=False,
+        ),
+    ],
+)
+class AssetListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        """Get list of assets with optional filtering"""
+        assets = Asset.objects.all()
+
+        # Apply filters
+        status_filter = request.query_params.get("status")
+        if status_filter:
+            assets = assets.filter(status=status_filter)
+
+        condition_filter = request.query_params.get("condition")
+        if condition_filter:
+            assets = assets.filter(condition=condition_filter)
+
+        available_filter = request.query_params.get("available")
+        if available_filter is not None:
+            if available_filter.lower() == "true":
+                assets = [asset for asset in assets if asset.is_available]
+            else:
+                assets = [asset for asset in assets if not asset.is_available]
+
+        serializer = AssetSerializer(assets, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        request=AssetCreateSerializer,
+        responses={201: AssetSerializer, 400: None},
+        description="Create a new asset",
+    )
+    def post(self, request):
+        """Create a new asset"""
+        serializer = AssetCreateSerializer(data=request.data)
+        if serializer.is_valid():
+            asset = serializer.save()
+            response_serializer = AssetSerializer(asset)
+            return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@extend_schema(
+    tags=["Asset Management"],
+    responses={200: AssetSerializer, 404: None},
+    description="Get, update, or delete a specific asset",
+)
+class AssetDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self, pk):
+        """Get asset by ID"""
+        try:
+            return Asset.objects.get(pk=pk)
+        except Asset.DoesNotExist:
+            return None
+
+    @extend_schema(
+        responses={200: AssetSerializer, 404: None},
+        description="Get a specific asset by ID",
+    )
+    def get(self, request, pk):
+        """Get asset details"""
+        asset = self.get_object(pk)
+        if not asset:
+            return Response(
+                {"error": "Asset not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        serializer = AssetSerializer(asset)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        request=AssetCreateSerializer,
+        responses={200: AssetSerializer, 400: None, 404: None},
+        description="Update an asset",
+    )
+    def put(self, request, pk):
+        """Update asset"""
+        asset = self.get_object(pk)
+        if not asset:
+            return Response(
+                {"error": "Asset not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        serializer = AssetCreateSerializer(asset, data=request.data)
+        if serializer.is_valid():
+            asset = serializer.save()
+            response_serializer = AssetSerializer(asset)
+            return Response(response_serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @extend_schema(
+        responses={204: None, 404: None},
+        description="Delete an asset",
+    )
+    def delete(self, request, pk):
+        """Delete asset"""
+        asset = self.get_object(pk)
+        if not asset:
+            return Response(
+                {"error": "Asset not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        asset.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@extend_schema(
+    tags=["Asset Management"],
+    responses={200: AssignmentSerializer(many=True)},
+    description="Get list of all assignments with filtering options",
+    parameters=[
+        OpenApiParameter(
+            name="active",
+            type=OpenApiTypes.BOOL,
+            location=OpenApiParameter.QUERY,
+            description="Filter by active assignments (true/false)",
+            required=False,
+        ),
+        OpenApiParameter(
+            name="employee",
+            type=OpenApiTypes.INT,
+            location=OpenApiParameter.QUERY,
+            description="Filter by employee ID",
+            required=False,
+        ),
+        OpenApiParameter(
+            name="asset",
+            type=OpenApiTypes.INT,
+            location=OpenApiParameter.QUERY,
+            description="Filter by asset ID",
+            required=False,
+        ),
+    ],
+)
+class AssignmentListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        """Get list of assignments with optional filtering"""
+        assignments = Assignment.objects.all()
+
+        # Apply filters
+        active_filter = request.query_params.get("active")
+        if active_filter is not None:
+            if active_filter.lower() == "true":
+                assignments = assignments.filter(returned_at__isnull=True)
+            else:
+                assignments = assignments.filter(returned_at__isnull=False)
+
+        employee_filter = request.query_params.get("employee")
+        if employee_filter:
+            assignments = assignments.filter(employee_id=employee_filter)
+
+        asset_filter = request.query_params.get("asset")
+        if asset_filter:
+            assignments = assignments.filter(asset_id=asset_filter)
+
+        serializer = AssignmentSerializer(assignments, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        request=AssignmentCreateSerializer,
+        responses={201: AssignmentSerializer, 400: None},
+        description="Create a new assignment",
+    )
+    def post(self, request):
+        """Create a new assignment"""
+        serializer = AssignmentCreateSerializer(data=request.data)
+        if serializer.is_valid():
+            assignment = serializer.save()
+            response_serializer = AssignmentSerializer(assignment)
+            return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@extend_schema(
+    tags=["Asset Management"],
+    responses={200: AssignmentSerializer, 404: None},
+    description="Get, update, or delete a specific assignment",
+)
+class AssignmentDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self, pk):
+        """Get assignment by ID"""
+        try:
+            return Assignment.objects.get(pk=pk)
+        except Assignment.DoesNotExist:
+            return None
+
+    @extend_schema(
+        responses={200: AssignmentSerializer, 404: None},
+        description="Get a specific assignment by ID",
+    )
+    def get(self, request, pk):
+        """Get assignment details"""
+        assignment = self.get_object(pk)
+        if not assignment:
+            return Response(
+                {"error": "Assignment not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        serializer = AssignmentSerializer(assignment)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        request=AssignmentSerializer,
+        responses={200: AssignmentSerializer, 400: None, 404: None},
+        description="Update an assignment",
+    )
+    def put(self, request, pk):
+        """Update assignment"""
+        assignment = self.get_object(pk)
+        if not assignment:
+            return Response(
+                {"error": "Assignment not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        serializer = AssignmentSerializer(assignment, data=request.data, partial=True)
+        if serializer.is_valid():
+            assignment = serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @extend_schema(
+        responses={204: None, 404: None},
+        description="Delete an assignment",
+    )
+    def delete(self, request, pk):
+        """Delete assignment"""
+        assignment = self.get_object(pk)
+        if not assignment:
+            return Response(
+                {"error": "Assignment not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        assignment.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@extend_schema(
+    tags=["Asset Management"],
+    request=AssignmentReturnSerializer,
+    responses={200: AssignmentSerializer, 400: None, 404: None},
+    description="Return an assigned asset",
+)
+class AssignmentReturnView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self, pk):
+        """Get assignment by ID"""
+        try:
+            return Assignment.objects.get(pk=pk)
+        except Assignment.DoesNotExist:
+            return None
+
+    @extend_schema(
+        request=AssignmentReturnSerializer,
+        responses={200: AssignmentSerializer, 400: None, 404: None},
+        description="Return an assigned asset (mark as returned and set condition)",
+    )
+    def post(self, request, pk):
+        """Return an assigned asset"""
+        assignment = self.get_object(pk)
+        if not assignment:
+            return Response(
+                {"error": "Assignment not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        serializer = AssignmentReturnSerializer(assignment, data=request.data)
+        if serializer.is_valid():
+            from django.utils import timezone
+
+            assignment.returned_at = timezone.now()
+            assignment.return_condition = serializer.validated_data.get(
+                "return_condition"
+            )
+            assignment.notes = serializer.validated_data.get("notes", assignment.notes)
+            assignment.save()
+
+            response_serializer = AssignmentSerializer(assignment)
+            return Response(response_serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@extend_schema(
+    tags=["Asset Management"],
+    responses={200: ReplacementLogSerializer(many=True)},
+    description="Get list of all replacement logs with filtering options",
+    parameters=[
+        OpenApiParameter(
+            name="asset",
+            type=OpenApiTypes.INT,
+            location=OpenApiParameter.QUERY,
+            description="Filter by asset ID",
+            required=False,
+        ),
+        OpenApiParameter(
+            name="replaced_by",
+            type=OpenApiTypes.INT,
+            location=OpenApiParameter.QUERY,
+            description="Filter by user who performed replacement",
+            required=False,
+        ),
+    ],
+)
+class ReplacementLogListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        """Get list of replacement logs with optional filtering"""
+        logs = ReplacementLog.objects.all()
+
+        # Apply filters
+        asset_filter = request.query_params.get("asset")
+        if asset_filter:
+            logs = logs.filter(asset_id=asset_filter)
+
+        replaced_by_filter = request.query_params.get("replaced_by")
+        if replaced_by_filter:
+            logs = logs.filter(replaced_by_id=replaced_by_filter)
+
+        serializer = ReplacementLogSerializer(logs, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        request=ReplacementLogSerializer,
+        responses={201: ReplacementLogSerializer, 400: None},
+        description="Create a new replacement log",
+    )
+    def post(self, request):
+        """Create a new replacement log"""
+        serializer = ReplacementLogSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@extend_schema(
+    tags=["Asset Management"],
+    responses={200: ReplacementLogSerializer, 404: None},
+    description="Get, update, or delete a specific replacement log",
+)
+class ReplacementLogDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self, pk):
+        """Get replacement log by ID"""
+        try:
+            return ReplacementLog.objects.get(pk=pk)
+        except ReplacementLog.DoesNotExist:
+            return None
+
+    @extend_schema(
+        responses={200: ReplacementLogSerializer, 404: None},
+        description="Get a specific replacement log by ID",
+    )
+    def get(self, request, pk):
+        """Get replacement log details"""
+        log = self.get_object(pk)
+        if not log:
+            return Response(
+                {"error": "Replacement log not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        serializer = ReplacementLogSerializer(log)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        request=ReplacementLogSerializer,
+        responses={200: ReplacementLogSerializer, 400: None, 404: None},
+        description="Update a replacement log",
+    )
+    def put(self, request, pk):
+        """Update replacement log"""
+        log = self.get_object(pk)
+        if not log:
+            return Response(
+                {"error": "Replacement log not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        serializer = ReplacementLogSerializer(log, data=request.data, partial=True)
+        if serializer.is_valid():
+            log = serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @extend_schema(
+        responses={204: None, 404: None},
+        description="Delete a replacement log",
+    )
+    def delete(self, request, pk):
+        """Delete replacement log"""
+        log = self.get_object(pk)
+        if not log:
+            return Response(
+                {"error": "Replacement log not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        log.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@extend_schema(
+    tags=["Asset Management"],
+    responses={200: UserProfileSerializer(many=True)},
+    description="Get list of user profiles for assignment purposes",
+)
+class UserProfileListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        """Get list of user profiles"""
+        profiles = UserProfile.objects.select_related("user").all()
+        serializer = UserProfileSerializer(profiles, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
