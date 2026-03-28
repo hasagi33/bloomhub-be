@@ -10,7 +10,14 @@ from core.constants import (
     REGISTER_EXTRA_KWARGS,
     REGISTER_FIELDS,
 )
-from core.models import Asset, Assignment, ReplacementLog, UserProfile
+from core.models import (
+    Asset,
+    Assignment,
+    ChecklistTemplate,
+    ReplacementLog,
+    TaskTemplate,
+    UserProfile,
+)
 from core.utils import (
     apply_profile_updates_and_save,
     download_and_save_avatar,
@@ -477,3 +484,42 @@ class AssignmentReturnSerializer(serializers.ModelSerializer):
         if not self.instance.is_active:
             raise serializers.ValidationError("This assignment is already returned.")
         return data
+
+
+# ──────────────────────────────────────────
+# Onboarding / Offboarding Serializers
+# ──────────────────────────────────────────
+
+
+class TaskTemplateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TaskTemplate
+        fields = ["id", "title", "order", "role_responsible"]
+
+
+class ChecklistTemplateSerializer(serializers.ModelSerializer):
+    task_templates = TaskTemplateSerializer(many=True, required=False)
+
+    class Meta:
+        model = ChecklistTemplate
+        fields = ["id", "name", "type", "task_templates"]
+
+    def create(self, validated_data):
+        task_templates_data = validated_data.pop("task_templates", [])
+        template = ChecklistTemplate.objects.create(**validated_data)
+        for task_data in task_templates_data:
+            TaskTemplate.objects.create(checklist_template=template, **task_data)
+        return template
+
+    def update(self, instance, validated_data):
+        task_templates_data = validated_data.pop("task_templates", None)
+        instance.name = validated_data.get("name", instance.name)
+        instance.type = validated_data.get("type", instance.type)
+        instance.save()
+
+        if task_templates_data is not None:
+            instance.task_templates.all().delete()
+            for task_data in task_templates_data:
+                TaskTemplate.objects.create(checklist_template=instance, **task_data)
+
+        return instance
