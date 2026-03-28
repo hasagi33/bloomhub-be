@@ -9,7 +9,7 @@ from django.core.files.storage import default_storage
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
-from rest_framework import filters, parsers, status, viewsets
+from rest_framework import filters, parsers, permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -22,7 +22,16 @@ from .constants import (
     EMPLOYEE_PROFILE_ORDERING_FIELDS,
     EMPLOYEE_PROFILE_SEARCH_FIELDS,
 )
-from .models import Asset, Assignment, Permission, ReplacementLog, Role, UserProfile
+from .models import (
+    Asset,
+    Assignment,
+    ChecklistTemplate,
+    Permission,
+    ReplacementLog,
+    Role,
+    TaskTemplate,
+    UserProfile,
+)
 from .permissions import IsHRAdminOrReadOnlyOwnProfile, has_asset_permission
 from .serializers import (
     APIRootResponseSerializer,
@@ -32,6 +41,7 @@ from .serializers import (
     AssignmentReturnSerializer,
     AssignmentSerializer,
     AvatarUploadSerializer,
+    ChecklistTemplateSerializer,
     EmployeeProfileSerializer,
     GoogleExchangeSerializer,
     LoginSerializer,
@@ -1092,3 +1102,62 @@ class UserProfileListView(APIView):
         profiles = UserProfile.objects.select_related("user").all()
         serializer = UserProfileSerializer(profiles, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+# ──────────────────────────────────────────
+# Onboarding / Offboarding Views
+# ──────────────────────────────────────────
+
+
+class IsHROnly(permissions.BasePermission):
+    """Only HR admins can manage checklist templates."""
+
+    def has_permission(self, request, view):
+        if not request.user.is_authenticated:
+            return False
+        if getattr(request.user, "is_staff", False) or getattr(
+            request.user, "is_superuser", False
+        ):
+            return True
+        try:
+            profile = request.user.profile
+            perm = Permission.objects.get(
+                module_name="Employee Profiles", feature_action="view_all_profiles"
+            )
+            return profile.has_permission(perm)
+        except Exception:
+            return False
+
+
+@extend_schema(tags=["Onboarding / Offboarding"])
+class ChecklistTemplateViewSet(viewsets.ModelViewSet):
+    """
+    CRUD endpoints for checklist templates.
+    HR only — create, update, delete, and clone templates.
+    """
+
+    serializer_class = ChecklistTemplateSerializer
+    permission_classes = [IsHROnly]
+    queryset = ChecklistTemplate.objects.prefetch_related("task_templates").all()
+
+    @extend_schema(
+        summary="Clone a checklist template",
+        description="Creates a full copy of an existing template including all its tasks.",
+        responses={201: ChecklistTemplateSerializer},
+    )
+    @action(detail=True, methods=["post"], url_path="clone")
+    def clone(self, request, pk=None):
+        original = self.get_object()
+        cloned = ChecklistTemplate.objects.create(
+            name=f"{original.name} (Copy)",
+            type=original.type,
+        )
+        for task in original.task_templates.all():
+            TaskTemplate.objects.create(
+                checklist_template=cloned,
+                title=task.title,
+                order=task.order,
+                role_responsible=task.role_responsible,
+            )
+        serializer = self.get_serializer(cloned)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)

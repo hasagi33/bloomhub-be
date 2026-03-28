@@ -9,6 +9,7 @@ from .views import (
     AssignmentListView,
     AssignmentReturnView,
     AvatarUploadView,
+    ChecklistTemplateViewSet,
     EmployeeProfileViewSet,
     GoogleExchangeView,
     LoginView,
@@ -26,6 +27,9 @@ app_name = "core"
 
 router = DefaultRouter()
 router.register(r"employees", EmployeeProfileViewSet, basename="employee")
+router.register(
+    r"onboarding/templates", ChecklistTemplateViewSet, basename="checklist-template"
+)
 
 urlpatterns = [
     path("", APIRootView.as_view(), name="api_root"),
