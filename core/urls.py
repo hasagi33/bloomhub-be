@@ -15,6 +15,10 @@ from .views import (
     EmployeeProfileViewSet,
     EmployeeTechLeadsView,
     GoogleExchangeView,
+    LeaveAdjustmentViewSet,
+    LeaveBalanceViewSet,
+    LeavePolicyViewSet,
+    LeaveRequestViewSet,
     LoginView,
     LogoutView,
     PermissionsView,
@@ -36,6 +40,12 @@ router = DefaultRouter()
 router.register(r"employees", EmployeeProfileViewSet, basename="employee")
 router.register(
     r"onboarding/templates", ChecklistTemplateViewSet, basename="checklist-template"
+)
+router.register(r"leave-policies", LeavePolicyViewSet, basename="leave-policy")
+router.register(r"leave-balances", LeaveBalanceViewSet, basename="leave-balance")
+router.register(r"leave-requests", LeaveRequestViewSet, basename="leave-request")
+router.register(
+    r"leave-adjustments", LeaveAdjustmentViewSet, basename="leave-adjustment"
 )
 
 urlpatterns = [

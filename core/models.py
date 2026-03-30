@@ -661,6 +661,294 @@ def save_user_profile(sender, instance, **kwargs):
 
 
 # ──────────────────────────────────────────
+# Leave Management System
+# ──────────────────────────────────────────
+
+
+class LeavePolicy(models.Model):
+    """
+    Defines organizational leave policies for different leave types.
+    """
+
+    class LeaveType(models.TextChoices):
+        VACATION = "vacation", "Vacation"
+        SICK = "sick", "Sick Leave"
+        WFH = "wfh", "Work From Home"
+        PERSONAL = "personal", "Personal"
+        MATERNITY = "maternity", "Maternity"
+        PATERNITY = "paternity", "Paternity"
+        BEREAVEMENT = "bereavement", "Bereavement"
+        UNPAID = "unpaid", "Unpaid Leave"
+
+    leave_type = models.CharField(max_length=20, choices=LeaveType.choices, unique=True)
+    allocated_days_per_year = models.PositiveIntegerField(
+        default=0, help_text="Number of days allocated per year"
+    )
+    carryover_days = models.PositiveIntegerField(
+        default=0, help_text="Maximum days that can be carried over to next year"
+    )
+    requires_approval = models.BooleanField(
+        default=True, help_text="Whether this leave type requires manager approval"
+    )
+    requires_covering_employee = models.BooleanField(
+        default=False, help_text="Whether a covering employee must be assigned"
+    )
+    min_notice_in_days = models.PositiveIntegerField(
+        default=0, help_text="Minimum days notice required before leave start date"
+    )
+    max_consecutive_days = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Maximum consecutive days allowed (optional)",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Leave Policy"
+        verbose_name_plural = "Leave Policies"
+        ordering = ["leave_type"]
+
+    def __str__(self):
+        return f"{self.get_leave_type_display()} Policy ({self.allocated_days_per_year} days/year)"
+
+
+class LeaveBalance(models.Model):
+    """
+    Tracks leave balance for each employee per leave type per year.
+    """
+
+    employee = models.ForeignKey(
+        UserProfile, on_delete=models.CASCADE, related_name="leave_balances"
+    )
+    leave_type = models.CharField(max_length=20, choices=LeavePolicy.LeaveType.choices)
+    allocated = models.PositiveIntegerField(
+        default=0, help_text="Total days allocated for this period"
+    )
+    used = models.PositiveIntegerField(
+        default=0, help_text="Days already used/approved"
+    )
+    carryover = models.PositiveIntegerField(
+        default=0, help_text="Days carried over from previous year"
+    )
+    year = models.PositiveIntegerField(help_text="Calendar year for this balance")
+    last_updated = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Leave Balance"
+        verbose_name_plural = "Leave Balances"
+        unique_together = ("employee", "leave_type", "year")
+        ordering = ["-year", "employee", "leave_type"]
+
+    def __str__(self):
+        return f"{self.employee.user.get_full_name()} - {self.get_leave_type_display()} {self.year} ({self.remaining} days remaining)"
+
+    @property
+    def remaining(self):
+        """Calculate remaining leave days."""
+        return max(0, (self.allocated + self.carryover) - self.used)
+
+
+class LeaveRequest(models.Model):
+    """
+    Represents an employee's leave request.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        APPROVED = "approved", "Approved"
+        REJECTED = "rejected", "Rejected"
+        CANCELLED = "cancelled", "Cancelled"
+
+    employee = models.ForeignKey(
+        UserProfile, on_delete=models.CASCADE, related_name="leave_requests"
+    )
+    leave_type = models.CharField(max_length=20, choices=LeavePolicy.LeaveType.choices)
+    start_date = models.DateField()
+    end_date = models.DateField()
+    reason = models.TextField()
+    status = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.PENDING
+    )
+    covering_employee = models.ForeignKey(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="covering_for",
+        help_text="Employee covering during leave",
+    )
+    submitted_date = models.DateTimeField(auto_now_add=True)
+    approver = models.ForeignKey(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="approved_leaves",
+        help_text="Manager who approved/rejected",
+    )
+    approved_date = models.DateTimeField(null=True, blank=True)
+    approval_comments = models.TextField(blank=True, help_text="Comments from approver")
+    rejection_reason = models.TextField(blank=True, help_text="Reason for rejection")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Leave Request"
+        verbose_name_plural = "Leave Requests"
+        ordering = ["-submitted_date"]
+
+    def __str__(self):
+        return f"{self.employee.user.get_full_name()} - {self.get_leave_type_display()} ({self.start_date} to {self.end_date}) - {self.status}"
+
+    @property
+    def days(self):
+        """Calculate number of working days (excluding weekends)."""
+        if not self.start_date or not self.end_date:
+            return 0
+
+        from datetime import timedelta
+
+        current = self.start_date
+        count = 0
+        while current <= self.end_date:
+            # 0 = Monday, 6 = Sunday
+            if current.weekday() < 5:  # Monday to Friday
+                count += 1
+            current += timedelta(days=1)
+        return count
+
+    def is_overlapping(self, exclude_self=True):
+        """Check if this leave request overlaps with other approved/pending leaves."""
+        overlapping = LeaveRequest.objects.filter(
+            employee=self.employee,
+            start_date__lte=self.end_date,
+            end_date__gte=self.start_date,
+        ).exclude(status__in=[self.Status.REJECTED, self.Status.CANCELLED])
+
+        if exclude_self and self.pk:
+            overlapping = overlapping.exclude(pk=self.pk)
+
+        return overlapping.exists()
+
+
+class LeaveApprovalWorkflow(models.Model):
+    """
+    Manages multi-level approval workflow for leave requests.
+    """
+
+    class WorkflowStatus(models.TextChoices):
+        PENDING = "pending", "Pending"
+        IN_REVIEW = "in_review", "In Review"
+        APPROVED = "approved", "Approved"
+        REJECTED = "rejected", "Rejected"
+
+    leave_request = models.OneToOneField(
+        LeaveRequest, on_delete=models.CASCADE, related_name="approval_workflow"
+    )
+    approval_chain = models.JSONField(
+        default=list,
+        help_text="List of approver user profile IDs in order",
+    )
+    current_step = models.PositiveIntegerField(default=0)
+    current_approver = models.ForeignKey(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="pending_approvals",
+    )
+    status = models.CharField(
+        max_length=20, choices=WorkflowStatus.choices, default=WorkflowStatus.PENDING
+    )
+    comments = models.JSONField(
+        default=list, help_text="List of comments from each approval step"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Leave Approval Workflow"
+        verbose_name_plural = "Leave Approval Workflows"
+
+    def __str__(self):
+        return f"Workflow for {self.leave_request} - Step {self.current_step + 1} of {len(self.approval_chain)}"
+
+    def get_next_approver(self):
+        """Get the next approver in the chain."""
+        if self.current_step < len(self.approval_chain):
+            approver_id = self.approval_chain[self.current_step]
+            try:
+                return UserProfile.objects.get(id=approver_id)
+            except UserProfile.DoesNotExist:
+                return None
+        return None
+
+    def advance_workflow(self, approved, comment=""):
+        """Move workflow to next step or complete it."""
+        if comment:
+            self.comments.append(
+                {
+                    "step": self.current_step,
+                    "approver_id": (
+                        self.current_approver.id if self.current_approver else None
+                    ),
+                    "comment": comment,
+                    "approved": approved,
+                }
+            )
+
+        if not approved:
+            self.status = self.WorkflowStatus.REJECTED
+            self.save()
+            return False
+
+        self.current_step += 1
+
+        if self.current_step >= len(self.approval_chain):
+            # All approvals completed
+            self.status = self.WorkflowStatus.APPROVED
+            self.current_approver = None
+        else:
+            # Move to next approver
+            self.status = self.WorkflowStatus.IN_REVIEW
+            self.current_approver = self.get_next_approver()
+
+        self.save()
+        return True
+
+
+class LeaveAdjustment(models.Model):
+    """
+    Tracks manual adjustments to leave balances by HR/Admin.
+    Provides audit trail for compliance.
+    """
+
+    employee = models.ForeignKey(
+        UserProfile, on_delete=models.CASCADE, related_name="leave_adjustments"
+    )
+    leave_type = models.CharField(max_length=20, choices=LeavePolicy.LeaveType.choices)
+    old_allocated = models.PositiveIntegerField(help_text="Previous allocated days")
+    new_allocated = models.PositiveIntegerField(help_text="New allocated days")
+    reason = models.TextField(help_text="Reason for adjustment")
+    adjusted_by = models.ForeignKey(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="adjustments_made",
+    )
+    adjusted_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Leave Adjustment"
+        verbose_name_plural = "Leave Adjustments"
+        ordering = ["-adjusted_at"]
+
+    def __str__(self):
+        return f"{self.employee.user.get_full_name()} - {self.get_leave_type_display()} adjusted from {self.old_allocated} to {self.new_allocated} days"
+
+
+# ──────────────────────────────────────────
 # Onboarding / Offboarding Tracker
 # ──────────────────────────────────────────
 

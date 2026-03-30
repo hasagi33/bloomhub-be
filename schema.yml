@@ -844,6 +844,659 @@ paths:
           description: No response body
         '403':
           description: No response body
+  /api/leave-adjustments/:
+    get:
+      operationId: leave_adjustments_list
+      description: |-
+        ViewSet for leave adjustments (audit trail).
+        Read-only view of all balance adjustments.
+      parameters:
+      - in: query
+        name: employee
+        schema:
+          type: integer
+      - in: query
+        name: leave_type
+        schema:
+          type: string
+          enum:
+          - bereavement
+          - maternity
+          - paternity
+          - personal
+          - sick
+          - unpaid
+          - vacation
+          - wfh
+        description: |-
+          * `vacation` - Vacation
+          * `sick` - Sick Leave
+          * `wfh` - Work From Home
+          * `personal` - Personal
+          * `maternity` - Maternity
+          * `paternity` - Paternity
+          * `bereavement` - Bereavement
+          * `unpaid` - Unpaid Leave
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      tags:
+      - Leave Management
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LeaveAdjustment'
+          description: ''
+  /api/leave-adjustments/{id}/:
+    get:
+      operationId: leave_adjustments_retrieve
+      description: |-
+        ViewSet for leave adjustments (audit trail).
+        Read-only view of all balance adjustments.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Leave Adjustment.
+        required: true
+      tags:
+      - Leave Management
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveAdjustment'
+          description: ''
+  /api/leave-balances/:
+    get:
+      operationId: leave_balances_list
+      description: |-
+        ViewSet for leave balances.
+        Employees can view their own balances, HR can view all.
+      parameters:
+      - in: query
+        name: leave_type
+        schema:
+          type: string
+          enum:
+          - bereavement
+          - maternity
+          - paternity
+          - personal
+          - sick
+          - unpaid
+          - vacation
+          - wfh
+        description: |-
+          * `vacation` - Vacation
+          * `sick` - Sick Leave
+          * `wfh` - Work From Home
+          * `personal` - Personal
+          * `maternity` - Maternity
+          * `paternity` - Paternity
+          * `bereavement` - Bereavement
+          * `unpaid` - Unpaid Leave
+      - in: query
+        name: year
+        schema:
+          type: integer
+      tags:
+      - Leave Management
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LeaveBalance'
+          description: ''
+  /api/leave-balances/{id}/:
+    get:
+      operationId: leave_balances_retrieve
+      description: |-
+        ViewSet for leave balances.
+        Employees can view their own balances, HR can view all.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Leave Balance.
+        required: true
+      tags:
+      - Leave Management
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveBalance'
+          description: ''
+  /api/leave-balances/{id}/adjust/:
+    post:
+      operationId: leave_balances_adjust_create
+      description: Adjust leave balance (admin only).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Leave Balance.
+        required: true
+      tags:
+      - Leave Management
+      requestBody:
+        content:
+          employee_id:
+            schema:
+              type: integer
+          leave_type:
+            schema:
+              type: string
+          allocated:
+            schema:
+              type: integer
+          reason:
+            schema:
+              type: string
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveBalance'
+          description: ''
+  /api/leave-policies/:
+    get:
+      operationId: leave_policies_list
+      description: |-
+        ViewSet for leave policies (read-only).
+        Lists organizational leave policies.
+      parameters:
+      - in: query
+        name: leave_type
+        schema:
+          type: string
+          enum:
+          - bereavement
+          - maternity
+          - paternity
+          - personal
+          - sick
+          - unpaid
+          - vacation
+          - wfh
+        description: |-
+          * `vacation` - Vacation
+          * `sick` - Sick Leave
+          * `wfh` - Work From Home
+          * `personal` - Personal
+          * `maternity` - Maternity
+          * `paternity` - Paternity
+          * `bereavement` - Bereavement
+          * `unpaid` - Unpaid Leave
+      - in: query
+        name: requires_approval
+        schema:
+          type: boolean
+      tags:
+      - Leave Management
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LeavePolicy'
+          description: ''
+  /api/leave-policies/{id}/:
+    get:
+      operationId: leave_policies_retrieve
+      description: |-
+        ViewSet for leave policies (read-only).
+        Lists organizational leave policies.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Leave Policy.
+        required: true
+      tags:
+      - Leave Management
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeavePolicy'
+          description: ''
+  /api/leave-requests/:
+    get:
+      operationId: leave_requests_list
+      description: |-
+        ViewSet for leave requests.
+        Employees can create and view their own, managers can approve/reject.
+      parameters:
+      - in: query
+        name: employee
+        schema:
+          type: integer
+      - in: query
+        name: leave_type
+        schema:
+          type: string
+          enum:
+          - bereavement
+          - maternity
+          - paternity
+          - personal
+          - sick
+          - unpaid
+          - vacation
+          - wfh
+        description: |-
+          * `vacation` - Vacation
+          * `sick` - Sick Leave
+          * `wfh` - Work From Home
+          * `personal` - Personal
+          * `maternity` - Maternity
+          * `paternity` - Paternity
+          * `bereavement` - Bereavement
+          * `unpaid` - Unpaid Leave
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - in: query
+        name: status
+        schema:
+          type: string
+          enum:
+          - approved
+          - cancelled
+          - pending
+          - rejected
+        description: |-
+          * `pending` - Pending
+          * `approved` - Approved
+          * `rejected` - Rejected
+          * `cancelled` - Cancelled
+      tags:
+      - Leave Management
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LeaveRequestList'
+          description: ''
+    post:
+      operationId: leave_requests_create
+      description: Create a leave request and return the full object.
+      tags:
+      - Leave Management
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeaveRequestCreateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/LeaveRequestCreateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LeaveRequestCreateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveRequestCreate'
+          description: ''
+  /api/leave-requests/{id}/:
+    get:
+      operationId: leave_requests_retrieve
+      description: |-
+        ViewSet for leave requests.
+        Employees can create and view their own, managers can approve/reject.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Leave Request.
+        required: true
+      tags:
+      - Leave Management
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveRequestDetail'
+          description: ''
+    put:
+      operationId: leave_requests_update
+      description: |-
+        ViewSet for leave requests.
+        Employees can create and view their own, managers can approve/reject.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Leave Request.
+        required: true
+      tags:
+      - Leave Management
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeaveRequestListRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/LeaveRequestListRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LeaveRequestListRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveRequestList'
+          description: ''
+    patch:
+      operationId: leave_requests_partial_update
+      description: |-
+        ViewSet for leave requests.
+        Employees can create and view their own, managers can approve/reject.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Leave Request.
+        required: true
+      tags:
+      - Leave Management
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedLeaveRequestListRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedLeaveRequestListRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedLeaveRequestListRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveRequestList'
+          description: ''
+    delete:
+      operationId: leave_requests_destroy
+      description: |-
+        ViewSet for leave requests.
+        Employees can create and view their own, managers can approve/reject.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Leave Request.
+        required: true
+      tags:
+      - Leave Management
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/leave-requests/{id}/approve/:
+    post:
+      operationId: leave_requests_approve_create
+      description: Approve a leave request.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Leave Request.
+        required: true
+      tags:
+      - Leave Management
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeaveRequestApproveRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/LeaveRequestApproveRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LeaveRequestApproveRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveRequestDetail'
+          description: ''
+  /api/leave-requests/{id}/cancel/:
+    post:
+      operationId: leave_requests_cancel_create
+      description: Cancel own leave request.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Leave Request.
+        required: true
+      tags:
+      - Leave Management
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeaveRequestListRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/LeaveRequestListRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LeaveRequestListRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveRequestDetail'
+          description: ''
+  /api/leave-requests/{id}/reject/:
+    post:
+      operationId: leave_requests_reject_create
+      description: Reject a leave request.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Leave Request.
+        required: true
+      tags:
+      - Leave Management
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeaveRequestRejectRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/LeaveRequestRejectRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LeaveRequestRejectRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveRequestDetail'
+          description: ''
+  /api/leave-requests/pending/:
+    get:
+      operationId: leave_requests_pending_list
+      description: Get pending leave requests for manager approval.
+      parameters:
+      - in: query
+        name: employee
+        schema:
+          type: integer
+      - in: query
+        name: leave_type
+        schema:
+          type: string
+          enum:
+          - bereavement
+          - maternity
+          - paternity
+          - personal
+          - sick
+          - unpaid
+          - vacation
+          - wfh
+        description: |-
+          * `vacation` - Vacation
+          * `sick` - Sick Leave
+          * `wfh` - Work From Home
+          * `personal` - Personal
+          * `maternity` - Maternity
+          * `paternity` - Paternity
+          * `bereavement` - Bereavement
+          * `unpaid` - Unpaid Leave
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - in: query
+        name: status
+        schema:
+          type: string
+          enum:
+          - approved
+          - cancelled
+          - pending
+          - rejected
+        description: |-
+          * `pending` - Pending
+          * `approved` - Approved
+          * `rejected` - Rejected
+          * `cancelled` - Cancelled
+      tags:
+      - Leave Management
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LeaveRequestList'
+          description: ''
+  /api/leave-requests/team-calendar/:
+    get:
+      operationId: leave_requests_team_calendar_retrieve
+      description: Get approved leave requests for team calendar view.
+      tags:
+      - Leave Management
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                    employeeId:
+                      type: string
+                    employeeName:
+                      type: string
+                    leaveType:
+                      type: string
+                    startDate:
+                      type: string
+                    endDate:
+                      type: string
+                    status:
+                      type: string
+          description: ''
   /api/replacement-logs/:
     get:
       operationId: replacement_logs_list
@@ -1588,6 +2241,421 @@ components:
           minLength: 1
       required:
       - id_token
+    LeaveAdjustment:
+      type: object
+      description: Serializer for leave adjustments.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        employee_id:
+          type: integer
+          readOnly: true
+        employee_name:
+          type: string
+          readOnly: true
+        leave_type:
+          $ref: '#/components/schemas/LeaveTypeEnum'
+        leave_type_display:
+          type: string
+          readOnly: true
+        old_allocated:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+          description: Previous allocated days
+        new_allocated:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+          description: New allocated days
+        reason:
+          type: string
+          description: Reason for adjustment
+        adjusted_by_id:
+          type: integer
+          readOnly: true
+          nullable: true
+        adjusted_by_name:
+          type: string
+          readOnly: true
+          nullable: true
+        adjusted_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - adjusted_at
+      - adjusted_by_id
+      - adjusted_by_name
+      - employee_id
+      - employee_name
+      - id
+      - leave_type
+      - leave_type_display
+      - new_allocated
+      - old_allocated
+      - reason
+    LeaveBalance:
+      type: object
+      description: Serializer for LeaveBalance model.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        employee_id:
+          type: integer
+          readOnly: true
+        employee_name:
+          type: string
+          readOnly: true
+        leave_type:
+          $ref: '#/components/schemas/LeaveTypeEnum'
+        leave_type_display:
+          type: string
+          readOnly: true
+        allocated:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+          description: Total days allocated for this period
+        used:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+          description: Days already used/approved
+        remaining:
+          type: string
+          readOnly: true
+        carryover:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+          description: Days carried over from previous year
+        year:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+          description: Calendar year for this balance
+        last_updated:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - employee_id
+      - employee_name
+      - id
+      - last_updated
+      - leave_type
+      - leave_type_display
+      - remaining
+      - year
+    LeavePolicy:
+      type: object
+      description: Serializer for LeavePolicy model.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        leave_type:
+          $ref: '#/components/schemas/LeaveTypeEnum'
+        leave_type_display:
+          type: string
+          readOnly: true
+        allocated_days_per_year:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+          description: Number of days allocated per year
+        carryover_days:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+          description: Maximum days that can be carried over to next year
+        requires_approval:
+          type: boolean
+          description: Whether this leave type requires manager approval
+        requires_covering_employee:
+          type: boolean
+          description: Whether a covering employee must be assigned
+        min_notice_in_days:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+          description: Minimum days notice required before leave start date
+        max_consecutive_days:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+          nullable: true
+          description: Maximum consecutive days allowed (optional)
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - id
+      - leave_type
+      - leave_type_display
+      - updated_at
+    LeaveRequestApproveRequest:
+      type: object
+      description: Serializer for approving leave requests.
+      properties:
+        comments:
+          type: string
+    LeaveRequestCreate:
+      type: object
+      description: Serializer for creating leave requests with validation.
+      properties:
+        leave_type:
+          $ref: '#/components/schemas/LeaveTypeEnum'
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        reason:
+          type: string
+        covering_employee_id:
+          type: integer
+          nullable: true
+      required:
+      - end_date
+      - leave_type
+      - reason
+      - start_date
+    LeaveRequestCreateRequest:
+      type: object
+      description: Serializer for creating leave requests with validation.
+      properties:
+        leave_type:
+          $ref: '#/components/schemas/LeaveTypeEnum'
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        reason:
+          type: string
+          minLength: 1
+        covering_employee_id:
+          type: integer
+          nullable: true
+      required:
+      - end_date
+      - leave_type
+      - reason
+      - start_date
+    LeaveRequestDetail:
+      type: object
+      description: Detailed serializer for leave request with all information.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        employee_id:
+          type: integer
+          readOnly: true
+        employee_name:
+          type: string
+          readOnly: true
+        employee_avatar:
+          type: string
+          readOnly: true
+        leave_type:
+          $ref: '#/components/schemas/LeaveTypeEnum'
+        leave_type_display:
+          type: string
+          readOnly: true
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        days:
+          type: string
+          readOnly: true
+        reason:
+          type: string
+        status:
+          $ref: '#/components/schemas/StatusB39Enum'
+        status_display:
+          type: string
+          readOnly: true
+        covering_employee_id:
+          type: integer
+          readOnly: true
+          nullable: true
+        covering_employee_name:
+          type: string
+          readOnly: true
+          nullable: true
+        submitted_date:
+          type: string
+          format: date-time
+          readOnly: true
+        approver_id:
+          type: integer
+          readOnly: true
+          nullable: true
+        approver_name:
+          type: string
+          readOnly: true
+          nullable: true
+        approved_date:
+          type: string
+          format: date-time
+          nullable: true
+        approval_comments:
+          type: string
+          description: Comments from approver
+        rejection_reason:
+          type: string
+          description: Reason for rejection
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - approver_id
+      - approver_name
+      - covering_employee_id
+      - covering_employee_name
+      - created_at
+      - days
+      - employee_avatar
+      - employee_id
+      - employee_name
+      - end_date
+      - id
+      - leave_type
+      - leave_type_display
+      - reason
+      - start_date
+      - status_display
+      - submitted_date
+      - updated_at
+    LeaveRequestList:
+      type: object
+      description: Minimal serializer for listing leave requests.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        employee_id:
+          type: integer
+          readOnly: true
+        employee_name:
+          type: string
+          readOnly: true
+        employee_avatar:
+          type: string
+          readOnly: true
+        leave_type:
+          $ref: '#/components/schemas/LeaveTypeEnum'
+        leave_type_display:
+          type: string
+          readOnly: true
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        days:
+          type: string
+          readOnly: true
+        status:
+          $ref: '#/components/schemas/StatusB39Enum'
+        status_display:
+          type: string
+          readOnly: true
+        submitted_date:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - days
+      - employee_avatar
+      - employee_id
+      - employee_name
+      - end_date
+      - id
+      - leave_type
+      - leave_type_display
+      - start_date
+      - status_display
+      - submitted_date
+    LeaveRequestListRequest:
+      type: object
+      description: Minimal serializer for listing leave requests.
+      properties:
+        leave_type:
+          $ref: '#/components/schemas/LeaveTypeEnum'
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        status:
+          $ref: '#/components/schemas/StatusB39Enum'
+      required:
+      - end_date
+      - leave_type
+      - start_date
+    LeaveRequestRejectRequest:
+      type: object
+      description: Serializer for rejecting leave requests.
+      properties:
+        reason:
+          type: string
+          minLength: 1
+      required:
+      - reason
+    LeaveTypeEnum:
+      enum:
+      - vacation
+      - sick
+      - wfh
+      - personal
+      - maternity
+      - paternity
+      - bereavement
+      - unpaid
+      type: string
+      description: |-
+        * `vacation` - Vacation
+        * `sick` - Sick Leave
+        * `wfh` - Work From Home
+        * `personal` - Personal
+        * `maternity` - Maternity
+        * `paternity` - Paternity
+        * `bereavement` - Bereavement
+        * `unpaid` - Unpaid Leave
     LoginRequest:
       type: object
       properties:
@@ -1658,6 +2726,20 @@ components:
           type: string
           format: binary
           nullable: true
+    PatchedLeaveRequestListRequest:
+      type: object
+      description: Minimal serializer for listing leave requests.
+      properties:
+        leave_type:
+          $ref: '#/components/schemas/LeaveTypeEnum'
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        status:
+          $ref: '#/components/schemas/StatusB39Enum'
     RegisterRequest:
       type: object
       properties:
@@ -1781,6 +2863,18 @@ components:
       required:
       - asset
       - reason
+    StatusB39Enum:
+      enum:
+      - pending
+      - approved
+      - rejected
+      - cancelled
+      type: string
+      description: |-
+        * `pending` - Pending
+        * `approved` - Approved
+        * `rejected` - Rejected
+        * `cancelled` - Cancelled
     StatusEnum:
       enum:
       - active

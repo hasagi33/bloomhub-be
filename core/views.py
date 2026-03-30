@@ -7,6 +7,7 @@ from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
+from django.db import models
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
@@ -26,6 +27,10 @@ from .constants import (
 from .models import (
     Asset,
     Assignment,
+    LeaveAdjustment,
+    LeaveBalance,
+    LeavePolicy,
+    LeaveRequest,
     ChecklistTemplate,
     CPFLevel,
     Department,
@@ -37,7 +42,12 @@ from .models import (
     TaskTemplate,
     UserProfile,
 )
-from .permissions import IsHRAdminOrReadOnlyOwnProfile, has_asset_permission
+from .permissions import (
+    IsEmployeeOrHR,
+    IsHRAdminForAdjustment,
+    IsHRAdminOrReadOnlyOwnProfile, has_asset_permission,
+    IsManagerForApproval,
+)
 from .serializers import (
     APIRootResponseSerializer,
     AssetCreateSerializer,
@@ -49,6 +59,14 @@ from .serializers import (
     ChecklistTemplateSerializer,
     EmployeeProfileSerializer,
     GoogleExchangeSerializer,
+    LeaveAdjustmentSerializer,
+    LeaveBalanceSerializer,
+    LeavePolicySerializer,
+    LeaveRequestApproveSerializer,
+    LeaveRequestCreateSerializer,
+    LeaveRequestDetailSerializer,
+    LeaveRequestListSerializer,
+    LeaveRequestRejectSerializer,
     LoginSerializer,
     RegisterSerializer,
     ReplacementLogSerializer,
@@ -1591,3 +1609,386 @@ class ChecklistTemplateViewSet(viewsets.ModelViewSet):
             )
         serializer = self.get_serializer(cloned)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+# ──────────────────────────────────────────
+# Leave Management Views
+# ──────────────────────────────────────────
+
+
+@extend_schema(tags=["Leave Management"])
+class LeavePolicyViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    ViewSet for leave policies (read-only).
+    Lists organizational leave policies.
+    """
+
+    queryset = LeavePolicy.objects.all()
+    serializer_class = LeavePolicySerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ["leave_type", "requires_approval"]
+
+
+@extend_schema(tags=["Leave Management"])
+class LeaveBalanceViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    ViewSet for leave balances.
+    Employees can view their own balances, HR can view all.
+    """
+
+    serializer_class = LeaveBalanceSerializer
+    permission_classes = [IsAuthenticated, IsEmployeeOrHR]
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ["leave_type", "year"]
+
+    def get_queryset(self):
+        """Filter balances based on user permissions."""
+        user = self.request.user
+
+        # HR admins can see all balances
+        if user.is_staff or user.is_superuser:
+            return LeaveBalance.objects.all().select_related("employee__user")
+
+        # Regular employees see only their own
+        try:
+            return LeaveBalance.objects.filter(employee=user.profile).select_related(
+                "employee__user"
+            )
+        except Exception:
+            return LeaveBalance.objects.none()
+
+    @extend_schema(
+        request={
+            "employee_id": int,
+            "leave_type": str,
+            "allocated": int,
+            "reason": str,
+        },
+        responses={200: LeaveBalanceSerializer},
+    )
+    @action(
+        detail=True,
+        methods=["post"],
+        permission_classes=[IsAuthenticated, IsHRAdminForAdjustment],
+    )
+    def adjust(self, request, pk=None):
+        """Adjust leave balance (admin only)."""
+
+        from core.services.leave_service import adjust_leave_balance
+
+        balance = self.get_object()
+        new_allocated = request.data.get("allocated")
+        reason = request.data.get("reason", "Manual adjustment")
+
+        if new_allocated is None:
+            return Response(
+                {"error": "allocated field is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            new_allocated = int(new_allocated)
+        except (ValueError, TypeError):
+            return Response(
+                {"error": "allocated must be a valid integer"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Use service to adjust
+        success, error, updated_balance = adjust_leave_balance(
+            employee=balance.employee,
+            leave_type=balance.leave_type,
+            new_allocated=new_allocated,
+            reason=reason,
+            adjusted_by=request.user.profile,
+            year=balance.year,
+        )
+
+        if not success:
+            return Response({"error": error}, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = self.get_serializer(updated_balance)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+@extend_schema(tags=["Leave Management"])
+class LeaveRequestViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for leave requests.
+    Employees can create and view their own, managers can approve/reject.
+    """
+
+    permission_classes = [IsAuthenticated, IsEmployeeOrHR]
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ["status", "leave_type", "employee"]
+    ordering_fields = ["submitted_date", "start_date"]
+    ordering = ["-submitted_date"]
+
+    def get_queryset(self):
+        """Filter requests based on user permissions."""
+        user = self.request.user
+
+        # HR admins can see all requests
+        if user.is_staff or user.is_superuser:
+            return LeaveRequest.objects.all().select_related(
+                "employee__user",
+                "covering_employee__user",
+                "approver__user",
+            )
+
+        # Regular employees see only their own and their team's
+        try:
+            profile = user.profile
+            # Get own requests and requests from direct reports
+            own_requests = LeaveRequest.objects.filter(employee=profile)
+            team_requests = LeaveRequest.objects.filter(employee__manager=profile)
+            return (
+                (own_requests | team_requests)
+                .distinct()
+                .select_related(
+                    "employee__user",
+                    "covering_employee__user",
+                    "approver__user",
+                )
+            )
+        except Exception:
+            return LeaveRequest.objects.none()
+
+    def get_serializer_class(self):
+        """Use different serializers for different actions."""
+        if self.action == "create":
+            return LeaveRequestCreateSerializer
+        elif self.action in ["retrieve"]:
+            return LeaveRequestDetailSerializer
+        return LeaveRequestListSerializer
+
+    def create(self, request, *args, **kwargs):
+        """Create a leave request and return the full object."""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        instance = serializer.save()
+        # Return full details using the list serializer
+        response_serializer = LeaveRequestListSerializer(instance)
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+
+    def perform_create(self, serializer):
+        """Save the leave request with the current user as employee."""
+        serializer.save()
+
+    @extend_schema(
+        request=LeaveRequestApproveSerializer,
+        responses={200: LeaveRequestDetailSerializer},
+    )
+    @action(
+        detail=True,
+        methods=["post"],
+        permission_classes=[IsAuthenticated, IsManagerForApproval],
+    )
+    def approve(self, request, pk=None):
+        """Approve a leave request."""
+        from core.services.leave_service import approve_leave_request
+
+        leave_request = self.get_object()
+        serializer = LeaveRequestApproveSerializer(
+            data=request.data, context={"leave_request": leave_request}
+        )
+
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        comments = serializer.validated_data.get("comments", "")
+
+        # Use service to approve
+        success, error = approve_leave_request(
+            leave_request=leave_request,
+            approver=request.user.profile,
+            comments=comments,
+        )
+
+        if not success:
+            return Response({"error": error}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Return updated request
+        response_serializer = LeaveRequestDetailSerializer(leave_request)
+        return Response(response_serializer.data, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        request=LeaveRequestRejectSerializer,
+        responses={200: LeaveRequestDetailSerializer},
+    )
+    @action(
+        detail=True,
+        methods=["post"],
+        permission_classes=[IsAuthenticated, IsManagerForApproval],
+    )
+    def reject(self, request, pk=None):
+        """Reject a leave request."""
+        from core.services.leave_service import reject_leave_request
+
+        leave_request = self.get_object()
+        serializer = LeaveRequestRejectSerializer(
+            data=request.data, context={"leave_request": leave_request}
+        )
+
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        reason = serializer.validated_data.get("reason")
+
+        # Use service to reject
+        success, error = reject_leave_request(
+            leave_request=leave_request,
+            approver=request.user.profile,
+            reason=reason,
+        )
+
+        if not success:
+            return Response({"error": error}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Return updated request
+        response_serializer = LeaveRequestDetailSerializer(leave_request)
+        return Response(response_serializer.data, status=status.HTTP_200_OK)
+
+    @extend_schema(responses={200: LeaveRequestDetailSerializer})
+    @action(detail=True, methods=["post"])
+    def cancel(self, request, pk=None):
+        """Cancel own leave request."""
+        from core.services.leave_service import cancel_leave_request
+
+        leave_request = self.get_object()
+
+        # Only owner can cancel
+        if leave_request.employee.user != request.user:
+            return Response(
+                {"error": "You can only cancel your own requests"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        # Use service to cancel
+        success, error = cancel_leave_request(leave_request)
+
+        if not success:
+            return Response({"error": error}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Return updated request
+        response_serializer = LeaveRequestDetailSerializer(leave_request)
+        return Response(response_serializer.data, status=status.HTTP_200_OK)
+
+    @extend_schema(responses={200: LeaveRequestListSerializer(many=True)})
+    @action(
+        detail=False,
+        methods=["get"],
+        permission_classes=[IsAuthenticated, IsManagerForApproval],
+    )
+    def pending(self, request):
+        """Get pending leave requests for manager approval."""
+        user = request.user
+
+        # HR admins see all pending
+        if user.is_staff or user.is_superuser:
+            pending_requests = LeaveRequest.objects.filter(
+                status=LeaveRequest.Status.PENDING
+            )
+        else:
+            # Managers see their team's pending requests
+            try:
+                pending_requests = LeaveRequest.objects.filter(
+                    employee__manager=user.profile, status=LeaveRequest.Status.PENDING
+                )
+            except Exception:
+                pending_requests = LeaveRequest.objects.none()
+
+        pending_requests = pending_requests.select_related(
+            "employee__user",
+            "covering_employee__user",
+        ).order_by("-submitted_date")
+
+        serializer = LeaveRequestListSerializer(pending_requests, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        responses={
+            200: {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "employeeId": {"type": "string"},
+                        "employeeName": {"type": "string"},
+                        "leaveType": {"type": "string"},
+                        "startDate": {"type": "string"},
+                        "endDate": {"type": "string"},
+                        "status": {"type": "string"},
+                    },
+                },
+            }
+        }
+    )
+    @action(detail=False, methods=["get"], url_path="team-calendar")
+    def team_calendar(self, request):
+        """Get approved leave requests for team calendar view."""
+
+        user = request.user
+
+        # Get date range from query params (optional)
+        start_date = request.query_params.get("start_date")
+        end_date = request.query_params.get("end_date")
+
+        # HR admins see all approved leaves
+        if user.is_staff or user.is_superuser:
+            requests = LeaveRequest.objects.filter(status=LeaveRequest.Status.APPROVED)
+        else:
+            # Employees see their own and their team's approved leaves
+            try:
+                profile = user.profile
+                requests = LeaveRequest.objects.filter(
+                    status=LeaveRequest.Status.APPROVED
+                ).filter(
+                    models.Q(employee=profile) | models.Q(employee__manager=profile)
+                )
+            except Exception:
+                requests = LeaveRequest.objects.none()
+
+        # Apply date filtering if provided
+        if start_date:
+            requests = requests.filter(end_date__gte=start_date)
+        if end_date:
+            requests = requests.filter(start_date__lte=end_date)
+
+        requests = requests.select_related("employee__user").order_by("start_date")
+
+        # Format for calendar
+        calendar_events = []
+        for req in requests:
+            calendar_events.append(
+                {
+                    "id": str(req.id),
+                    "employeeId": str(req.employee.id),
+                    "employeeName": req.employee.user.get_full_name(),
+                    "leaveType": req.leave_type,
+                    "startDate": req.start_date.isoformat(),
+                    "endDate": req.end_date.isoformat(),
+                    "status": req.status,
+                }
+            )
+
+        return Response(calendar_events, status=status.HTTP_200_OK)
+
+
+@extend_schema(tags=["Leave Management"])
+class LeaveAdjustmentViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    ViewSet for leave adjustments (audit trail).
+    Read-only view of all balance adjustments.
+    """
+
+    queryset = LeaveAdjustment.objects.all().select_related(
+        "employee__user", "adjusted_by__user"
+    )
+    serializer_class = LeaveAdjustmentSerializer
+    permission_classes = [IsAuthenticated, IsHRAdminForAdjustment]
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ["employee", "leave_type"]
+    ordering = ["-adjusted_at"]
