@@ -1,6 +1,8 @@
 from django.contrib.auth.models import User
 from django.core.management import call_command
 from django.test import TestCase
+from rest_framework import status
+from rest_framework.test import APITestCase
 
 from core.models import (
     ChecklistInstance,
@@ -76,3 +78,82 @@ class OnboardingModelTestCase(TestCase):
             type=ChecklistTemplate.Type.OFFBOARDING,
         )
         self.assertEqual(offboarding.type, ChecklistTemplate.Type.OFFBOARDING)
+
+
+class ChecklistTemplateAPITestCase(APITestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        from django.core.management import call_command
+
+        call_command("setup_public_tenant", "--domain", "testserver", verbosity=0)
+
+    def setUp(self):
+        # HR user
+        self.hr_user = User.objects.create_user(
+            username="hr", email="hr@test.com", password="pass"
+        )
+        self.hr_user.is_staff = True
+        self.hr_user.save()
+
+        # Regular user
+        self.regular_user = User.objects.create_user(
+            username="regular", email="regular@test.com", password="pass"
+        )
+
+        # A template for testing
+        self.template = ChecklistTemplate.objects.create(
+            name="IT Onboarding",
+            type=ChecklistTemplate.Type.ONBOARDING,
+        )
+        TaskTemplate.objects.create(
+            checklist_template=self.template,
+            title="Set up laptop",
+            order=1,
+            role_responsible=TaskTemplate.Role.IT,
+        )
+
+    def test_hr_can_list_templates(self):
+        self.client.force_authenticate(user=self.hr_user)
+        res = self.client.get("/api/onboarding/templates/")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+    def test_hr_can_create_template(self):
+        self.client.force_authenticate(user=self.hr_user)
+        data = {
+            "name": "HR Offboarding",
+            "type": "offboarding",
+            "task_templates": [
+                {"title": "Exit interview", "order": 1, "role_responsible": "HR"}
+            ],
+        }
+        res = self.client.post("/api/onboarding/templates/", data, format="json")
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(res.data["name"], "HR Offboarding")
+        self.assertEqual(len(res.data["task_templates"]), 1)
+
+    def test_hr_can_update_template(self):
+        self.client.force_authenticate(user=self.hr_user)
+        data = {"name": "Updated IT Onboarding", "type": "onboarding"}
+        res = self.client.patch(
+            f"/api/onboarding/templates/{self.template.id}/", data, format="json"
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data["name"], "Updated IT Onboarding")
+
+    def test_hr_can_delete_template(self):
+        self.client.force_authenticate(user=self.hr_user)
+        res = self.client.delete(f"/api/onboarding/templates/{self.template.id}/")
+        self.assertEqual(res.status_code, status.HTTP_204_NO_CONTENT)
+
+    def test_hr_can_clone_template(self):
+        self.client.force_authenticate(user=self.hr_user)
+        res = self.client.post(f"/api/onboarding/templates/{self.template.id}/clone/")
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(res.data["name"], "IT Onboarding (Copy)")
+        self.assertEqual(len(res.data["task_templates"]), 1)
+
+    def test_regular_user_cannot_access_templates(self):
+        self.client.force_authenticate(user=self.regular_user)
+        res = self.client.get("/api/onboarding/templates/")
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
