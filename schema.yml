@@ -231,7 +231,8 @@ paths:
           description: ''
     post:
       operationId: assignments_create
-      description: Create a new assignment
+      description: Create a new assignment (HR / designated roles only). `assigned_by`
+        is set automatically to the authenticated user.
       parameters:
       - in: query
         name: active
@@ -272,6 +273,8 @@ paths:
                 $ref: '#/components/schemas/Assignment'
           description: ''
         '400':
+          description: No response body
+        '403':
           description: No response body
   /api/assignments/{id}/:
     get:
@@ -529,12 +532,6 @@ paths:
       requestBody:
         content:
           application/json:
-            schema:
-              $ref: '#/components/schemas/RegisterRequest'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/RegisterRequest'
-          multipart/form-data:
             schema:
               $ref: '#/components/schemas/RegisterRequest'
         required: true
@@ -1350,10 +1347,6 @@ components:
         employee:
           type: integer
           description: Employee receiving the asset
-        assigned_by:
-          type: integer
-          nullable: true
-          description: Who made the assignment
         notes:
           type: string
           nullable: true
@@ -1497,10 +1490,10 @@ components:
           type: string
           format: date
           nullable: true
-        phone_number:
+        emergency_contact_phone:
           type: string
           nullable: true
-          maxLength: 15
+          maxLength: 30
         address:
           type: string
           nullable: true
@@ -1564,10 +1557,10 @@ components:
           type: string
           format: date
           nullable: true
-        phone_number:
+        emergency_contact_phone:
           type: string
           nullable: true
-          maxLength: 15
+          maxLength: 30
         address:
           type: string
           nullable: true
@@ -1652,10 +1645,10 @@ components:
           type: string
           format: date
           nullable: true
-        phone_number:
+        emergency_contact_phone:
           type: string
           nullable: true
-          maxLength: 15
+          maxLength: 30
         address:
           type: string
           nullable: true
@@ -1900,10 +1893,10 @@ components:
           type: string
           format: date
           nullable: true
-        phone_number:
+        emergency_contact_phone:
           type: string
           nullable: true
-          maxLength: 15
+          maxLength: 30
         career_level:
           type: string
           nullable: true
@@ -1927,10 +1920,10 @@ components:
           type: string
           format: date
           nullable: true
-        phone_number:
+        emergency_contact_phone:
           type: string
           nullable: true
-          maxLength: 15
+          maxLength: 30
         career_level:
           type: string
           nullable: true

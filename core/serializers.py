@@ -292,7 +292,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "employee_id",
             "department",
             "hire_date",
-            "phone_number",
+            "emergency_contact_phone",
             "career_level",
         ]
 
@@ -455,6 +455,7 @@ class AssignmentCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Assignment
         fields = ["asset", "employee", "assigned_by", "notes"]
+        read_only_fields = ["assigned_by"]
 
     def validate_asset(self, value):
         """Validate that asset is available for assignment"""

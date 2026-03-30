@@ -30,7 +30,7 @@ EMPLOYEE_PROFILE_FIELDS = [
     "manager",
     "manager_name",
     "start_date",
-    "phone_number",
+    "emergency_contact_phone",  # was 'phone_number'
     "address",
     "employment_status",
     "avatar",
