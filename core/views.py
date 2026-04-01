@@ -1136,6 +1136,8 @@ class IsHROnly(permissions.BasePermission):
                 return True
 
         return False
+
+
 @extend_schema(tags=["Onboarding / Offboarding"])
 class ChecklistTemplateViewSet(viewsets.ModelViewSet):
     """
