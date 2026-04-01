@@ -1119,16 +1119,23 @@ class IsHROnly(permissions.BasePermission):
             request.user, "is_superuser", False
         ):
             return True
+
+        # Fall back to onboarding-specific permissions for non-staff, non-superusers
         try:
             profile = request.user.profile
-            perm = Permission.objects.get(
-                module_name="Employee Profiles", feature_action="view_all_profiles"
-            )
-            return profile.has_permission(perm)
-        except Exception:
+        except (AttributeError, UserProfile.DoesNotExist):
             return False
 
+        onboarding_perms = Permission.objects.filter(
+            module_name="Onboarding",
+            feature_action__in=["create_checklist_templates", "configure_templates"],
+        )
 
+        for perm in onboarding_perms:
+            if profile.has_permission(perm):
+                return True
+
+        return False
 @extend_schema(tags=["Onboarding / Offboarding"])
 class ChecklistTemplateViewSet(viewsets.ModelViewSet):
     """
