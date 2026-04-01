@@ -299,6 +299,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "employee_id",
             "department",
             "hire_date",
+            "phone_number",
             "emergency_contact_phone",
             "career_level",
         ]
