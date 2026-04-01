@@ -923,7 +923,7 @@ class AssignmentDetailView(APIView):
 @extend_schema(
     tags=["Asset Management"],
     request=AssignmentReturnSerializer,
-    responses={200: AssignmentSerializer, 400: None, 404: None},
+    responses={200: AssignmentSerializer, 400: None, 403: None, 404: None},
     description="Return an assigned asset",
 )
 class AssignmentReturnView(APIView):
@@ -938,7 +938,7 @@ class AssignmentReturnView(APIView):
 
     @extend_schema(
         request=AssignmentReturnSerializer,
-        responses={200: AssignmentSerializer, 400: None, 404: None},
+        responses={200: AssignmentSerializer, 400: None, 403: None, 404: None},
         description="Return an assigned asset (mark as returned and set condition)",
     )
     def post(self, request, pk):
