@@ -90,6 +90,8 @@ class UserSerializer(serializers.ModelSerializer):
             "last_name",
             "avatar_url",
             "career_level",
+            "is_staff",
+            "is_superuser",
         ]
 
     def get_avatar_url(self, obj: User) -> str | None:
