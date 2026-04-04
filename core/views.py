@@ -32,7 +32,7 @@ from .models import (
     TaskTemplate,
     UserProfile,
 )
-from .permissions import IsHRAdminOrReadOnlyOwnProfile
+from .permissions import IsHRAdminOrReadOnlyOwnProfile, has_asset_permission
 from .serializers import (
     APIRootResponseSerializer,
     AssetCreateSerializer,
@@ -632,10 +632,36 @@ class AssetListView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        """Get list of assets with optional filtering"""
-        assets = Asset.objects.all()
+        """Get list of assets with optional filtering, scoped by visibility permissions."""
+        user = request.user
 
-        # Apply filters
+        if has_asset_permission(user, "view_all_assets"):
+            assets = Asset.objects.all()
+        elif has_asset_permission(user, "view_team_assets"):
+            # Assets assigned to direct reports of this user
+            try:
+                profile = user.profile
+            except Exception:
+                return Response([], status=status.HTTP_200_OK)
+            team_ids = profile.direct_reports.values_list("id", flat=True)
+            assigned_asset_ids = Assignment.objects.filter(
+                employee_id__in=list(team_ids) + [profile.id],
+                returned_at__isnull=True,
+            ).values_list("asset_id", flat=True)
+            assets = Asset.objects.filter(id__in=assigned_asset_ids)
+        elif has_asset_permission(user, "view_own_assigned_assets"):
+            try:
+                profile = user.profile
+            except Exception:
+                return Response([], status=status.HTTP_200_OK)
+            assigned_asset_ids = Assignment.objects.filter(
+                employee=profile, returned_at__isnull=True
+            ).values_list("asset_id", flat=True)
+            assets = Asset.objects.filter(id__in=assigned_asset_ids)
+        else:
+            assets = Asset.objects.none()
+
+        # Apply additional filters
         status_filter = request.query_params.get("status")
         if status_filter:
             assets = assets.filter(status=status_filter)
@@ -767,10 +793,30 @@ class AssignmentListView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        """Get list of assignments with optional filtering"""
-        assignments = Assignment.objects.all()
+        """Get list of assignments with optional filtering, scoped by visibility permissions."""
+        user = request.user
 
-        # Apply filters
+        if has_asset_permission(user, "view_all_assets"):
+            assignments = Assignment.objects.all()
+        elif has_asset_permission(user, "view_team_assets"):
+            try:
+                profile = user.profile
+            except Exception:
+                return Response([], status=status.HTTP_200_OK)
+            team_ids = profile.direct_reports.values_list("id", flat=True)
+            assignments = Assignment.objects.filter(
+                employee_id__in=list(team_ids) + [profile.id]
+            )
+        elif has_asset_permission(user, "view_own_assigned_assets"):
+            try:
+                profile = user.profile
+            except Exception:
+                return Response([], status=status.HTTP_200_OK)
+            assignments = Assignment.objects.filter(employee=profile)
+        else:
+            assignments = Assignment.objects.none()
+
+        # Apply additional filters
         active_filter = request.query_params.get("active")
         if active_filter is not None:
             if active_filter.lower() == "true":
@@ -791,14 +837,19 @@ class AssignmentListView(APIView):
 
     @extend_schema(
         request=AssignmentCreateSerializer,
-        responses={201: AssignmentSerializer, 400: None},
-        description="Create a new assignment",
+        responses={201: AssignmentSerializer, 400: None, 403: None},
+        description="Create a new assignment (HR / designated roles only). `assigned_by` is set automatically to the authenticated user.",
     )
     def post(self, request):
         """Create a new assignment"""
+        if not has_asset_permission(request.user, "assign_assets_to_employees"):
+            return Response(
+                {"error": "You do not have permission to assign assets."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         serializer = AssignmentCreateSerializer(data=request.data)
         if serializer.is_valid():
-            assignment = serializer.save()
+            assignment = serializer.save(assigned_by=request.user.profile)
             response_serializer = AssignmentSerializer(assignment)
             return Response(response_serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -872,7 +923,7 @@ class AssignmentDetailView(APIView):
 @extend_schema(
     tags=["Asset Management"],
     request=AssignmentReturnSerializer,
-    responses={200: AssignmentSerializer, 400: None, 404: None},
+    responses={200: AssignmentSerializer, 400: None, 403: None, 404: None},
     description="Return an assigned asset",
 )
 class AssignmentReturnView(APIView):
@@ -887,11 +938,16 @@ class AssignmentReturnView(APIView):
 
     @extend_schema(
         request=AssignmentReturnSerializer,
-        responses={200: AssignmentSerializer, 400: None, 404: None},
+        responses={200: AssignmentSerializer, 400: None, 403: None, 404: None},
         description="Return an assigned asset (mark as returned and set condition)",
     )
     def post(self, request, pk):
         """Return an assigned asset"""
+        if not has_asset_permission(request.user, "process_asset_return"):
+            return Response(
+                {"error": "You do not have permission to process asset returns."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         assignment = self.get_object(pk)
         if not assignment:
             return Response(
@@ -1063,14 +1119,23 @@ class IsHROnly(permissions.BasePermission):
             request.user, "is_superuser", False
         ):
             return True
+
+        # Fall back to onboarding-specific permissions for non-staff, non-superusers
         try:
             profile = request.user.profile
-            perm = Permission.objects.get(
-                module_name="Employee Profiles", feature_action="view_all_profiles"
-            )
-            return profile.has_permission(perm)
-        except Exception:
+        except (AttributeError, UserProfile.DoesNotExist):
             return False
+
+        onboarding_perms = Permission.objects.filter(
+            module_name="Onboarding",
+            feature_action__in=["create_checklist_templates", "configure_templates"],
+        )
+
+        for perm in onboarding_perms:
+            if profile.has_permission(perm):
+                return True
+
+        return False
 
 
 @extend_schema(tags=["Onboarding / Offboarding"])
