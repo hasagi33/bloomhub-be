@@ -31,6 +31,7 @@ EMPLOYEE_PROFILE_FIELDS = [
     "manager_names",
     "start_date",
     "phone_number",
+    "emergency_contact_phone",
     "address",
     "employment_status",
     "avatar",

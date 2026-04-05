@@ -57,3 +57,23 @@ class IsHRAdminOrReadOnlyOwnProfile(permissions.BasePermission):
             pass
 
         return has_view or has_add
+
+
+def has_asset_permission(user, feature_action: str) -> bool:
+    """
+    Check whether `user` holds a specific `Asset Management` feature/action permission.
+    Superusers and staff are always granted access.
+    """
+    if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+        return True
+    try:
+        profile = user.profile
+    except Exception:
+        return False
+    try:
+        perm = Permission.objects.get(
+            module_name="Asset Management", feature_action=feature_action
+        )
+        return profile.has_permission(perm)
+    except Permission.DoesNotExist:
+        return False
