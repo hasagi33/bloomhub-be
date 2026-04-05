@@ -13,10 +13,9 @@ from core.constants import (
 from core.models import (
     Asset,
     Assignment,
+    ChecklistTemplate,
     Project,
     ProjectAssignment,
-    ReplacementLog,
-    ChecklistTemplate,
     ReplacementLog,
     TaskTemplate,
     UserProfile,

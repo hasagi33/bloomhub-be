@@ -600,8 +600,7 @@ class AssetManagementAPITest(APITestCase):
             actions=role_actions["HR"],
         )
 
-        employee_report.profile.manager = manager_user.profile
-        employee_report.profile.save(update_fields=["manager"])
+        employee_report.profile.managers.set([manager_user.profile])
 
         asset_manager = self._create_asset(prefix="SCOPEM")
         asset_report = self._create_asset(prefix="SCOPER")

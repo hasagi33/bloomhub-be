@@ -26,17 +26,11 @@ from .constants import (
 from .models import (
     Asset,
     Assignment,
+    ChecklistTemplate,
     CPFLevel,
     Department,
     Permission,
     Project,
-    ReplacementLog,
-    Role,
-    UserProfile,
-)
-from .permissions import IsHRAdminOrReadOnlyOwnProfile
-    ChecklistTemplate,
-    Permission,
     ReplacementLog,
     Role,
     TaskTemplate,
