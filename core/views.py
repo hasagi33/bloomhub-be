@@ -824,8 +824,8 @@ class ProjectListView(APIView):
             ).all()
         )
 
-        leaders_by_project: dict = defaultdict(list)
-        members_by_project: dict = defaultdict(list)
+        leaders_by_project: dict[int, list] = defaultdict(list)
+        members_by_project: dict[int, list] = defaultdict(list)
 
         for assignment in assignments:
             profile = assignment.user_profile
@@ -983,7 +983,7 @@ class EmployeeTechLeadsView(APIView):
             )
         )
 
-        tech_leads_dict: dict = {}  # To avoid duplicates across projects
+        tech_leads_dict: dict[int, dict[str, Any]] = {}  # To avoid duplicates across projects
 
         for lead in leads:
             lead_id = lead["user_id"]
