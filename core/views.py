@@ -818,11 +818,9 @@ class ProjectListView(APIView):
         from collections import defaultdict
 
         # Fetch all assignments in one query, grouped by project
-        assignments = (
-            ProjectAssignment.objects.select_related(
-                "project", "user_profile__user"
-            ).all()
-        )
+        assignments = ProjectAssignment.objects.select_related(
+            "project", "user_profile__user"
+        ).all()
 
         leaders_by_project: dict[int, list] = defaultdict(list)
         members_by_project: dict[int, list] = defaultdict(list)
@@ -956,9 +954,7 @@ class EmployeeTechLeadsView(APIView):
                 )
 
         # Get all projects assigned to this employee
-        assignments = list(
-            employee.project_assignments.select_related("project").all()
-        )
+        assignments = list(employee.project_assignments.select_related("project").all())
         project_names = {a.project_id: a.project.name for a in assignments}
         project_ids = list(project_names.keys())
 
@@ -983,7 +979,9 @@ class EmployeeTechLeadsView(APIView):
             )
         )
 
-        tech_leads_dict: dict[int, dict[str, Any]] = {}  # To avoid duplicates across projects
+        tech_leads_dict: dict[int, dict[str, Any]] = (
+            {}
+        )  # To avoid duplicates across projects
 
         for lead in leads:
             lead_id = lead["user_id"]
