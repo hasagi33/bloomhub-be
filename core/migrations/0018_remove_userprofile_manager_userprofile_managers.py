@@ -3,6 +3,13 @@
 from django.db import migrations, models
 
 
+def copy_manager_to_managers(apps, schema_editor):
+    """Copy existing manager ForeignKey values into the new managers M2M field."""
+    UserProfile = apps.get_model("core", "UserProfile")
+    for profile in UserProfile.objects.filter(manager__isnull=False).iterator():
+        profile.managers.add(profile.manager_id)
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -10,15 +17,25 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RemoveField(
-            model_name="userprofile",
-            name="manager",
-        ),
+        # Step 1: Add the new M2M field alongside the existing FK.
         migrations.AddField(
             model_name="userprofile",
             name="managers",
             field=models.ManyToManyField(
-                blank=True, related_name="direct_reports", to="core.userprofile"
+                blank=True,
+                related_name="direct_reports",
+                symmetrical=False,
+                to="core.userprofile",
             ),
+        ),
+        # Step 2: Copy existing manager FK data into the new M2M field.
+        migrations.RunPython(
+            copy_manager_to_managers,
+            reverse_code=migrations.RunPython.noop,
+        ),
+        # Step 3: Remove the old FK field.
+        migrations.RemoveField(
+            model_name="userprofile",
+            name="manager",
         ),
     ]

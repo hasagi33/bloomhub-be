@@ -246,6 +246,7 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         user_data = validated_data.pop("user", {})
         managers_data = validated_data.pop("managers", [])
+        validated_data.pop("project_assignments", None)
         email = user_data.get("email")
         first_name = user_data.get("first_name", "")
         last_name = user_data.get("last_name", "")

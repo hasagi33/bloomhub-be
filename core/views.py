@@ -31,6 +31,7 @@ from .models import (
     Department,
     Permission,
     Project,
+    ProjectAssignment,
     ReplacementLog,
     Role,
     TaskTemplate,
@@ -139,7 +140,13 @@ class LoginView(APIView):
         if serializer.is_valid():
             data = cast(dict[str, Any], serializer.validated_data)
             try:
-                user = User.objects.get(email=data["email"])
+                users = User.objects.filter(email=data["email"])
+                if users.count() != 1:
+                    return Response(
+                        {"error": "Invalid credentials"},
+                        status=status.HTTP_401_UNAUTHORIZED,
+                    )
+                user = users.first()
                 # Verify user has a profile in core_userprofile
                 if not hasattr(user, "profile") or user.profile is None:
                     return Response(
@@ -281,7 +288,29 @@ class SessionView(APIView):
 
 @extend_schema(
     tags=["Auth"],
-    responses={200: None},
+    responses={
+        200: {
+            "type": "object",
+            "properties": {
+                "user_id": {"type": "integer"},
+                "username": {"type": "string"},
+                "role": {"type": "string", "nullable": True},
+                "permissions": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "integer"},
+                            "module_name": {"type": "string"},
+                            "feature_action": {"type": "string"},
+                            "bit_position": {"type": "integer"},
+                        },
+                    },
+                },
+                "total_permissions": {"type": "integer"},
+            },
+        }
+    },
     description="Get current user's permissions based on bearer token. Returns permission list with module_name and feature_action.",
 )
 class PermissionsView(APIView):
@@ -705,8 +734,11 @@ class EmployeeProfileViewSet(viewsets.ModelViewSet):
             manager_roles = requested_roles
 
         # Get employees with manager roles
-        employees = UserProfile.objects.filter(role__name__in=manager_roles).order_by(
-            "full_name"
+        employees = (
+            UserProfile.objects.filter(role__name__in=manager_roles)
+            .select_related("user", "role")
+            .prefetch_related("managers", "project_assignments__project")
+            .order_by("full_name")
         )
 
         serializer = self.get_serializer(employees, many=True)
@@ -717,9 +749,9 @@ class EmployeeProfileViewSet(viewsets.ModelViewSet):
         description=(
             "Update multiple employee fields in a single request. Accepts any combination of "
             "editable fields (first_name, last_name, full_name, email_address, department, role, "
-            "manager, start_date, hire_date, phone_number, address, employment_status, "
+            "managers, start_date, hire_date, phone_number, address, employment_status, "
             "emergency_contact_name, emergency_contact_phone, birthday, career_level, cpf_level, "
-            "tech_tags, avatar, avatar_url). Requires employee_profiles.update permission."
+            "tech_tags, avatar, avatar_url). Requires 'Employee Profiles / update_any_profile' permission."
         ),
         request=EmployeeProfileSerializer,
         responses={200: EmployeeProfileSerializer, 400: None, 404: None, 403: None},
@@ -783,48 +815,41 @@ class ProjectListView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        from collections import defaultdict
+
+        # Fetch all assignments in one query, grouped by project
+        assignments = (
+            ProjectAssignment.objects.select_related(
+                "project", "user_profile__user"
+            ).all()
+        )
+
+        leaders_by_project: dict = defaultdict(list)
+        members_by_project: dict = defaultdict(list)
+
+        for assignment in assignments:
+            profile = assignment.user_profile
+            person = {
+                "id": profile.user_id,
+                "name": profile.full_name or profile.user.username,
+            }
+            members_by_project[assignment.project_id].append(person)
+            if profile.career_level and "lead" in profile.career_level.lower():
+                leaders_by_project[assignment.project_id].append(person)
+
         projects = Project.objects.all().order_by("name")
-        data = []
-
-        for project in projects:
-            # Get leaders (tech leads assigned to this project)
-            leaders = (
-                UserProfile.objects.filter(
-                    project_assignments__project=project, career_level__icontains="lead"
-                )
-                .distinct()
-                .values("user_id", "full_name", "user__username")
-            )
-
-            # Get members assigned to this project
-            members = (
-                UserProfile.objects.filter(project_assignments__project=project)
-                .distinct()
-                .values("user_id", "full_name", "user__username")
-            )
-
-            project_data = {
+        data = [
+            {
                 "id": project.id,
                 "name": project.name,
                 "description": project.description,
                 "client": project.client,
                 "app_stack": project.app_stack,
-                "leaders": [
-                    {
-                        "id": leader["user_id"],
-                        "name": leader["full_name"] or leader["user__username"],
-                    }
-                    for leader in leaders
-                ],
-                "members": [
-                    {
-                        "id": member["user_id"],
-                        "name": member["full_name"] or member["user__username"],
-                    }
-                    for member in members
-                ],
+                "leaders": leaders_by_project.get(project.id, []),
+                "members": members_by_project.get(project.id, []),
             }
-            data.append(project_data)
+            for project in projects
+        ]
 
         return Response({"projects": data}, status=status.HTTP_200_OK)
 
@@ -931,33 +956,52 @@ class EmployeeTechLeadsView(APIView):
                 )
 
         # Get all projects assigned to this employee
-        projects = employee.project_assignments.all()
+        assignments = list(
+            employee.project_assignments.select_related("project").all()
+        )
+        project_names = {a.project_id: a.project.name for a in assignments}
+        project_ids = list(project_names.keys())
 
-        tech_leads_dict = {}  # To avoid duplicates across projects
-
-        for assignment in projects:
-            project = assignment.project
-            # Get tech leads for this project
-            leads = (
-                UserProfile.objects.filter(
-                    project_assignments__project=project, career_level__icontains="lead"
-                )
-                .distinct()
-                .values("user_id", "full_name", "user__username")
+        if not project_ids:
+            return Response(
+                {"data": {"tech_leads": []}},
+                status=status.HTTP_200_OK,
             )
 
-            for lead in leads:
-                lead_id = lead["user_id"]
-                lead_name = lead["full_name"] or lead["user__username"]
+        # Fetch all leads for those projects in a single query
+        leads = (
+            UserProfile.objects.filter(
+                project_assignments__project_id__in=project_ids,
+                career_level__icontains="lead",
+            )
+            .distinct()
+            .values(
+                "user_id",
+                "full_name",
+                "user__username",
+                "project_assignments__project_id",
+            )
+        )
 
-                # Store with display name including project
-                if lead_id not in tech_leads_dict:
-                    tech_leads_dict[lead_id] = {
-                        "id": lead_id,
-                        "name": lead_name,
-                        "projects": [],
-                    }
-                tech_leads_dict[lead_id]["projects"].append(project.name)
+        tech_leads_dict: dict = {}  # To avoid duplicates across projects
+
+        for lead in leads:
+            lead_id = lead["user_id"]
+            project_id = lead["project_assignments__project_id"]
+
+            if project_id not in project_names:
+                continue
+
+            lead_name = lead["full_name"] or lead["user__username"]
+            if lead_id not in tech_leads_dict:
+                tech_leads_dict[lead_id] = {
+                    "id": lead_id,
+                    "name": lead_name,
+                    "projects": [],
+                }
+            project_name = project_names[project_id]
+            if project_name not in tech_leads_dict[lead_id]["projects"]:
+                tech_leads_dict[lead_id]["projects"].append(project_name)
 
         # Format the response with display names
         tech_leads_list = [
