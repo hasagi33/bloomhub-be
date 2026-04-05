@@ -10,7 +10,14 @@ from core.constants import (
     REGISTER_EXTRA_KWARGS,
     REGISTER_FIELDS,
 )
-from core.models import Asset, Assignment, ReplacementLog, UserProfile
+from core.models import (
+    Asset,
+    Assignment,
+    Project,
+    ProjectAssignment,
+    ReplacementLog,
+    UserProfile,
+)
 from core.utils import (
     apply_profile_updates_and_save,
     download_and_save_avatar,
@@ -183,14 +190,39 @@ class UploadRolePermissionsResponseSerializer(serializers.Serializer):
     file_path = serializers.CharField()
 
 
+class ProjectAssignmentSerializer(serializers.ModelSerializer):
+    project_id = serializers.PrimaryKeyRelatedField(
+        source="project", queryset=Project.objects.all()
+    )
+    project_name = serializers.CharField(source="project.name", read_only=True)
+
+    class Meta:
+        model = ProjectAssignment
+        fields = [
+            "id",
+            "project_id",
+            "project_name",
+            "role",
+            "start_date",
+            "end_date",
+            "status",
+        ]
+
+
 class EmployeeProfileSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source="user.username", read_only=True)
     first_name = serializers.CharField(source="user.first_name", required=False)
     last_name = serializers.CharField(source="user.last_name", required=False)
     email = serializers.EmailField(source="user.email", required=True)
     role_name = serializers.CharField(source="role.name", read_only=True)
-    manager_name = serializers.CharField(source="manager.full_name", read_only=True)
+    manager_names = serializers.SerializerMethodField()
     permissions_bitmap = serializers.SerializerMethodField()
+    assigned_projects = ProjectAssignmentSerializer(
+        source="project_assignments", many=True, required=False
+    )
+
+    def get_manager_names(self, obj) -> str:
+        return ", ".join([m.full_name or m.user.username for m in obj.managers.all()])
 
     def get_permissions_bitmap(self, obj) -> str:
         return bin(obj.computed_permissions_bitmap)[2:]
@@ -211,6 +243,7 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         user_data = validated_data.pop("user", {})
+        managers_data = validated_data.pop("managers", [])
         email = user_data.get("email")
         first_name = user_data.get("first_name", "")
         last_name = user_data.get("last_name", "")
@@ -231,10 +264,16 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
             profile = UserProfile.objects.create(user=user)
 
         profile.email_address = email
-        return apply_profile_updates_and_save(profile, validated_data)
+        instance = apply_profile_updates_and_save(profile, validated_data)
+        if managers_data:
+            instance.managers.set(managers_data)
+        return instance
 
     def update(self, instance, validated_data):
         user_data = validated_data.pop("user", {})
+        managers_data = validated_data.pop("managers", None)
+        projects_data = validated_data.pop("project_assignments", None)
+
         if user_data:
             user = instance.user
             for attr, value in user_data.items():
@@ -251,6 +290,17 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
+
+        if managers_data is not None:
+            instance.managers.set(managers_data)
+
+        if projects_data is not None:
+            # Simple sync logic for project assignments
+            # For a more robust solution, we'd match by ID, but for now:
+            instance.project_assignments.all().delete()
+            for project_item in projects_data:
+                ProjectAssignment.objects.create(user_profile=instance, **project_item)
+
         return instance
 
 

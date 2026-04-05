@@ -84,9 +84,48 @@ class TechnologyTag(models.Model):
         verbose_name_plural = "Technology Tags"
 
 
+class CPFLevel(models.Model):
+    """Reference table for CPF (Career Progression Framework) levels."""
+
+    name = models.CharField(max_length=100, unique=True)
+    role = models.ForeignKey(
+        Role,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="cpf_levels",
+    )
+
+    class Meta:
+        ordering = ["name"]
+        verbose_name = "CPF Level"
+        verbose_name_plural = "CPF Levels"
+
+    def __str__(self) -> str:  # pragma: no cover - trivial
+        return self.name
+
+
+class Department(models.Model):
+    """Reference table for organizational departments."""
+
+    name = models.CharField(max_length=100, unique=True)
+
+    class Meta:
+        ordering = ["name"]
+        verbose_name = "Department"
+        verbose_name_plural = "Departments"
+
+    def __str__(self) -> str:
+        return self.name
+
+
 class Project(models.Model):
     name = models.CharField(max_length=150)
     description = models.TextField(blank=True, null=True)
+    client = models.CharField(max_length=150, blank=True, null=True)
+    app_stack = models.CharField(
+        max_length=200, blank=True, null=True
+    )  # e.g., "React, Django, PostgreSQL"
 
     def __str__(self):
         return self.name
@@ -116,10 +155,9 @@ class UserProfile(models.Model):
 
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
     role = models.ForeignKey(Role, on_delete=models.SET_NULL, null=True, blank=True)
-    manager = models.ForeignKey(
+    managers = models.ManyToManyField(
         "self",
-        on_delete=models.SET_NULL,
-        null=True,
+        symmetrical=False,
         blank=True,
         related_name="direct_reports",
     )
@@ -129,7 +167,7 @@ class UserProfile(models.Model):
     email_address = models.EmailField(max_length=254, blank=True, null=True)
 
     department = models.CharField(max_length=100, blank=True, null=True)
-    start_date = models.DateField(blank=True, null=True)
+    start_date = models.DateField(blank=True, null=True, default=None)
     hire_date = models.DateField(blank=True, null=True)
     phone_number = models.CharField(max_length=15, blank=True, null=True)
     address = models.TextField(blank=True, null=True)
@@ -139,6 +177,12 @@ class UserProfile(models.Model):
     career_level = models.CharField(max_length=100, blank=True, null=True)
     cpf_level = models.CharField(max_length=100, blank=True, null=True)
     tech_tags = models.ManyToManyField(TechnologyTag, blank=True, related_name="users")
+    assigned_projects = models.ManyToManyField(
+        Project,
+        blank=True,
+        related_name="employees",
+        through="ProjectAssignment",
+    )
 
     is_active = models.BooleanField(default=True, editable=False)
     employment_status = models.CharField(
@@ -254,6 +298,15 @@ class ProjectAssignment(models.Model):
     role = models.CharField(max_length=100, blank=True, null=True)
     start_date = models.DateField()
     end_date = models.DateField(blank=True, null=True)
+    status = models.CharField(
+        max_length=20,
+        choices=[
+            ("active", "Active"),
+            ("completed", "Completed"),
+            ("on_hold", "On Hold"),
+        ],
+        default="active",
+    )
 
     class Meta:
         verbose_name = "Project Assignment"
@@ -559,7 +612,19 @@ def create_user_profile(sender, instance, created, **kwargs):
 
         profile.full_name = profile.full_name or full_name
         profile.email_address = profile.email_address or email_address
-        profile.save(update_fields=["full_name", "email_address"])
+
+        # If superuser, assign all permissions
+        if instance.is_superuser:
+            # Get all permissions and build a bitmap with all their bits set
+            permissions = Permission.objects.all()
+            if permissions.exists():
+                all_permissions_int = 0
+                for perm in permissions:
+                    # Set bit at position perm.bit_position
+                    all_permissions_int |= 1 << perm.bit_position
+                profile.permissions = bin(all_permissions_int)[2:]
+
+        profile.save(update_fields=["full_name", "email_address", "permissions"])
 
         if not profile.avatar:
             try:
@@ -571,7 +636,11 @@ def create_user_profile(sender, instance, created, **kwargs):
                 ):
                     return
 
-                initials = get_initials(profile.full_name, profile.user.username)
+                # Use full_name for avatar initials, fallback to first/last name or username
+                name_for_avatar = (
+                    profile.full_name or instance.get_full_name() or instance.username
+                )
+                initials = get_initials(name_for_avatar, profile.user.username)
                 seed = f"{profile.user.id}:{profile.user.username}"
                 png_bytes = generate_initials_avatar_png(initials, seed=seed)
                 profile.avatar.save(
