@@ -10,13 +10,20 @@ from .views import (
     AssignmentReturnView,
     AvatarUploadView,
     ChecklistTemplateViewSet,
+    CPFLevelListView,
+    DepartmentListView,
     EmployeeProfileViewSet,
+    EmployeeTechLeadsView,
     GoogleExchangeView,
     LoginView,
     LogoutView,
+    PermissionsView,
+    ProjectListView,
     RegisterView,
     ReplacementLogDetailView,
     ReplacementLogListView,
+    RoleListView,
+    SessionView,
     TokenRefreshViewCustom,
     UploadRolePermissionsView,
     UserProfileListView,
@@ -39,6 +46,8 @@ urlpatterns = [
     path("auth/logout/", LogoutView.as_view(), name="logout"),
     path("auth/refresh/", TokenRefreshViewCustom.as_view(), name="token_refresh"),
     path("auth/profile/", UserProfileView.as_view(), name="profile"),
+    path("auth/session/", SessionView.as_view(), name="session"),
+    path("auth/permissions/", PermissionsView.as_view(), name="permissions"),
     path("auth/profile/avatar/", AvatarUploadView.as_view(), name="avatar_upload"),
     path(
         "admin/upload-role-permissions/",
@@ -70,6 +79,19 @@ urlpatterns = [
         name="replacement_log_detail",
     ),
     path("user-profiles/", UserProfileListView.as_view(), name="user_profile_list"),
+    # Reference data endpoints
+    path("departments/", DepartmentListView.as_view(), name="department_list"),
+    path("projects/", ProjectListView.as_view(), name="project_list"),
+    path("roles/", RoleListView.as_view(), name="role_list"),
+    path("cpf-levels/", CPFLevelListView.as_view(), name="cpf_level_list"),
+    path(
+        "cpf-levels/<str:role>/", CPFLevelListView.as_view(), name="cpf_level_by_role"
+    ),
+    path(
+        "employees/<int:employee_id>/tech-leads/",
+        EmployeeTechLeadsView.as_view(),
+        name="employee_tech_leads",
+    ),
 ]
 
 urlpatterns += router.urls

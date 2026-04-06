@@ -3,6 +3,7 @@ from django.utils.html import format_html
 
 from .models import (
     ChangeLog,
+    CPFLevel,
     EmployeeDocument,
     Equipment,
     EquipmentAssignment,
@@ -35,12 +36,16 @@ class UserProfileAdmin(admin.ModelAdmin):
         except Exception:
             return "-"
 
+    @admin.display(description="Managers")
+    def managers_list(self, obj: UserProfile):
+        return ", ".join([m.full_name or m.user.username for m in obj.managers.all()])
+
     list_display = (
         "user",
         "full_name",
         "email_address",
         "role",
-        "manager",
+        "managers_list",
         "avatar_thumb",
         "employee_id",
         "department",
@@ -50,7 +55,7 @@ class UserProfileAdmin(admin.ModelAdmin):
     )
     list_filter = (
         "role",
-        "manager",
+        "managers",
         "department",
         "employment_status",
     )
@@ -65,6 +70,12 @@ class UserProfileAdmin(admin.ModelAdmin):
 
 @admin.register(TechnologyTag)
 class TechnologyTagAdmin(admin.ModelAdmin):
+    list_display = ("name",)
+    search_fields = ("name",)
+
+
+@admin.register(CPFLevel)
+class CPFLevelAdmin(admin.ModelAdmin):
     list_display = ("name",)
     search_fields = ("name",)
 

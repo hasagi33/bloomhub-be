@@ -1,6 +1,7 @@
 import csv
 import io
 from typing import Any, cast
+from urllib.parse import unquote
 
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
@@ -26,7 +27,11 @@ from .models import (
     Asset,
     Assignment,
     ChecklistTemplate,
+    CPFLevel,
+    Department,
     Permission,
+    Project,
+    ProjectAssignment,
     ReplacementLog,
     Role,
     TaskTemplate,
@@ -135,7 +140,21 @@ class LoginView(APIView):
         if serializer.is_valid():
             data = cast(dict[str, Any], serializer.validated_data)
             try:
-                user = User.objects.get(email=data["email"])
+                users = User.objects.filter(email=data["email"])
+                if users.count() != 1:
+                    return Response(
+                        {"error": "Invalid credentials"},
+                        status=status.HTTP_401_UNAUTHORIZED,
+                    )
+                user = users.first()
+                # Verify user has a profile in core_userprofile
+                if not hasattr(user, "profile") or user.profile is None:
+                    return Response(
+                        {
+                            "error": "User profile not found. Please contact administrator."
+                        },
+                        status=status.HTTP_401_UNAUTHORIZED,
+                    )
                 user = authenticate(username=user.username, password=data["password"])
             except User.DoesNotExist:
                 user = None
@@ -230,6 +249,8 @@ class GoogleExchangeView(APIView):
     description='Blacklist the refresh token. Send JSON: { "refresh": "<refresh_token>" }.',
 )
 class LogoutView(APIView):
+    permission_classes = [AllowAny]
+
     def post(self, request):
         try:
             refresh_token = request.data["refresh"]
@@ -249,6 +270,80 @@ class UserProfileView(APIView):
     def get(self, request):
         serializer = UserSerializer(request.user)
         return Response(serializer.data)
+
+
+@extend_schema(
+    tags=["Auth"],
+    responses={200: UserSerializer},
+    description="Get current session information including user profile and permissions. Requires Bearer token.",
+)
+class SessionView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        """Return current user's session information."""
+        serializer = UserSerializer(request.user)
+        return Response(serializer.data)
+
+
+@extend_schema(
+    tags=["Auth"],
+    responses={
+        200: {
+            "type": "object",
+            "properties": {
+                "user_id": {"type": "integer"},
+                "username": {"type": "string"},
+                "role": {"type": "string", "nullable": True},
+                "permissions": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "integer"},
+                            "module_name": {"type": "string"},
+                            "feature_action": {"type": "string"},
+                            "bit_position": {"type": "integer"},
+                        },
+                    },
+                },
+                "total_permissions": {"type": "integer"},
+            },
+        }
+    },
+    description="Get current user's permissions based on bearer token. Returns permission list with module_name and feature_action.",
+)
+class PermissionsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        """Return current user's permissions."""
+        profile = request.user.profile
+
+        # Get all permissions the user has
+        user_permissions = []
+        all_permissions = Permission.objects.all()
+
+        for perm in all_permissions:
+            if profile.has_permission(perm):
+                user_permissions.append(
+                    {
+                        "id": perm.id,
+                        "module_name": perm.module_name,
+                        "feature_action": perm.feature_action,
+                        "bit_position": perm.bit_position,
+                    }
+                )
+
+        return Response(
+            {
+                "user_id": request.user.id,
+                "username": request.user.username,
+                "role": profile.role.name if profile.role else None,
+                "permissions": user_permissions,
+                "total_permissions": len(user_permissions),
+            }
+        )
 
 
 @extend_schema(
@@ -595,6 +690,332 @@ class EmployeeProfileViewSet(viewsets.ModelViewSet):
         instance.save()
 
         return Response(self.get_serializer(instance).data)
+
+    @extend_schema(
+        summary="Get employees eligible to be managers",
+        description=(
+            "Returns employees with MGR, MGR+, or ADMIN roles who can be assigned as managers. "
+            "Optionally filter by role using ?role=MGR or ?role=MGR%2B,ADMIN query parameter (comma-separated for multiple roles, use %2B for + character)."
+        ),
+        parameters=[
+            OpenApiParameter(
+                name="role",
+                description="Filter by role(s) - comma-separated list (e.g., MGR or MGR,MGR%2B,ADMIN)",
+                required=False,
+                type=str,
+            ),
+        ],
+        responses={200: EmployeeProfileSerializer(many=True)},
+    )
+    @action(detail=False, methods=["get"], url_path="managers")
+    def get_managers(self, request):
+        """Get employees who can be assigned as managers (MGR, MGR+, ADMIN roles)"""
+        # Get the role filter from query parameters
+        role_param = request.query_params.get("role", None)
+
+        # Define which roles can be managers
+        manager_roles = ["MGR", "MGR+", "ADMIN"]
+
+        if role_param:
+            # URL decode the parameter to handle special characters like +
+            role_param = unquote(role_param)
+            # Parse comma-separated roles
+            requested_roles = [r.strip().upper() for r in role_param.split(",")]
+
+            # Validate all requested roles
+            invalid_roles = [r for r in requested_roles if r not in manager_roles]
+            if invalid_roles:
+                return Response(
+                    {
+                        "error": f"Invalid role(s): {', '.join(invalid_roles)}. Must be one of: {', '.join(manager_roles)}"
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            manager_roles = requested_roles
+
+        # Get employees with manager roles
+        employees = (
+            UserProfile.objects.filter(role__name__in=manager_roles)
+            .select_related("user", "role")
+            .prefetch_related("managers", "project_assignments__project")
+            .order_by("full_name")
+        )
+
+        serializer = self.get_serializer(employees, many=True)
+        return Response(serializer.data)
+
+    @extend_schema(
+        summary="Bulk update employee profile fields",
+        description=(
+            "Update multiple employee fields in a single request. Accepts any combination of "
+            "editable fields (first_name, last_name, full_name, email_address, department, role, "
+            "managers, start_date, hire_date, phone_number, address, employment_status, "
+            "emergency_contact_name, emergency_contact_phone, birthday, career_level, cpf_level, "
+            "tech_tags, avatar, avatar_url). Requires 'Employee Profiles / update_any_profile' permission."
+        ),
+        request=EmployeeProfileSerializer,
+        responses={200: EmployeeProfileSerializer, 400: None, 404: None, 403: None},
+    )
+    @action(detail=True, methods=["patch"], url_path="bulk-update")
+    def bulk_update(self, request, pk=None):
+        """
+        Update multiple employee profile fields at once.
+        Much more efficient than making individual requests.
+        Requires 'employee_profiles.update' permission.
+        """
+        instance = self.get_object()
+
+        # Check permission to update employee profiles
+        try:
+            perm = Permission.objects.get(
+                module_name="Employee Profiles", feature_action="update_any_profile"
+            )
+            if not request.user.profile.has_permission(perm):
+                return Response(
+                    {
+                        "error": "You do not have permission to update employee profiles."
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+        except Permission.DoesNotExist:
+            # If permission doesn't exist, deny access for safety
+            return Response(
+                {"error": "Permission check failed. Contact administrator."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        serializer = EmployeeProfileSerializer(
+            instance, data=request.data, partial=True
+        )
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+# Dropdown/Reference Data Endpoints
+
+
+class DepartmentListView(APIView):
+    """Get all unique departments"""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        departments = Department.objects.order_by("name").values_list("name", flat=True)
+        return Response(
+            {"departments": list(departments)},
+            status=status.HTTP_200_OK,
+        )
+
+
+class ProjectListView(APIView):
+    """Get all projects with leaders and members"""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from collections import defaultdict
+
+        # Fetch all assignments in one query, grouped by project
+        assignments = ProjectAssignment.objects.select_related(
+            "project", "user_profile__user"
+        ).all()
+
+        leaders_by_project: dict[int, list] = defaultdict(list)
+        members_by_project: dict[int, list] = defaultdict(list)
+
+        for assignment in assignments:
+            profile = assignment.user_profile
+            person = {
+                "id": profile.user_id,
+                "name": profile.full_name or profile.user.username,
+            }
+            members_by_project[assignment.project_id].append(person)
+            if profile.career_level and "lead" in profile.career_level.lower():
+                leaders_by_project[assignment.project_id].append(person)
+
+        projects = Project.objects.all().order_by("name")
+        data = [
+            {
+                "id": project.id,
+                "name": project.name,
+                "description": project.description,
+                "client": project.client,
+                "app_stack": project.app_stack,
+                "leaders": leaders_by_project.get(project.id, []),
+                "members": members_by_project.get(project.id, []),
+            }
+            for project in projects
+        ]
+
+        return Response({"projects": data}, status=status.HTTP_200_OK)
+
+
+class RoleListView(APIView):
+    """Get all roles"""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        roles = Role.objects.all().order_by("name").values("id", "name")
+        return Response({"roles": list(roles)}, status=status.HTTP_200_OK)
+
+
+class CPFLevelListView(APIView):
+    """Get CPF levels, optionally filtered by role"""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, role=None):
+        # Get user's role
+        user_profile = (
+            request.user.profile if hasattr(request.user, "profile") else None
+        )
+        user_role = (
+            user_profile.role.name if user_profile and user_profile.role else None
+        )
+
+        # If role parameter is provided, filter by that role
+        if role:
+            try:
+                # Convert role parameter to uppercase for matching
+                role_upper = role.upper()
+                role_obj = Role.objects.get(name=role_upper)
+                cpf_levels = role_obj.cpf_levels.order_by("name").values_list(
+                    "name", flat=True
+                )
+
+                return Response(
+                    {
+                        "requested_role": role_upper,
+                        "user_role": user_role,
+                        "cpf_levels": list(cpf_levels),
+                    },
+                    status=status.HTTP_200_OK,
+                )
+            except Role.DoesNotExist:
+                return Response(
+                    {
+                        "error": f"Role '{role}' not found",
+                        "requested_role": role,
+                        "user_role": user_role,
+                        "cpf_levels": [],
+                    },
+                    status=status.HTTP_200_OK,
+                )
+
+        # Otherwise return all CPF levels
+        cpf_levels = CPFLevel.objects.order_by("name").values_list("name", flat=True)
+
+        return Response(
+            {"user_role": user_role, "cpf_levels": list(cpf_levels)},
+            status=status.HTTP_200_OK,
+        )
+
+
+class EmployeeTechLeadsView(APIView):
+    """
+    Get tech leads for a specific employee based on their project assignments.
+    Returns list of tech leads with their associated project names.
+    Format: "John Doe (Project Name)"
+
+    If employee is tech lead level, returns CTO info instead.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, employee_id):
+        try:
+            employee = UserProfile.objects.get(user_id=employee_id)
+        except UserProfile.DoesNotExist:
+            return Response(
+                {"error": "Employee not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        # If employee is tech lead level, return CTO
+        if employee.career_level and "lead" in employee.career_level.lower():
+            cto = UserProfile.objects.filter(career_level__icontains="CTO").first()
+            if cto:
+                return Response(
+                    {
+                        "data": {
+                            "tech_leads": [
+                                {
+                                    "id": cto.user.id,
+                                    "name": cto.full_name or cto.user.get_full_name(),
+                                    "display_name": f"{cto.full_name or cto.user.get_full_name()} (CTO)",
+                                    "is_cto": True,
+                                }
+                            ]
+                        }
+                    },
+                    status=status.HTTP_200_OK,
+                )
+
+        # Get all projects assigned to this employee
+        assignments = list(employee.project_assignments.select_related("project").all())
+        project_names = {a.project_id: a.project.name for a in assignments}
+        project_ids = list(project_names.keys())
+
+        if not project_ids:
+            return Response(
+                {"data": {"tech_leads": []}},
+                status=status.HTTP_200_OK,
+            )
+
+        # Fetch all leads for those projects in a single query
+        leads = (
+            UserProfile.objects.filter(
+                project_assignments__project_id__in=project_ids,
+                career_level__icontains="lead",
+            )
+            .distinct()
+            .values(
+                "user_id",
+                "full_name",
+                "user__username",
+                "project_assignments__project_id",
+            )
+        )
+
+        tech_leads_dict: dict[int, dict[str, Any]] = (
+            {}
+        )  # To avoid duplicates across projects
+
+        for lead in leads:
+            lead_id = lead["user_id"]
+            project_id = lead["project_assignments__project_id"]
+
+            if project_id not in project_names:
+                continue
+
+            lead_name = lead["full_name"] or lead["user__username"]
+            if lead_id not in tech_leads_dict:
+                tech_leads_dict[lead_id] = {
+                    "id": lead_id,
+                    "name": lead_name,
+                    "projects": [],
+                }
+            project_name = project_names[project_id]
+            if project_name not in tech_leads_dict[lead_id]["projects"]:
+                tech_leads_dict[lead_id]["projects"].append(project_name)
+
+        # Format the response with display names
+        tech_leads_list = [
+            {
+                "id": lead["id"],
+                "name": lead["name"],
+                "display_name": f"{lead['name']} ({', '.join(lead['projects'])})",
+                "projects": lead["projects"],
+            }
+            for lead in tech_leads_dict.values()
+        ]
+
+        return Response(
+            {"data": {"tech_leads": tech_leads_list}},
+            status=status.HTTP_200_OK,
+        )
 
 
 # Asset Management API Views

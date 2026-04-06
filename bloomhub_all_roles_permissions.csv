@@ -1,0 +1,926 @@
+role_id,module_name,feature_action,permission,operation_type
+EMP,Employee Profiles,view_own_profile,YES,override
+EMP,Employee Profiles,edit_own_basic_info,YES,override
+EMP,Employee Profiles,edit_own_role_salary_cpf,NO,override
+EMP,Employee Profiles,view_team_profiles,NO,override
+EMP,Employee Profiles,view_all_profiles,NO,override
+EMP,Employee Profiles,view_salary_history,NO,override
+EMP,Employee Profiles,view_audit_log,NO,override
+EMP,Employee Profiles,export_employee_data,NO,override
+EMP,Employee Profiles,add_remove_employees,NO,override
+EMP,Employee Profiles,upload_own_cv,YES,override
+EMP,Employee Profiles,upload_any_cv,NO,override
+EMP,Employee Profiles,update_own_profile,YES,override
+EMP,Employee Profiles,update_any_profile,NO,override
+EMP,Vacations,submit_leave_request,YES,override
+EMP,Vacations,view_own_balance,YES,override
+EMP,Vacations,view_own_history,YES,override
+EMP,Vacations,cancel_own_request,YES,override
+EMP,Vacations,approve_team_requests,NO,override
+EMP,Vacations,view_team_calendar,NO,override
+EMP,Vacations,view_dept_trends,NO,override
+EMP,Vacations,view_org_calendar,NO,override
+EMP,Vacations,adjust_balances,NO,override
+EMP,Vacations,override_requests,NO,override
+EMP,Vacations,configure_leave_types,NO,override
+EMP,Vacations,export_leave_reports,NO,override
+EMP,Vacations,setup_auto_approval,NO,override
+EMP,Reviews,view_own_reviews,YES,override
+EMP,Reviews,initiate_self_review,YES,override
+EMP,Reviews,view_team_reviews,NO,override
+EMP,Reviews,create_review_direct_report,NO,override
+EMP,Reviews,schedule_reviews,NO,override
+EMP,Reviews,add_private_feedback,NO,override
+EMP,Reviews,add_shared_feedback,YES,override
+EMP,Reviews,edit_delete_reviews,NO,override
+EMP,Reviews,view_any_review_history,NO,override
+EMP,Reviews,configure_review_templates,NO,override
+EMP,Reviews,set_review_cycles,NO,override
+EMP,Reviews,export_review_data,NO,override
+EMP,Reviews,attach_documents,YES,override
+EMP,Onboarding,view_own_tasks,YES,override
+EMP,Onboarding,complete_own_tasks,YES,override
+EMP,Onboarding,view_team_status,NO,override
+EMP,Onboarding,create_checklist_templates,NO,override
+EMP,Onboarding,assign_tasks,NO,override
+EMP,Onboarding,track_all_onboarding,NO,override
+EMP,Onboarding,view_overdue_dashboard,NO,override
+EMP,Onboarding,initiate_offboarding,NO,override
+EMP,Onboarding,approve_offboarding,NO,override
+EMP,Onboarding,configure_templates,NO,override
+EMP,Onboarding,send_reminders,NO,override
+EMP,Training,view_own_history,YES,override
+EMP,Training,add_own_training,YES,override
+EMP,Training,upload_own_certificates,YES,override
+EMP,Training,view_team_history,NO,override
+EMP,Training,view_all_records,NO,override
+EMP,Training,track_own_budget,YES,override
+EMP,Training,track_team_budget,NO,override
+EMP,Training,track_dept_budget,NO,override
+EMP,Training,approve_training_requests,NO,override
+EMP,Training,configure_budget,NO,override
+EMP,Training,log_peer_sessions,YES,override
+EMP,Training,view_peer_incentives,YES,override
+EMP,Training,export_training_reports,NO,override
+EMP,Compensation,view_own_compensation,YES,override
+EMP,Compensation,view_team_compensation,NO,override
+EMP,Compensation,view_all_compensation,NO,override
+EMP,Compensation,submit_bonus_nomination,NO,override
+EMP,Compensation,approve_bonus_nominations,NO,override
+EMP,Compensation,track_monthly_bonuses,NO,override
+EMP,Compensation,track_one_time_bonuses,NO,override
+EMP,Compensation,view_bonus_payouts,YES,override
+EMP,Compensation,configure_bonus_types,NO,override
+EMP,Compensation,export_payroll,NO,override
+EMP,Compensation,view_audit_trail,NO,override
+EMP,Compensation,adjust_salary_bands,NO,override
+EMP,Feedback,submit_anonymous_feedback,YES,override
+EMP,Feedback,submit_named_feedback,YES,override
+EMP,Feedback,view_own_feedback,YES,override
+EMP,Feedback,participate_pulse_surveys,YES,override
+EMP,Feedback,create_surveys,NO,override
+EMP,Feedback,view_team_survey_results,NO,override
+EMP,Feedback,view_dept_survey_results,NO,override
+EMP,Feedback,view_org_survey_results,NO,override
+EMP,Feedback,view_anonymous_details,NO,override
+EMP,Feedback,export_survey_data,NO,override
+EMP,Feedback,configure_survey_templates,NO,override
+EMP,Feedback,setup_pulse_checks,NO,override
+EMP,Feedback,view_sentiment_analysis,NO,override
+EMP,Feedback,receive_negative_alerts,NO,override
+EMP,Time Tracking,log_own_hours,YES,override
+EMP,Time Tracking,view_own_timesheet,YES,override
+EMP,Time Tracking,edit_own_hours,YES,override
+EMP,Time Tracking,view_team_timesheets,NO,override
+EMP,Time Tracking,approve_team_timesheets,NO,override
+EMP,Time Tracking,view_dept_timesheets,NO,override
+EMP,Time Tracking,export_timesheets,YES,override
+EMP,Time Tracking,configure_projects,NO,override
+EMP,Time Tracking,setup_billing_rates,NO,override
+EMP,Time Tracking,view_billable_hours,NO,override
+EMP,Time Tracking,integrate_clockify,NO,override
+EMP,Internal Mobility,view_job_listings,YES,override
+EMP,Internal Mobility,apply_internal_positions,YES,override
+EMP,Internal Mobility,view_own_promotion_history,YES,override
+EMP,Internal Mobility,view_team_promotion_history,NO,override
+EMP,Internal Mobility,view_all_promotion_history,NO,override
+EMP,Internal Mobility,track_cpf_advancement,YES,override
+EMP,Internal Mobility,initiate_promotion,NO,override
+EMP,Internal Mobility,approve_promotions,NO,override
+EMP,Internal Mobility,configure_cpf_requirements,NO,override
+EMP,Internal Mobility,view_application_status,YES,override
+EMP,Internal Mobility,review_applicants,NO,override
+EMP,Internal Mobility,schedule_interviews,NO,override
+EMP,Documents,upload_own_documents,YES,override
+EMP,Documents,view_own_documents,YES,override
+EMP,Documents,delete_own_documents,YES,override
+EMP,Documents,view_team_documents,NO,override
+EMP,Documents,upload_any_documents,NO,override
+EMP,Documents,set_expiry_dates,NO,override
+EMP,Documents,receive_expiry_notifications,YES,override
+EMP,Documents,configure_categories,NO,override
+EMP,Documents,set_visibility_permissions,NO,override
+EMP,Documents,initiate_signature_requests,NO,override
+EMP,Documents,sign_documents,YES,override
+EMP,Documents,view_signed_status,YES,override
+EMP,Documents,access_contract_templates,NO,override
+EMP,Asset Management,view_own_assets,YES,override
+EMP,Asset Management,view_team_assets,NO,override
+EMP,Asset Management,view_all_assets,NO,override
+EMP,Asset Management,assign_assets,NO,override
+EMP,Asset Management,update_asset_condition,YES,override
+EMP,Asset Management,track_warranty,NO,override
+EMP,Asset Management,initiate_asset_return,YES,override
+EMP,Asset Management,process_asset_return,NO,override
+EMP,Asset Management,log_asset_lost,YES,override
+EMP,Asset Management,generate_qr_codes,NO,override
+EMP,Asset Management,view_asset_history,YES,override
+EMP,Asset Management,configure_asset_types,NO,override
+EMP,Asset Management,export_inventory,NO,override
+EMP,Org Chart,view_org_chart,YES,override
+EMP,Org Chart,view_dept_filters,YES,override
+EMP,Org Chart,view_reporting_lines,YES,override
+EMP,Org Chart,view_hover_cards,YES,override
+EMP,Org Chart,view_contact_info,YES,override
+EMP,Org Chart,view_salary_in_hover,NO,override
+EMP,Org Chart,export_org_chart,NO,override
+EMP,Org Chart,edit_reporting_relationships,NO,override
+EMP,Org Chart,create_teams,NO,override
+EMP,Org Chart,view_historical_structure,NO,override
+EMP,Leave Analytics,view_own_patterns,YES,override
+EMP,Leave Analytics,view_team_trends,NO,override
+EMP,Leave Analytics,view_dept_analytics,NO,override
+EMP,Leave Analytics,view_company_insights,NO,override
+EMP,Leave Analytics,export_leave_reports,YES,override
+EMP,Leave Analytics,view_workforce_predictions,NO,override
+EMP,Leave Analytics,set_leave_policies,NO,override
+EMP,Leave Analytics,configure_fiscal_year,NO,override
+EMP,Leave Analytics,view_forecasting,NO,override
+EMP,Announcements,view_announcements,YES,override
+EMP,Announcements,create_announcements,NO,override
+EMP,Announcements,create_company_announcements,NO,override
+EMP,Announcements,view_birthdays,YES,override
+EMP,Announcements,view_anniversaries,YES,override
+EMP,Announcements,add_reactions,YES,override
+EMP,Announcements,moderate_comments,NO,override
+EMP,Announcements,schedule_announcements,NO,override
+EMP,Announcements,view_analytics,NO,override
+EMP,Announcements,configure_notifications,YES,override
+EMP,Discord,use_leave_balance,YES,override
+EMP,Discord,use_request_leave,YES,override
+EMP,Discord,use_whois,YES,override
+EMP,Discord,use_team_calendar,NO,override
+EMP,Discord,use_approve_leave,NO,override
+EMP,Discord,use_announce,NO,override
+EMP,Discord,use_add_birthday,NO,override
+EMP,Discord,use_sync_roles,NO,override
+EMP,Discord,use_asset_lookup,NO,override
+EMP,Discord,use_survey_results,NO,override
+EMP,System,configure_integrations,NO,override
+EMP,System,view_system_logs,NO,override
+EMP,System,manage_api_keys,NO,override
+EMP,System,configure_security,NO,override
+EMP,System,view_audit_logs,NO,override
+EMP,System,backup_restore,NO,override
+EMP,System,manage_users,NO,override
+EMP,System,system_settings,NO,override
+MGR,Employee Profiles,view_own_profile,YES,override
+MGR,Employee Profiles,edit_own_basic_info,YES,override
+MGR,Employee Profiles,edit_own_role_salary_cpf,NO,override
+MGR,Employee Profiles,view_team_profiles,YES,override
+MGR,Employee Profiles,view_all_profiles,NO,override
+MGR,Employee Profiles,view_salary_history,NO,override
+MGR,Employee Profiles,view_audit_log,NO,override
+MGR,Employee Profiles,export_employee_data,NO,override
+MGR,Employee Profiles,add_remove_employees,NO,override
+MGR,Employee Profiles,upload_own_cv,YES,override
+MGR,Employee Profiles,upload_any_cv,NO,override
+MGR,Employee Profiles,update_own_profile,YES,override
+MGR,Employee Profiles,update_any_profile,NO,override
+MGR,Vacations,submit_leave_request,YES,override
+MGR,Vacations,view_own_balance,YES,override
+MGR,Vacations,view_own_history,YES,override
+MGR,Vacations,cancel_own_request,YES,override
+MGR,Vacations,approve_team_requests,YES,override
+MGR,Vacations,view_team_calendar,YES,override
+MGR,Vacations,view_dept_trends,YES,override
+MGR,Vacations,view_org_calendar,NO,override
+MGR,Vacations,adjust_balances,NO,override
+MGR,Vacations,override_requests,NO,override
+MGR,Vacations,configure_leave_types,NO,override
+MGR,Vacations,export_leave_reports,YES,override
+MGR,Vacations,setup_auto_approval,NO,override
+MGR,Reviews,view_own_reviews,YES,override
+MGR,Reviews,initiate_self_review,YES,override
+MGR,Reviews,view_team_reviews,YES,override
+MGR,Reviews,create_review_direct_report,YES,override
+MGR,Reviews,schedule_reviews,YES,override
+MGR,Reviews,add_private_feedback,YES,override
+MGR,Reviews,add_shared_feedback,YES,override
+MGR,Reviews,edit_delete_reviews,NO,override
+MGR,Reviews,view_any_review_history,NO,override
+MGR,Reviews,configure_review_templates,NO,override
+MGR,Reviews,set_review_cycles,NO,override
+MGR,Reviews,export_review_data,NO,override
+MGR,Reviews,attach_documents,YES,override
+MGR,Onboarding,view_own_tasks,YES,override
+MGR,Onboarding,complete_own_tasks,YES,override
+MGR,Onboarding,view_team_status,YES,override
+MGR,Onboarding,create_checklist_templates,NO,override
+MGR,Onboarding,assign_tasks,NO,override
+MGR,Onboarding,track_all_onboarding,NO,override
+MGR,Onboarding,view_overdue_dashboard,YES,override
+MGR,Onboarding,initiate_offboarding,YES,override
+MGR,Onboarding,approve_offboarding,NO,override
+MGR,Onboarding,configure_templates,NO,override
+MGR,Onboarding,send_reminders,YES,override
+MGR,Training,view_own_history,YES,override
+MGR,Training,add_own_training,YES,override
+MGR,Training,upload_own_certificates,YES,override
+MGR,Training,view_team_history,YES,override
+MGR,Training,view_all_records,NO,override
+MGR,Training,track_own_budget,YES,override
+MGR,Training,track_team_budget,YES,override
+MGR,Training,track_dept_budget,NO,override
+MGR,Training,approve_training_requests,YES,override
+MGR,Training,configure_budget,NO,override
+MGR,Training,log_peer_sessions,YES,override
+MGR,Training,view_peer_incentives,YES,override
+MGR,Training,export_training_reports,YES,override
+MGR,Compensation,view_own_compensation,YES,override
+MGR,Compensation,view_team_compensation,NO,override
+MGR,Compensation,view_all_compensation,NO,override
+MGR,Compensation,submit_bonus_nomination,YES,override
+MGR,Compensation,approve_bonus_nominations,NO,override
+MGR,Compensation,track_monthly_bonuses,YES,override
+MGR,Compensation,track_one_time_bonuses,YES,override
+MGR,Compensation,view_bonus_payouts,YES,override
+MGR,Compensation,configure_bonus_types,NO,override
+MGR,Compensation,export_payroll,NO,override
+MGR,Compensation,view_audit_trail,NO,override
+MGR,Compensation,adjust_salary_bands,NO,override
+MGR,Feedback,submit_anonymous_feedback,YES,override
+MGR,Feedback,submit_named_feedback,YES,override
+MGR,Feedback,view_own_feedback,YES,override
+MGR,Feedback,participate_pulse_surveys,YES,override
+MGR,Feedback,create_surveys,NO,override
+MGR,Feedback,view_team_survey_results,YES,override
+MGR,Feedback,view_dept_survey_results,NO,override
+MGR,Feedback,view_org_survey_results,NO,override
+MGR,Feedback,view_anonymous_details,NO,override
+MGR,Feedback,export_survey_data,NO,override
+MGR,Feedback,configure_survey_templates,NO,override
+MGR,Feedback,setup_pulse_checks,NO,override
+MGR,Feedback,view_sentiment_analysis,NO,override
+MGR,Feedback,receive_negative_alerts,YES,override
+MGR,Time Tracking,log_own_hours,YES,override
+MGR,Time Tracking,view_own_timesheet,YES,override
+MGR,Time Tracking,edit_own_hours,YES,override
+MGR,Time Tracking,view_team_timesheets,YES,override
+MGR,Time Tracking,approve_team_timesheets,YES,override
+MGR,Time Tracking,view_dept_timesheets,NO,override
+MGR,Time Tracking,export_timesheets,YES,override
+MGR,Time Tracking,configure_projects,NO,override
+MGR,Time Tracking,setup_billing_rates,NO,override
+MGR,Time Tracking,view_billable_hours,NO,override
+MGR,Time Tracking,integrate_clockify,NO,override
+MGR,Internal Mobility,view_job_listings,YES,override
+MGR,Internal Mobility,apply_internal_positions,YES,override
+MGR,Internal Mobility,view_own_promotion_history,YES,override
+MGR,Internal Mobility,view_team_promotion_history,YES,override
+MGR,Internal Mobility,view_all_promotion_history,NO,override
+MGR,Internal Mobility,track_cpf_advancement,YES,override
+MGR,Internal Mobility,initiate_promotion,YES,override
+MGR,Internal Mobility,approve_promotions,NO,override
+MGR,Internal Mobility,configure_cpf_requirements,NO,override
+MGR,Internal Mobility,view_application_status,YES,override
+MGR,Internal Mobility,review_applicants,YES,override
+MGR,Internal Mobility,schedule_interviews,YES,override
+MGR,Documents,upload_own_documents,YES,override
+MGR,Documents,view_own_documents,YES,override
+MGR,Documents,delete_own_documents,YES,override
+MGR,Documents,view_team_documents,NO,override
+MGR,Documents,upload_any_documents,NO,override
+MGR,Documents,set_expiry_dates,NO,override
+MGR,Documents,receive_expiry_notifications,YES,override
+MGR,Documents,configure_categories,NO,override
+MGR,Documents,set_visibility_permissions,NO,override
+MGR,Documents,initiate_signature_requests,YES,override
+MGR,Documents,sign_documents,YES,override
+MGR,Documents,view_signed_status,YES,override
+MGR,Documents,access_contract_templates,NO,override
+MGR,Asset Management,view_own_assets,YES,override
+MGR,Asset Management,view_team_assets,YES,override
+MGR,Asset Management,view_all_assets,NO,override
+MGR,Asset Management,assign_assets,NO,override
+MGR,Asset Management,update_asset_condition,YES,override
+MGR,Asset Management,track_warranty,NO,override
+MGR,Asset Management,initiate_asset_return,YES,override
+MGR,Asset Management,process_asset_return,NO,override
+MGR,Asset Management,log_asset_lost,YES,override
+MGR,Asset Management,generate_qr_codes,NO,override
+MGR,Asset Management,view_asset_history,YES,override
+MGR,Asset Management,configure_asset_types,NO,override
+MGR,Asset Management,export_inventory,NO,override
+MGR,Org Chart,view_org_chart,YES,override
+MGR,Org Chart,view_dept_filters,YES,override
+MGR,Org Chart,view_reporting_lines,YES,override
+MGR,Org Chart,view_hover_cards,YES,override
+MGR,Org Chart,view_contact_info,YES,override
+MGR,Org Chart,view_salary_in_hover,NO,override
+MGR,Org Chart,export_org_chart,NO,override
+MGR,Org Chart,edit_reporting_relationships,NO,override
+MGR,Org Chart,create_teams,NO,override
+MGR,Org Chart,view_historical_structure,NO,override
+MGR,Leave Analytics,view_own_patterns,YES,override
+MGR,Leave Analytics,view_team_trends,YES,override
+MGR,Leave Analytics,view_dept_analytics,YES,override
+MGR,Leave Analytics,view_company_insights,YES,override
+MGR,Leave Analytics,export_leave_reports,YES,override
+MGR,Leave Analytics,view_workforce_predictions,YES,override
+MGR,Leave Analytics,set_leave_policies,YES,override
+MGR,Leave Analytics,configure_fiscal_year,NO,override
+MGR,Leave Analytics,view_forecasting,NO,override
+MGR,Announcements,view_announcements,YES,override
+MGR,Announcements,create_announcements,YES,override
+MGR,Announcements,create_company_announcements,YES,override
+MGR,Announcements,view_birthdays,YES,override
+MGR,Announcements,view_anniversaries,YES,override
+MGR,Announcements,add_reactions,YES,override
+MGR,Announcements,moderate_comments,YES,override
+MGR,Announcements,schedule_announcements,YES,override
+MGR,Announcements,view_analytics,YES,override
+MGR,Announcements,configure_notifications,YES,override
+MGR,Discord,use_leave_balance,YES,override
+MGR,Discord,use_request_leave,YES,override
+MGR,Discord,use_whois,YES,override
+MGR,Discord,use_team_calendar,YES,override
+MGR,Discord,use_approve_leave,YES,override
+MGR,Discord,use_announce,YES,override
+MGR,Discord,use_add_birthday,NO,override
+MGR,Discord,use_sync_roles,NO,override
+MGR,Discord,use_asset_lookup,YES,override
+MGR,Discord,use_survey_results,NO,override
+MGR,System,configure_integrations,NO,override
+MGR,System,view_system_logs,NO,override
+MGR,System,manage_api_keys,NO,override
+MGR,System,configure_security,NO,override
+MGR,System,view_audit_logs,NO,override
+MGR,System,backup_restore,NO,override
+MGR,System,manage_users,NO,override
+MGR,System,system_settings,NO,override
+HR,Employee Profiles,view_own_profile,YES,override
+HR,Employee Profiles,edit_own_basic_info,YES,override
+HR,Employee Profiles,edit_own_role_salary_cpf,YES,override
+HR,Employee Profiles,view_team_profiles,YES,override
+HR,Employee Profiles,view_all_profiles,YES,override
+HR,Employee Profiles,view_salary_history,YES,override
+HR,Employee Profiles,view_audit_log,YES,override
+HR,Employee Profiles,export_employee_data,YES,override
+HR,Employee Profiles,add_remove_employees,YES,override
+HR,Employee Profiles,upload_own_cv,YES,override
+HR,Employee Profiles,upload_any_cv,YES,override
+HR,Employee Profiles,update_own_profile,YES,override
+HR,Employee Profiles,update_any_profile,YES,override
+HR,Vacations,submit_leave_request,YES,override
+HR,Vacations,view_own_balance,YES,override
+HR,Vacations,view_own_history,YES,override
+HR,Vacations,cancel_own_request,YES,override
+HR,Vacations,approve_team_requests,YES,override
+HR,Vacations,view_team_calendar,YES,override
+HR,Vacations,view_dept_trends,YES,override
+HR,Vacations,view_org_calendar,YES,override
+HR,Vacations,adjust_balances,YES,override
+HR,Vacations,override_requests,YES,override
+HR,Vacations,configure_leave_types,YES,override
+HR,Vacations,export_leave_reports,YES,override
+HR,Vacations,setup_auto_approval,YES,override
+HR,Reviews,view_own_reviews,YES,override
+HR,Reviews,initiate_self_review,YES,override
+HR,Reviews,view_team_reviews,YES,override
+HR,Reviews,create_review_direct_report,YES,override
+HR,Reviews,schedule_reviews,YES,override
+HR,Reviews,add_private_feedback,YES,override
+HR,Reviews,add_shared_feedback,YES,override
+HR,Reviews,edit_delete_reviews,YES,override
+HR,Reviews,view_any_review_history,YES,override
+HR,Reviews,configure_review_templates,YES,override
+HR,Reviews,set_review_cycles,YES,override
+HR,Reviews,export_review_data,YES,override
+HR,Reviews,attach_documents,YES,override
+HR,Onboarding,view_own_tasks,YES,override
+HR,Onboarding,complete_own_tasks,YES,override
+HR,Onboarding,view_team_status,YES,override
+HR,Onboarding,create_checklist_templates,YES,override
+HR,Onboarding,assign_tasks,YES,override
+HR,Onboarding,track_all_onboarding,YES,override
+HR,Onboarding,view_overdue_dashboard,YES,override
+HR,Onboarding,initiate_offboarding,YES,override
+HR,Onboarding,approve_offboarding,YES,override
+HR,Onboarding,configure_templates,YES,override
+HR,Onboarding,send_reminders,YES,override
+HR,Training,view_own_history,YES,override
+HR,Training,add_own_training,YES,override
+HR,Training,upload_own_certificates,YES,override
+HR,Training,view_team_history,YES,override
+HR,Training,view_all_records,YES,override
+HR,Training,track_own_budget,YES,override
+HR,Training,track_team_budget,YES,override
+HR,Training,track_dept_budget,YES,override
+HR,Training,approve_training_requests,YES,override
+HR,Training,configure_budget,YES,override
+HR,Training,log_peer_sessions,YES,override
+HR,Training,view_peer_incentives,YES,override
+HR,Training,export_training_reports,YES,override
+HR,Compensation,view_own_compensation,YES,override
+HR,Compensation,view_team_compensation,YES,override
+HR,Compensation,view_all_compensation,NO,override
+HR,Compensation,submit_bonus_nomination,YES,override
+HR,Compensation,approve_bonus_nominations,YES,override
+HR,Compensation,track_monthly_bonuses,YES,override
+HR,Compensation,track_one_time_bonuses,YES,override
+HR,Compensation,view_bonus_payouts,YES,override
+HR,Compensation,configure_bonus_types,NO,override
+HR,Compensation,export_payroll,NO,override
+HR,Compensation,view_audit_trail,NO,override
+HR,Compensation,adjust_salary_bands,NO,override
+HR,Feedback,submit_anonymous_feedback,YES,override
+HR,Feedback,submit_named_feedback,YES,override
+HR,Feedback,view_own_feedback,YES,override
+HR,Feedback,participate_pulse_surveys,YES,override
+HR,Feedback,create_surveys,YES,override
+HR,Feedback,view_team_survey_results,YES,override
+HR,Feedback,view_dept_survey_results,YES,override
+HR,Feedback,view_org_survey_results,YES,override
+HR,Feedback,view_anonymous_details,NO,override
+HR,Feedback,export_survey_data,YES,override
+HR,Feedback,configure_survey_templates,YES,override
+HR,Feedback,setup_pulse_checks,YES,override
+HR,Feedback,view_sentiment_analysis,YES,override
+HR,Feedback,receive_negative_alerts,YES,override
+HR,Time Tracking,log_own_hours,YES,override
+HR,Time Tracking,view_own_timesheet,YES,override
+HR,Time Tracking,edit_own_hours,YES,override
+HR,Time Tracking,view_team_timesheets,YES,override
+HR,Time Tracking,approve_team_timesheets,NO,override
+HR,Time Tracking,view_dept_timesheets,YES,override
+HR,Time Tracking,export_timesheets,YES,override
+HR,Time Tracking,configure_projects,YES,override
+HR,Time Tracking,setup_billing_rates,NO,override
+HR,Time Tracking,view_billable_hours,YES,override
+HR,Time Tracking,integrate_clockify,NO,override
+HR,Internal Mobility,view_job_listings,YES,override
+HR,Internal Mobility,apply_internal_positions,YES,override
+HR,Internal Mobility,view_own_promotion_history,YES,override
+HR,Internal Mobility,view_team_promotion_history,YES,override
+HR,Internal Mobility,view_all_promotion_history,YES,override
+HR,Internal Mobility,track_cpf_advancement,YES,override
+HR,Internal Mobility,initiate_promotion,YES,override
+HR,Internal Mobility,approve_promotions,NO,override
+HR,Internal Mobility,configure_cpf_requirements,NO,override
+HR,Internal Mobility,view_application_status,YES,override
+HR,Internal Mobility,review_applicants,YES,override
+HR,Internal Mobility,schedule_interviews,YES,override
+HR,Documents,upload_own_documents,YES,override
+HR,Documents,view_own_documents,YES,override
+HR,Documents,delete_own_documents,YES,override
+HR,Documents,view_team_documents,YES,override
+HR,Documents,upload_any_documents,YES,override
+HR,Documents,set_expiry_dates,YES,override
+HR,Documents,receive_expiry_notifications,YES,override
+HR,Documents,configure_categories,YES,override
+HR,Documents,set_visibility_permissions,YES,override
+HR,Documents,initiate_signature_requests,YES,override
+HR,Documents,sign_documents,YES,override
+HR,Documents,view_signed_status,YES,override
+HR,Documents,access_contract_templates,YES,override
+HR,Asset Management,view_own_assets,YES,override
+HR,Asset Management,view_team_assets,YES,override
+HR,Asset Management,view_all_assets,YES,override
+HR,Asset Management,assign_assets,YES,override
+HR,Asset Management,update_asset_condition,YES,override
+HR,Asset Management,track_warranty,YES,override
+HR,Asset Management,initiate_asset_return,YES,override
+HR,Asset Management,process_asset_return,YES,override
+HR,Asset Management,log_asset_lost,YES,override
+HR,Asset Management,generate_qr_codes,YES,override
+HR,Asset Management,view_asset_history,YES,override
+HR,Asset Management,configure_asset_types,YES,override
+HR,Asset Management,export_inventory,YES,override
+HR,Org Chart,view_org_chart,YES,override
+HR,Org Chart,view_dept_filters,YES,override
+HR,Org Chart,view_reporting_lines,YES,override
+HR,Org Chart,view_hover_cards,YES,override
+HR,Org Chart,view_contact_info,YES,override
+HR,Org Chart,view_salary_in_hover,NO,override
+HR,Org Chart,export_org_chart,YES,override
+HR,Org Chart,edit_reporting_relationships,YES,override
+HR,Org Chart,create_teams,NO,override
+HR,Org Chart,view_historical_structure,YES,override
+HR,Leave Analytics,view_own_patterns,YES,override
+HR,Leave Analytics,view_team_trends,YES,override
+HR,Leave Analytics,view_dept_analytics,YES,override
+HR,Leave Analytics,view_company_insights,YES,override
+HR,Leave Analytics,export_leave_reports,YES,override
+HR,Leave Analytics,view_workforce_predictions,YES,override
+HR,Leave Analytics,set_leave_policies,YES,override
+HR,Leave Analytics,configure_fiscal_year,NO,override
+HR,Leave Analytics,view_forecasting,YES,override
+HR,Announcements,view_announcements,YES,override
+HR,Announcements,create_announcements,YES,override
+HR,Announcements,create_company_announcements,YES,override
+HR,Announcements,view_birthdays,YES,override
+HR,Announcements,view_anniversaries,YES,override
+HR,Announcements,add_reactions,YES,override
+HR,Announcements,moderate_comments,YES,override
+HR,Announcements,schedule_announcements,YES,override
+HR,Announcements,view_analytics,YES,override
+HR,Announcements,configure_notifications,YES,override
+HR,Discord,use_leave_balance,YES,override
+HR,Discord,use_request_leave,YES,override
+HR,Discord,use_whois,YES,override
+HR,Discord,use_team_calendar,YES,override
+HR,Discord,use_approve_leave,YES,override
+HR,Discord,use_announce,YES,override
+HR,Discord,use_add_birthday,YES,override
+HR,Discord,use_sync_roles,YES,override
+HR,Discord,use_asset_lookup,YES,override
+HR,Discord,use_survey_results,YES,override
+HR,System,configure_integrations,NO,override
+HR,System,view_system_logs,NO,override
+HR,System,manage_api_keys,NO,override
+HR,System,configure_security,NO,override
+HR,System,view_audit_logs,NO,override
+HR,System,backup_restore,NO,override
+HR,System,manage_users,NO,override
+HR,System,system_settings,NO,override
+HR-MGR,Employee Profiles,view_own_profile,YES,override
+HR-MGR,Employee Profiles,edit_own_basic_info,YES,override
+HR-MGR,Employee Profiles,edit_own_role_salary_cpf,YES,override
+HR-MGR,Employee Profiles,view_team_profiles,YES,override
+HR-MGR,Employee Profiles,view_all_profiles,YES,override
+HR-MGR,Employee Profiles,view_salary_history,YES,override
+HR-MGR,Employee Profiles,view_audit_log,YES,override
+HR-MGR,Employee Profiles,export_employee_data,YES,override
+HR-MGR,Employee Profiles,add_remove_employees,YES,override
+HR-MGR,Employee Profiles,upload_own_cv,YES,override
+HR-MGR,Employee Profiles,upload_any_cv,YES,override
+HR-MGR,Employee Profiles,update_own_profile,YES,override
+HR-MGR,Employee Profiles,update_any_profile,YES,override
+HR-MGR,Vacations,submit_leave_request,YES,override
+HR-MGR,Vacations,view_own_balance,YES,override
+HR-MGR,Vacations,view_own_history,YES,override
+HR-MGR,Vacations,cancel_own_request,YES,override
+HR-MGR,Vacations,approve_team_requests,YES,override
+HR-MGR,Vacations,view_team_calendar,YES,override
+HR-MGR,Vacations,view_dept_trends,YES,override
+HR-MGR,Vacations,view_org_calendar,YES,override
+HR-MGR,Vacations,adjust_balances,YES,override
+HR-MGR,Vacations,override_requests,YES,override
+HR-MGR,Vacations,configure_leave_types,YES,override
+HR-MGR,Vacations,export_leave_reports,YES,override
+HR-MGR,Vacations,setup_auto_approval,YES,override
+HR-MGR,Reviews,view_own_reviews,YES,override
+HR-MGR,Reviews,initiate_self_review,YES,override
+HR-MGR,Reviews,view_team_reviews,YES,override
+HR-MGR,Reviews,create_review_direct_report,YES,override
+HR-MGR,Reviews,schedule_reviews,YES,override
+HR-MGR,Reviews,add_private_feedback,YES,override
+HR-MGR,Reviews,add_shared_feedback,YES,override
+HR-MGR,Reviews,edit_delete_reviews,YES,override
+HR-MGR,Reviews,view_any_review_history,YES,override
+HR-MGR,Reviews,configure_review_templates,YES,override
+HR-MGR,Reviews,set_review_cycles,YES,override
+HR-MGR,Reviews,export_review_data,YES,override
+HR-MGR,Reviews,attach_documents,YES,override
+HR-MGR,Onboarding,view_own_tasks,YES,override
+HR-MGR,Onboarding,complete_own_tasks,YES,override
+HR-MGR,Onboarding,view_team_status,YES,override
+HR-MGR,Onboarding,create_checklist_templates,YES,override
+HR-MGR,Onboarding,assign_tasks,YES,override
+HR-MGR,Onboarding,track_all_onboarding,YES,override
+HR-MGR,Onboarding,view_overdue_dashboard,YES,override
+HR-MGR,Onboarding,initiate_offboarding,YES,override
+HR-MGR,Onboarding,approve_offboarding,YES,override
+HR-MGR,Onboarding,configure_templates,YES,override
+HR-MGR,Onboarding,send_reminders,YES,override
+HR-MGR,Training,view_own_history,YES,override
+HR-MGR,Training,add_own_training,YES,override
+HR-MGR,Training,upload_own_certificates,YES,override
+HR-MGR,Training,view_team_history,YES,override
+HR-MGR,Training,view_all_records,YES,override
+HR-MGR,Training,track_own_budget,YES,override
+HR-MGR,Training,track_team_budget,YES,override
+HR-MGR,Training,track_dept_budget,YES,override
+HR-MGR,Training,approve_training_requests,YES,override
+HR-MGR,Training,configure_budget,YES,override
+HR-MGR,Training,log_peer_sessions,YES,override
+HR-MGR,Training,view_peer_incentives,YES,override
+HR-MGR,Training,export_training_reports,YES,override
+HR-MGR,Compensation,view_own_compensation,YES,override
+HR-MGR,Compensation,view_team_compensation,YES,override
+HR-MGR,Compensation,view_all_compensation,YES,override
+HR-MGR,Compensation,submit_bonus_nomination,YES,override
+HR-MGR,Compensation,approve_bonus_nominations,YES,override
+HR-MGR,Compensation,track_monthly_bonuses,YES,override
+HR-MGR,Compensation,track_one_time_bonuses,YES,override
+HR-MGR,Compensation,view_bonus_payouts,YES,override
+HR-MGR,Compensation,configure_bonus_types,YES,override
+HR-MGR,Compensation,export_payroll,YES,override
+HR-MGR,Compensation,view_audit_trail,YES,override
+HR-MGR,Compensation,adjust_salary_bands,YES,override
+HR-MGR,Feedback,submit_anonymous_feedback,YES,override
+HR-MGR,Feedback,submit_named_feedback,YES,override
+HR-MGR,Feedback,view_own_feedback,YES,override
+HR-MGR,Feedback,participate_pulse_surveys,YES,override
+HR-MGR,Feedback,create_surveys,YES,override
+HR-MGR,Feedback,view_team_survey_results,YES,override
+HR-MGR,Feedback,view_dept_survey_results,YES,override
+HR-MGR,Feedback,view_org_survey_results,YES,override
+HR-MGR,Feedback,view_anonymous_details,YES,override
+HR-MGR,Feedback,export_survey_data,YES,override
+HR-MGR,Feedback,configure_survey_templates,YES,override
+HR-MGR,Feedback,setup_pulse_checks,YES,override
+HR-MGR,Feedback,view_sentiment_analysis,YES,override
+HR-MGR,Feedback,receive_negative_alerts,YES,override
+HR-MGR,Time Tracking,log_own_hours,YES,override
+HR-MGR,Time Tracking,view_own_timesheet,YES,override
+HR-MGR,Time Tracking,edit_own_hours,YES,override
+HR-MGR,Time Tracking,view_team_timesheets,YES,override
+HR-MGR,Time Tracking,approve_team_timesheets,NO,override
+HR-MGR,Time Tracking,view_dept_timesheets,YES,override
+HR-MGR,Time Tracking,export_timesheets,YES,override
+HR-MGR,Time Tracking,configure_projects,YES,override
+HR-MGR,Time Tracking,setup_billing_rates,YES,override
+HR-MGR,Time Tracking,view_billable_hours,YES,override
+HR-MGR,Time Tracking,integrate_clockify,NO,override
+HR-MGR,Internal Mobility,view_job_listings,YES,override
+HR-MGR,Internal Mobility,apply_internal_positions,YES,override
+HR-MGR,Internal Mobility,view_own_promotion_history,YES,override
+HR-MGR,Internal Mobility,view_team_promotion_history,YES,override
+HR-MGR,Internal Mobility,view_all_promotion_history,YES,override
+HR-MGR,Internal Mobility,track_cpf_advancement,YES,override
+HR-MGR,Internal Mobility,initiate_promotion,YES,override
+HR-MGR,Internal Mobility,approve_promotions,YES,override
+HR-MGR,Internal Mobility,configure_cpf_requirements,YES,override
+HR-MGR,Internal Mobility,view_application_status,YES,override
+HR-MGR,Internal Mobility,review_applicants,YES,override
+HR-MGR,Internal Mobility,schedule_interviews,YES,override
+HR-MGR,Documents,upload_own_documents,YES,override
+HR-MGR,Documents,view_own_documents,YES,override
+HR-MGR,Documents,delete_own_documents,YES,override
+HR-MGR,Documents,view_team_documents,YES,override
+HR-MGR,Documents,upload_any_documents,YES,override
+HR-MGR,Documents,set_expiry_dates,YES,override
+HR-MGR,Documents,receive_expiry_notifications,YES,override
+HR-MGR,Documents,configure_categories,YES,override
+HR-MGR,Documents,set_visibility_permissions,YES,override
+HR-MGR,Documents,initiate_signature_requests,YES,override
+HR-MGR,Documents,sign_documents,YES,override
+HR-MGR,Documents,view_signed_status,YES,override
+HR-MGR,Documents,access_contract_templates,YES,override
+HR-MGR,Asset Management,view_own_assets,YES,override
+HR-MGR,Asset Management,view_team_assets,YES,override
+HR-MGR,Asset Management,view_all_assets,YES,override
+HR-MGR,Asset Management,assign_assets,YES,override
+HR-MGR,Asset Management,update_asset_condition,YES,override
+HR-MGR,Asset Management,track_warranty,YES,override
+HR-MGR,Asset Management,initiate_asset_return,YES,override
+HR-MGR,Asset Management,process_asset_return,YES,override
+HR-MGR,Asset Management,log_asset_lost,YES,override
+HR-MGR,Asset Management,generate_qr_codes,YES,override
+HR-MGR,Asset Management,view_asset_history,YES,override
+HR-MGR,Asset Management,configure_asset_types,YES,override
+HR-MGR,Asset Management,export_inventory,YES,override
+HR-MGR,Org Chart,view_org_chart,YES,override
+HR-MGR,Org Chart,view_dept_filters,YES,override
+HR-MGR,Org Chart,view_reporting_lines,YES,override
+HR-MGR,Org Chart,view_hover_cards,YES,override
+HR-MGR,Org Chart,view_contact_info,YES,override
+HR-MGR,Org Chart,view_salary_in_hover,YES,override
+HR-MGR,Org Chart,export_org_chart,YES,override
+HR-MGR,Org Chart,edit_reporting_relationships,YES,override
+HR-MGR,Org Chart,create_teams,YES,override
+HR-MGR,Org Chart,view_historical_structure,YES,override
+HR-MGR,Leave Analytics,view_own_patterns,YES,override
+HR-MGR,Leave Analytics,view_team_trends,YES,override
+HR-MGR,Leave Analytics,view_dept_analytics,YES,override
+HR-MGR,Leave Analytics,view_company_insights,YES,override
+HR-MGR,Leave Analytics,export_leave_reports,YES,override
+HR-MGR,Leave Analytics,view_workforce_predictions,YES,override
+HR-MGR,Leave Analytics,set_leave_policies,YES,override
+HR-MGR,Leave Analytics,configure_fiscal_year,YES,override
+HR-MGR,Leave Analytics,view_forecasting,YES,override
+HR-MGR,Announcements,view_announcements,YES,override
+HR-MGR,Announcements,create_announcements,YES,override
+HR-MGR,Announcements,create_company_announcements,YES,override
+HR-MGR,Announcements,view_birthdays,YES,override
+HR-MGR,Announcements,view_anniversaries,YES,override
+HR-MGR,Announcements,add_reactions,YES,override
+HR-MGR,Announcements,moderate_comments,YES,override
+HR-MGR,Announcements,schedule_announcements,YES,override
+HR-MGR,Announcements,view_analytics,YES,override
+HR-MGR,Announcements,configure_notifications,YES,override
+HR-MGR,Discord,use_leave_balance,YES,override
+HR-MGR,Discord,use_request_leave,YES,override
+HR-MGR,Discord,use_whois,YES,override
+HR-MGR,Discord,use_team_calendar,YES,override
+HR-MGR,Discord,use_approve_leave,YES,override
+HR-MGR,Discord,use_announce,YES,override
+HR-MGR,Discord,use_add_birthday,YES,override
+HR-MGR,Discord,use_sync_roles,YES,override
+HR-MGR,Discord,use_asset_lookup,YES,override
+HR-MGR,Discord,use_survey_results,YES,override
+HR-MGR,System,configure_integrations,NO,override
+HR-MGR,System,view_system_logs,YES,override
+HR-MGR,System,manage_api_keys,NO,override
+HR-MGR,System,configure_security,NO,override
+HR-MGR,System,view_audit_logs,YES,override
+HR-MGR,System,backup_restore,NO,override
+HR-MGR,System,manage_users,NO,override
+HR-MGR,System,system_settings,NO,override
+ADMIN,Employee Profiles,view_own_profile,YES,override
+ADMIN,Employee Profiles,edit_own_basic_info,YES,override
+ADMIN,Employee Profiles,edit_own_role_salary_cpf,YES,override
+ADMIN,Employee Profiles,view_team_profiles,YES,override
+ADMIN,Employee Profiles,view_all_profiles,YES,override
+ADMIN,Employee Profiles,view_salary_history,YES,override
+ADMIN,Employee Profiles,view_audit_log,YES,override
+ADMIN,Employee Profiles,export_employee_data,YES,override
+ADMIN,Employee Profiles,add_remove_employees,YES,override
+ADMIN,Employee Profiles,upload_own_cv,YES,override
+ADMIN,Employee Profiles,upload_any_cv,YES,override
+ADMIN,Employee Profiles,update_own_profile,YES,override
+ADMIN,Employee Profiles,update_any_profile,YES,override
+ADMIN,Vacations,submit_leave_request,YES,override
+ADMIN,Vacations,view_own_balance,YES,override
+ADMIN,Vacations,view_own_history,YES,override
+ADMIN,Vacations,cancel_own_request,YES,override
+ADMIN,Vacations,approve_team_requests,YES,override
+ADMIN,Vacations,view_team_calendar,YES,override
+ADMIN,Vacations,view_dept_trends,YES,override
+ADMIN,Vacations,view_org_calendar,YES,override
+ADMIN,Vacations,adjust_balances,YES,override
+ADMIN,Vacations,override_requests,YES,override
+ADMIN,Vacations,configure_leave_types,YES,override
+ADMIN,Vacations,export_leave_reports,YES,override
+ADMIN,Vacations,setup_auto_approval,YES,override
+ADMIN,Reviews,view_own_reviews,YES,override
+ADMIN,Reviews,initiate_self_review,YES,override
+ADMIN,Reviews,view_team_reviews,YES,override
+ADMIN,Reviews,create_review_direct_report,YES,override
+ADMIN,Reviews,schedule_reviews,YES,override
+ADMIN,Reviews,add_private_feedback,YES,override
+ADMIN,Reviews,add_shared_feedback,YES,override
+ADMIN,Reviews,edit_delete_reviews,YES,override
+ADMIN,Reviews,view_any_review_history,YES,override
+ADMIN,Reviews,configure_review_templates,YES,override
+ADMIN,Reviews,set_review_cycles,YES,override
+ADMIN,Reviews,export_review_data,YES,override
+ADMIN,Reviews,attach_documents,YES,override
+ADMIN,Onboarding,view_own_tasks,YES,override
+ADMIN,Onboarding,complete_own_tasks,YES,override
+ADMIN,Onboarding,view_team_status,YES,override
+ADMIN,Onboarding,create_checklist_templates,YES,override
+ADMIN,Onboarding,assign_tasks,YES,override
+ADMIN,Onboarding,track_all_onboarding,YES,override
+ADMIN,Onboarding,view_overdue_dashboard,YES,override
+ADMIN,Onboarding,initiate_offboarding,YES,override
+ADMIN,Onboarding,approve_offboarding,YES,override
+ADMIN,Onboarding,configure_templates,YES,override
+ADMIN,Onboarding,send_reminders,YES,override
+ADMIN,Training,view_own_history,YES,override
+ADMIN,Training,add_own_training,YES,override
+ADMIN,Training,upload_own_certificates,YES,override
+ADMIN,Training,view_team_history,YES,override
+ADMIN,Training,view_all_records,YES,override
+ADMIN,Training,track_own_budget,YES,override
+ADMIN,Training,track_team_budget,YES,override
+ADMIN,Training,track_dept_budget,YES,override
+ADMIN,Training,approve_training_requests,YES,override
+ADMIN,Training,configure_budget,YES,override
+ADMIN,Training,log_peer_sessions,YES,override
+ADMIN,Training,view_peer_incentives,YES,override
+ADMIN,Training,export_training_reports,YES,override
+ADMIN,Compensation,view_own_compensation,YES,override
+ADMIN,Compensation,view_team_compensation,YES,override
+ADMIN,Compensation,view_all_compensation,YES,override
+ADMIN,Compensation,submit_bonus_nomination,YES,override
+ADMIN,Compensation,approve_bonus_nominations,YES,override
+ADMIN,Compensation,track_monthly_bonuses,YES,override
+ADMIN,Compensation,track_one_time_bonuses,YES,override
+ADMIN,Compensation,view_bonus_payouts,YES,override
+ADMIN,Compensation,configure_bonus_types,YES,override
+ADMIN,Compensation,export_payroll,YES,override
+ADMIN,Compensation,view_audit_trail,YES,override
+ADMIN,Compensation,adjust_salary_bands,YES,override
+ADMIN,Feedback,submit_anonymous_feedback,YES,override
+ADMIN,Feedback,submit_named_feedback,YES,override
+ADMIN,Feedback,view_own_feedback,YES,override
+ADMIN,Feedback,participate_pulse_surveys,YES,override
+ADMIN,Feedback,create_surveys,YES,override
+ADMIN,Feedback,view_team_survey_results,YES,override
+ADMIN,Feedback,view_dept_survey_results,YES,override
+ADMIN,Feedback,view_org_survey_results,YES,override
+ADMIN,Feedback,view_anonymous_details,YES,override
+ADMIN,Feedback,export_survey_data,YES,override
+ADMIN,Feedback,configure_survey_templates,YES,override
+ADMIN,Feedback,setup_pulse_checks,YES,override
+ADMIN,Feedback,view_sentiment_analysis,YES,override
+ADMIN,Feedback,receive_negative_alerts,YES,override
+ADMIN,Time Tracking,log_own_hours,YES,override
+ADMIN,Time Tracking,view_own_timesheet,YES,override
+ADMIN,Time Tracking,edit_own_hours,YES,override
+ADMIN,Time Tracking,view_team_timesheets,YES,override
+ADMIN,Time Tracking,approve_team_timesheets,YES,override
+ADMIN,Time Tracking,view_dept_timesheets,YES,override
+ADMIN,Time Tracking,export_timesheets,YES,override
+ADMIN,Time Tracking,configure_projects,YES,override
+ADMIN,Time Tracking,setup_billing_rates,YES,override
+ADMIN,Time Tracking,view_billable_hours,YES,override
+ADMIN,Time Tracking,integrate_clockify,YES,override
+ADMIN,Internal Mobility,view_job_listings,YES,override
+ADMIN,Internal Mobility,apply_internal_positions,YES,override
+ADMIN,Internal Mobility,view_own_promotion_history,YES,override
+ADMIN,Internal Mobility,view_team_promotion_history,YES,override
+ADMIN,Internal Mobility,view_all_promotion_history,YES,override
+ADMIN,Internal Mobility,track_cpf_advancement,YES,override
+ADMIN,Internal Mobility,initiate_promotion,YES,override
+ADMIN,Internal Mobility,approve_promotions,YES,override
+ADMIN,Internal Mobility,configure_cpf_requirements,YES,override
+ADMIN,Internal Mobility,view_application_status,YES,override
+ADMIN,Internal Mobility,review_applicants,YES,override
+ADMIN,Internal Mobility,schedule_interviews,YES,override
+ADMIN,Documents,upload_own_documents,YES,override
+ADMIN,Documents,view_own_documents,YES,override
+ADMIN,Documents,delete_own_documents,YES,override
+ADMIN,Documents,view_team_documents,YES,override
+ADMIN,Documents,upload_any_documents,YES,override
+ADMIN,Documents,set_expiry_dates,YES,override
+ADMIN,Documents,receive_expiry_notifications,YES,override
+ADMIN,Documents,configure_categories,YES,override
+ADMIN,Documents,set_visibility_permissions,YES,override
+ADMIN,Documents,initiate_signature_requests,YES,override
+ADMIN,Documents,sign_documents,YES,override
+ADMIN,Documents,view_signed_status,YES,override
+ADMIN,Documents,access_contract_templates,YES,override
+ADMIN,Asset Management,view_own_assets,YES,override
+ADMIN,Asset Management,view_team_assets,YES,override
+ADMIN,Asset Management,view_all_assets,YES,override
+ADMIN,Asset Management,assign_assets,YES,override
+ADMIN,Asset Management,update_asset_condition,YES,override
+ADMIN,Asset Management,track_warranty,YES,override
+ADMIN,Asset Management,initiate_asset_return,YES,override
+ADMIN,Asset Management,process_asset_return,YES,override
+ADMIN,Asset Management,log_asset_lost,YES,override
+ADMIN,Asset Management,generate_qr_codes,YES,override
+ADMIN,Asset Management,view_asset_history,YES,override
+ADMIN,Asset Management,configure_asset_types,YES,override
+ADMIN,Asset Management,export_inventory,YES,override
+ADMIN,Org Chart,view_org_chart,YES,override
+ADMIN,Org Chart,view_dept_filters,YES,override
+ADMIN,Org Chart,view_reporting_lines,YES,override
+ADMIN,Org Chart,view_hover_cards,YES,override
+ADMIN,Org Chart,view_contact_info,YES,override
+ADMIN,Org Chart,view_salary_in_hover,YES,override
+ADMIN,Org Chart,export_org_chart,YES,override
+ADMIN,Org Chart,edit_reporting_relationships,YES,override
+ADMIN,Org Chart,create_teams,YES,override
+ADMIN,Org Chart,view_historical_structure,YES,override
+ADMIN,Leave Analytics,view_own_patterns,YES,override
+ADMIN,Leave Analytics,view_team_trends,YES,override
+ADMIN,Leave Analytics,view_dept_analytics,YES,override
+ADMIN,Leave Analytics,view_company_insights,YES,override
+ADMIN,Leave Analytics,export_leave_reports,YES,override
+ADMIN,Leave Analytics,view_workforce_predictions,YES,override
+ADMIN,Leave Analytics,set_leave_policies,YES,override
+ADMIN,Leave Analytics,configure_fiscal_year,YES,override
+ADMIN,Leave Analytics,view_forecasting,YES,override
+ADMIN,Announcements,view_announcements,YES,override
+ADMIN,Announcements,create_announcements,YES,override
+ADMIN,Announcements,create_company_announcements,YES,override
+ADMIN,Announcements,view_birthdays,YES,override
+ADMIN,Announcements,view_anniversaries,YES,override
+ADMIN,Announcements,add_reactions,YES,override
+ADMIN,Announcements,moderate_comments,YES,override
+ADMIN,Announcements,schedule_announcements,YES,override
+ADMIN,Announcements,view_analytics,YES,override
+ADMIN,Announcements,configure_notifications,YES,override
+ADMIN,Discord,use_leave_balance,YES,override
+ADMIN,Discord,use_request_leave,YES,override
+ADMIN,Discord,use_whois,YES,override
+ADMIN,Discord,use_team_calendar,YES,override
+ADMIN,Discord,use_approve_leave,YES,override
+ADMIN,Discord,use_announce,YES,override
+ADMIN,Discord,use_add_birthday,YES,override
+ADMIN,Discord,use_sync_roles,YES,override
+ADMIN,Discord,use_asset_lookup,YES,override
+ADMIN,Discord,use_survey_results,YES,override
+ADMIN,System,configure_integrations,YES,override
+ADMIN,System,view_system_logs,YES,override
+ADMIN,System,manage_api_keys,YES,override
+ADMIN,System,configure_security,YES,override
+ADMIN,System,view_audit_logs,YES,override
+ADMIN,System,backup_restore,YES,override
+ADMIN,System,manage_users,YES,override
+ADMIN,System,system_settings,YES,override

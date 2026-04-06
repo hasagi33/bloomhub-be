@@ -27,8 +27,8 @@ EMPLOYEE_PROFILE_FIELDS = [
     "department",
     "role",
     "role_name",
-    "manager",
-    "manager_name",
+    "managers",
+    "manager_names",
     "start_date",
     "phone_number",
     "emergency_contact_phone",
@@ -36,7 +36,9 @@ EMPLOYEE_PROFILE_FIELDS = [
     "employment_status",
     "avatar",
     "is_active",
+    "cpf_level",
     "permissions_bitmap",
+    "assigned_projects",
 ]
 
 EMPLOYEE_PROFILE_READ_ONLY_FIELDS = [

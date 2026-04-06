@@ -10,6 +10,8 @@ Employee Profiles,export_employee_data
 Employee Profiles,add_remove_employees
 Employee Profiles,upload_own_cv
 Employee Profiles,upload_any_cv
+Employee Profiles,update_own_profile
+Employee Profiles,update_any_profile
 Vacations,submit_leave_request
 Vacations,view_own_balance
 Vacations,view_own_history
