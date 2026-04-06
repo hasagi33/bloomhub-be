@@ -7,6 +7,11 @@ from .models import (
     EmployeeDocument,
     Equipment,
     EquipmentAssignment,
+    LeaveAdjustment,
+    LeaveApprovalWorkflow,
+    LeaveBalance,
+    LeavePolicy,
+    LeaveRequest,
     Project,
     ProjectAssignment,
     Role,
@@ -125,3 +130,153 @@ class ChangeLogAdmin(admin.ModelAdmin):
     list_display = ("user_profile", "field_name", "changed_at", "changed_by")
     list_filter = ("field_name",)
     search_fields = ("user_profile__user__username", "field_name")
+
+
+# ──────────────────────────────────────────
+# Leave Management Admin
+# ──────────────────────────────────────────
+
+
+@admin.register(LeavePolicy)
+class LeavePolicyAdmin(admin.ModelAdmin):
+    list_display = (
+        "leave_type",
+        "allocated_days_per_year",
+        "carryover_days",
+        "requires_approval",
+        "min_notice_in_days",
+    )
+    list_filter = ("requires_approval", "requires_covering_employee")
+    search_fields = ("leave_type",)
+
+
+@admin.register(LeaveBalance)
+class LeaveBalanceAdmin(admin.ModelAdmin):
+    list_display = (
+        "employee",
+        "leave_type",
+        "year",
+        "allocated",
+        "used",
+        "remaining_display",
+        "carryover",
+    )
+    list_filter = ("leave_type", "year")
+    search_fields = (
+        "employee__user__username",
+        "employee__full_name",
+        "employee__user__email",
+    )
+    ordering = ["-year", "employee"]
+
+    @admin.display(description="Remaining")
+    def remaining_display(self, obj):
+        return obj.remaining
+
+
+@admin.register(LeaveRequest)
+class LeaveRequestAdmin(admin.ModelAdmin):
+    list_display = (
+        "employee",
+        "leave_type",
+        "start_date",
+        "end_date",
+        "days_display",
+        "status",
+        "submitted_date",
+        "approver",
+    )
+    list_filter = ("status", "leave_type", "submitted_date")
+    search_fields = (
+        "employee__user__username",
+        "employee__full_name",
+        "reason",
+    )
+    ordering = ["-submitted_date"]
+    readonly_fields = ("submitted_date", "days_display")
+
+    @admin.display(description="Days")
+    def days_display(self, obj):
+        return obj.days
+
+    fieldsets = (
+        (
+            "Request Information",
+            {
+                "fields": (
+                    "employee",
+                    "leave_type",
+                    "start_date",
+                    "end_date",
+                    "days_display",
+                    "reason",
+                    "covering_employee",
+                )
+            },
+        ),
+        (
+            "Status & Approval",
+            {
+                "fields": (
+                    "status",
+                    "submitted_date",
+                    "approver",
+                    "approved_date",
+                    "approval_comments",
+                    "rejection_reason",
+                )
+            },
+        ),
+    )
+
+
+class LeaveAdjustmentInline(admin.TabularInline):
+    model = LeaveAdjustment
+    extra = 0
+    readonly_fields = ("adjusted_at",)
+    fields = (
+        "leave_type",
+        "old_allocated",
+        "new_allocated",
+        "reason",
+        "adjusted_by",
+        "adjusted_at",
+    )
+
+
+@admin.register(LeaveAdjustment)
+class LeaveAdjustmentAdmin(admin.ModelAdmin):
+    list_display = (
+        "employee",
+        "leave_type",
+        "old_allocated",
+        "new_allocated",
+        "adjusted_by",
+        "adjusted_at",
+    )
+    list_filter = ("leave_type", "adjusted_at")
+    search_fields = (
+        "employee__user__username",
+        "employee__full_name",
+        "reason",
+    )
+    readonly_fields = ("adjusted_at",)
+    ordering = ["-adjusted_at"]
+
+
+@admin.register(LeaveApprovalWorkflow)
+class LeaveApprovalWorkflowAdmin(admin.ModelAdmin):
+    list_display = (
+        "leave_request",
+        "status",
+        "current_step",
+        "current_approver",
+        "created_at",
+    )
+    list_filter = ("status", "created_at")
+    search_fields = (
+        "leave_request__employee__user__username",
+        "leave_request__employee__full_name",
+    )
+    readonly_fields = ("created_at", "updated_at")
+    ordering = ["-created_at"]

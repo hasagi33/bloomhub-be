@@ -14,6 +14,11 @@ from core.models import (
     Asset,
     Assignment,
     ChecklistTemplate,
+    LeaveAdjustment,
+    LeaveApprovalWorkflow,
+    LeaveBalance,
+    LeavePolicy,
+    LeaveRequest,
     Project,
     ProjectAssignment,
     ReplacementLog,
@@ -85,6 +90,8 @@ class UserSerializer(serializers.ModelSerializer):
             "last_name",
             "avatar_url",
             "career_level",
+            "is_staff",
+            "is_superuser",
         ]
 
     def get_avatar_url(self, obj: User) -> str | None:
@@ -532,6 +539,427 @@ class AssignmentReturnSerializer(serializers.ModelSerializer):
         if not self.instance.is_active:
             raise serializers.ValidationError("This assignment is already returned.")
         return data
+
+
+# ──────────────────────────────────────────
+# Leave Management Serializers
+# ──────────────────────────────────────────
+
+
+class LeavePolicySerializer(serializers.ModelSerializer):
+    """Serializer for LeavePolicy model."""
+
+    leave_type_display = serializers.CharField(
+        source="get_leave_type_display", read_only=True
+    )
+
+    class Meta:
+        model = LeavePolicy
+        fields = [
+            "id",
+            "leave_type",
+            "leave_type_display",
+            "allocated_days_per_year",
+            "carryover_days",
+            "requires_approval",
+            "requires_covering_employee",
+            "min_notice_in_days",
+            "max_consecutive_days",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["created_at", "updated_at"]
+
+
+class LeaveBalanceSerializer(serializers.ModelSerializer):
+    """Serializer for LeaveBalance model."""
+
+    employee_id = serializers.IntegerField(source="employee.id", read_only=True)
+    employee_name = serializers.CharField(
+        source="employee.user.get_full_name", read_only=True
+    )
+    leave_type_display = serializers.CharField(
+        source="get_leave_type_display", read_only=True
+    )
+    remaining = serializers.ReadOnlyField()
+
+    class Meta:
+        model = LeaveBalance
+        fields = [
+            "id",
+            "employee_id",
+            "employee_name",
+            "leave_type",
+            "leave_type_display",
+            "allocated",
+            "used",
+            "remaining",
+            "carryover",
+            "year",
+            "last_updated",
+        ]
+        read_only_fields = ["employee_id", "employee_name", "remaining", "last_updated"]
+
+
+class LeaveRequestListSerializer(serializers.ModelSerializer):
+    """Minimal serializer for listing leave requests."""
+
+    employee_id = serializers.IntegerField(source="employee.id", read_only=True)
+    employee_name = serializers.CharField(
+        source="employee.user.get_full_name", read_only=True
+    )
+    employee_avatar = serializers.SerializerMethodField()
+    leave_type_display = serializers.CharField(
+        source="get_leave_type_display", read_only=True
+    )
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+    days = serializers.ReadOnlyField()
+
+    class Meta:
+        model = LeaveRequest
+        fields = [
+            "id",
+            "employee_id",
+            "employee_name",
+            "employee_avatar",
+            "leave_type",
+            "leave_type_display",
+            "start_date",
+            "end_date",
+            "days",
+            "status",
+            "status_display",
+            "submitted_date",
+        ]
+
+    def get_employee_avatar(self, obj):
+        """Get employee avatar URL."""
+        try:
+            profile = obj.employee
+            if profile.avatar_url:
+                return profile.avatar_url
+            if profile.avatar:
+                return profile.avatar.url
+        except Exception:
+            pass
+        return None
+
+
+class LeaveRequestDetailSerializer(serializers.ModelSerializer):
+    """Detailed serializer for leave request with all information."""
+
+    employee_id = serializers.IntegerField(source="employee.id", read_only=True)
+    employee_name = serializers.CharField(
+        source="employee.user.get_full_name", read_only=True
+    )
+    employee_avatar = serializers.SerializerMethodField()
+    leave_type_display = serializers.CharField(
+        source="get_leave_type_display", read_only=True
+    )
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+    days = serializers.ReadOnlyField()
+
+    covering_employee_id = serializers.IntegerField(
+        source="covering_employee.id", read_only=True, allow_null=True
+    )
+    covering_employee_name = serializers.CharField(
+        source="covering_employee.user.get_full_name", read_only=True, allow_null=True
+    )
+
+    approver_id = serializers.IntegerField(
+        source="approver.id", read_only=True, allow_null=True
+    )
+    approver_name = serializers.CharField(
+        source="approver.user.get_full_name", read_only=True, allow_null=True
+    )
+
+    class Meta:
+        model = LeaveRequest
+        fields = [
+            "id",
+            "employee_id",
+            "employee_name",
+            "employee_avatar",
+            "leave_type",
+            "leave_type_display",
+            "start_date",
+            "end_date",
+            "days",
+            "reason",
+            "status",
+            "status_display",
+            "covering_employee_id",
+            "covering_employee_name",
+            "submitted_date",
+            "approver_id",
+            "approver_name",
+            "approved_date",
+            "approval_comments",
+            "rejection_reason",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "employee_id",
+            "employee_name",
+            "employee_avatar",
+            "days",
+            "submitted_date",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_employee_avatar(self, obj):
+        """Get employee avatar URL."""
+        try:
+            profile = obj.employee
+            if profile.avatar_url:
+                return profile.avatar_url
+            if profile.avatar:
+                return profile.avatar.url
+        except Exception:
+            pass
+        return None
+
+
+class LeaveRequestCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating leave requests with validation."""
+
+    covering_employee_id = serializers.IntegerField(
+        source="covering_employee.id", required=False, allow_null=True
+    )
+
+    class Meta:
+        model = LeaveRequest
+        fields = [
+            "leave_type",
+            "start_date",
+            "end_date",
+            "reason",
+            "covering_employee_id",
+        ]
+
+    def validate(self, data):
+        """Validate leave request data."""
+        from datetime import date
+
+        start_date = data.get("start_date")
+        end_date = data.get("end_date")
+        leave_type = data.get("leave_type")
+
+        # Validate date range
+        if start_date and end_date and start_date > end_date:
+            raise serializers.ValidationError(
+                {"end_date": "End date must be after start date."}
+            )
+
+        # Validate not in the past
+        if start_date and start_date < date.today():
+            raise serializers.ValidationError(
+                {"start_date": "Start date cannot be in the past."}
+            )
+
+        # Get employee from context
+        request = self.context.get("request")
+        if not request or not hasattr(request.user, "profile"):
+            raise serializers.ValidationError("User profile not found.")
+
+        employee = request.user.profile
+
+        # Check for overlapping requests
+        temp_request = LeaveRequest(
+            employee=employee,
+            start_date=start_date,
+            end_date=end_date,
+            leave_type=leave_type,
+        )
+        if temp_request.is_overlapping(exclude_self=False):
+            raise serializers.ValidationError(
+                "You already have an approved or pending leave request during this period."
+            )
+
+        # Check leave policy requirements
+        try:
+            policy = LeavePolicy.objects.get(leave_type=leave_type)
+
+            # Check minimum notice
+            if policy.min_notice_in_days > 0:
+                notice_days = (start_date - date.today()).days
+                if notice_days < policy.min_notice_in_days:
+                    raise serializers.ValidationError(
+                        f"This leave type requires at least {policy.min_notice_in_days} days notice."
+                    )
+
+            # Check covering employee requirement
+            covering_employee_data = data.get("covering_employee")
+            if policy.requires_covering_employee and not covering_employee_data:
+                raise serializers.ValidationError(
+                    {
+                        "covering_employee_id": "This leave type requires a covering employee."
+                    }
+                )
+
+            # Check max consecutive days
+            if policy.max_consecutive_days:
+                days = temp_request.days
+                if days > policy.max_consecutive_days:
+                    raise serializers.ValidationError(
+                        f"This leave type allows maximum {policy.max_consecutive_days} consecutive days."
+                    )
+
+        except LeavePolicy.DoesNotExist:
+            raise serializers.ValidationError(
+                f"Leave policy for {leave_type} not found."
+            )
+
+        # Check sufficient balance
+        from datetime import datetime
+
+        current_year = datetime.now().year
+        try:
+            balance = LeaveBalance.objects.get(
+                employee=employee, leave_type=leave_type, year=current_year
+            )
+            if balance.remaining < temp_request.days:
+                raise serializers.ValidationError(
+                    f"Insufficient leave balance. You have {balance.remaining} days remaining, but requesting {temp_request.days} days."
+                )
+        except LeaveBalance.DoesNotExist:
+            raise serializers.ValidationError(
+                f"Leave balance for {leave_type} not found for year {current_year}."
+            )
+
+        return data
+
+    def create(self, validated_data):
+        """Create leave request."""
+        request = self.context.get("request")
+        employee = request.user.profile
+
+        # Handle covering_employee
+        covering_employee_data = validated_data.pop("covering_employee", None)
+        covering_employee = None
+        if covering_employee_data:
+            covering_employee_id = covering_employee_data.get("id")
+            if covering_employee_id:
+                try:
+                    covering_employee = UserProfile.objects.get(id=covering_employee_id)
+                except UserProfile.DoesNotExist:
+                    pass
+
+        leave_request = LeaveRequest.objects.create(
+            employee=employee,
+            covering_employee=covering_employee,
+            **validated_data,
+        )
+
+        return leave_request
+
+
+class LeaveRequestApproveSerializer(serializers.Serializer):
+    """Serializer for approving leave requests."""
+
+    comments = serializers.CharField(required=False, allow_blank=True)
+
+    def validate(self, data):
+        """Validate approval data."""
+        leave_request = self.context.get("leave_request")
+        if not leave_request:
+            raise serializers.ValidationError("Leave request not found.")
+
+        if leave_request.status != LeaveRequest.Status.PENDING:
+            raise serializers.ValidationError("Only pending requests can be approved.")
+
+        return data
+
+
+class LeaveRequestRejectSerializer(serializers.Serializer):
+    """Serializer for rejecting leave requests."""
+
+    reason = serializers.CharField(required=True)
+
+    def validate(self, data):
+        """Validate rejection data."""
+        leave_request = self.context.get("leave_request")
+        if not leave_request:
+            raise serializers.ValidationError("Leave request not found.")
+
+        if leave_request.status != LeaveRequest.Status.PENDING:
+            raise serializers.ValidationError("Only pending requests can be rejected.")
+
+        return data
+
+
+class LeaveAdjustmentSerializer(serializers.ModelSerializer):
+    """Serializer for leave adjustments."""
+
+    employee_id = serializers.IntegerField(source="employee.id", read_only=True)
+    employee_name = serializers.CharField(
+        source="employee.user.get_full_name", read_only=True
+    )
+    leave_type_display = serializers.CharField(
+        source="get_leave_type_display", read_only=True
+    )
+    adjusted_by_id = serializers.IntegerField(
+        source="adjusted_by.id", read_only=True, allow_null=True
+    )
+    adjusted_by_name = serializers.CharField(
+        source="adjusted_by.user.get_full_name", read_only=True, allow_null=True
+    )
+
+    class Meta:
+        model = LeaveAdjustment
+        fields = [
+            "id",
+            "employee_id",
+            "employee_name",
+            "leave_type",
+            "leave_type_display",
+            "old_allocated",
+            "new_allocated",
+            "reason",
+            "adjusted_by_id",
+            "adjusted_by_name",
+            "adjusted_at",
+        ]
+        read_only_fields = [
+            "employee_id",
+            "employee_name",
+            "adjusted_by_id",
+            "adjusted_by_name",
+            "adjusted_at",
+        ]
+
+
+class LeaveApprovalWorkflowSerializer(serializers.ModelSerializer):
+    """Serializer for leave approval workflow."""
+
+    request_id = serializers.IntegerField(source="leave_request.id", read_only=True)
+    current_approver_id = serializers.IntegerField(
+        source="current_approver.id", read_only=True, allow_null=True
+    )
+    current_approver_name = serializers.CharField(
+        source="current_approver.user.get_full_name", read_only=True, allow_null=True
+    )
+    current_approval_step = serializers.IntegerField(
+        source="current_step", read_only=True
+    )
+
+    class Meta:
+        model = LeaveApprovalWorkflow
+        fields = [
+            "id",
+            "request_id",
+            "approval_chain",
+            "current_approval_step",
+            "current_approver_id",
+            "current_approver_name",
+            "status",
+            "comments",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["created_at", "updated_at"]
 
 
 # ──────────────────────────────────────────
