@@ -27,13 +27,13 @@ from .constants import (
 from .models import (
     Asset,
     Assignment,
+    ChecklistTemplate,
+    CPFLevel,
+    Department,
     LeaveAdjustment,
     LeaveBalance,
     LeavePolicy,
     LeaveRequest,
-    ChecklistTemplate,
-    CPFLevel,
-    Department,
     Permission,
     Project,
     ProjectAssignment,
@@ -45,8 +45,9 @@ from .models import (
 from .permissions import (
     IsEmployeeOrHR,
     IsHRAdminForAdjustment,
-    IsHRAdminOrReadOnlyOwnProfile, has_asset_permission,
+    IsHRAdminOrReadOnlyOwnProfile,
     IsManagerForApproval,
+    has_asset_permission,
 )
 from .serializers import (
     APIRootResponseSerializer,

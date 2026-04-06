@@ -13,12 +13,12 @@ from core.constants import (
 from core.models import (
     Asset,
     Assignment,
+    ChecklistTemplate,
     LeaveAdjustment,
     LeaveApprovalWorkflow,
     LeaveBalance,
     LeavePolicy,
     LeaveRequest,
-    ChecklistTemplate,
     Project,
     ProjectAssignment,
     ReplacementLog,
