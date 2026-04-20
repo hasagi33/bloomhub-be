@@ -2,7 +2,7 @@ from django.contrib.auth.models import User
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from core.models import Permission, UserProfile
+from core.models import Permission, TechnologyTag, UserProfile
 
 
 class EmployeeProfileTestCase(APITestCase):
@@ -94,3 +94,44 @@ class EmployeeProfileTestCase(APITestCase):
         self.assertEqual(
             self.normal_profile.employment_status, UserProfile.EmploymentStatus.INACTIVE
         )
+
+    def test_hr_can_update_employee_tech_tags_from_static_ids(self):
+        hr_user = User.objects.get(id=self.hr_user.id)
+        self.client.force_authenticate(user=hr_user)
+
+        payload = {"tech_tags": [1, 6, 8]}
+        res = self.client.patch(
+            f"/api/employees/{self.normal_profile.id}/", payload, format="json"
+        )
+
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data["tech_tags"], [1, 6, 8])
+
+        self.normal_profile.refresh_from_db()
+        self.assertEqual(
+            list(
+                self.normal_profile.tech_tags.order_by("name").values_list(
+                    "name", flat=True
+                )
+            ),
+            ["Node.js", "Python", "React"],
+        )
+        self.assertEqual(
+            TechnologyTag.objects.filter(
+                name__in=["React", "Python", "Node.js"]
+            ).count(),
+            3,
+        )
+
+    def test_invalid_tech_tag_id_returns_validation_error(self):
+        hr_user = User.objects.get(id=self.hr_user.id)
+        self.client.force_authenticate(user=hr_user)
+
+        res = self.client.patch(
+            f"/api/employees/{self.normal_profile.id}/",
+            {"tech_tags": [1, 999]},
+            format="json",
+        )
+
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("tech_tags", res.data)
