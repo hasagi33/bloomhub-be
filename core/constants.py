@@ -37,6 +37,7 @@ EMPLOYEE_PROFILE_FIELDS = [
     "avatar",
     "is_active",
     "cpf_level",
+    "tech_tags",
     "permissions_bitmap",
     "assigned_projects",
 ]

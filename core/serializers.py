@@ -23,6 +23,7 @@ from core.models import (
     ProjectAssignment,
     ReplacementLog,
     TaskTemplate,
+    TechnologyTag,
     UserProfile,
 )
 from core.utils import (
@@ -218,6 +219,61 @@ class ProjectAssignmentSerializer(serializers.ModelSerializer):
         ]
 
 
+class TechnologyTagIdsField(serializers.Field):
+    def to_representation(self, value):
+        tag_id_by_name = {
+            name: tag_id for tag_id, name in TECHNOLOGY_TAG_NAME_BY_ID.items()
+        }
+        return [tag_id_by_name.get(tag.name, tag.id) for tag in value.all()]
+
+    def to_internal_value(self, data):
+        if data is None:
+            return []
+        if not isinstance(data, list):
+            raise serializers.ValidationError("Expected a list of technology tag IDs.")
+
+        parsed_ids = []
+        for raw_value in data:
+            try:
+                parsed_ids.append(int(raw_value))
+            except (TypeError, ValueError):
+                raise serializers.ValidationError(
+                    "All technology tag values must be valid integer IDs."
+                )
+        return parsed_ids
+
+
+TECHNOLOGY_TAG_NAME_BY_ID: dict[int, str] = {
+    1: "React",
+    2: "Angular",
+    3: "Vue.js",
+    4: "TypeScript",
+    5: "JavaScript",
+    6: "Python",
+    7: "Django",
+    8: "Node.js",
+    9: "Next.js",
+    10: "PostgreSQL",
+    11: "Docker",
+    12: "AWS",
+    13: "Tailwind CSS",
+    14: "GraphQL",
+    15: "Redis",
+    16: "Git",
+    17: "Java",
+    18: "C#",
+    19: ".NET",
+    20: "Go",
+    21: "Rust",
+    22: "Kubernetes",
+    23: "Flutter",
+    24: "Swift",
+    25: "Kotlin",
+    26: "MongoDB",
+    27: "MySQL",
+}
+
+
 class EmployeeProfileSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source="user.username", read_only=True)
     first_name = serializers.CharField(source="user.first_name", required=False)
@@ -226,6 +282,7 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
     role_name = serializers.CharField(source="role.name", read_only=True)
     manager_names = serializers.SerializerMethodField()
     permissions_bitmap = serializers.SerializerMethodField()
+    tech_tags = TechnologyTagIdsField(required=False)
     assigned_projects = ProjectAssignmentSerializer(
         source="project_assignments", many=True, required=False
     )
@@ -253,6 +310,7 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         user_data = validated_data.pop("user", {})
         managers_data = validated_data.pop("managers", [])
+        tech_tag_ids = validated_data.pop("tech_tags", None)
         validated_data.pop("project_assignments", None)
         email = user_data.get("email")
         first_name = user_data.get("first_name", "")
@@ -277,11 +335,14 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
         instance = apply_profile_updates_and_save(profile, validated_data)
         if managers_data:
             instance.managers.set(managers_data)
+        if tech_tag_ids is not None:
+            instance.tech_tags.set(self._resolve_technology_tags(tech_tag_ids))
         return instance
 
     def update(self, instance, validated_data):
         user_data = validated_data.pop("user", {})
         managers_data = validated_data.pop("managers", None)
+        tech_tag_ids = validated_data.pop("tech_tags", None)
         projects_data = validated_data.pop("project_assignments", None)
 
         if user_data:
@@ -304,6 +365,9 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
         if managers_data is not None:
             instance.managers.set(managers_data)
 
+        if tech_tag_ids is not None:
+            instance.tech_tags.set(self._resolve_technology_tags(tech_tag_ids))
+
         if projects_data is not None:
             # Simple sync logic for project assignments
             # For a more robust solution, we'd match by ID, but for now:
@@ -312,6 +376,25 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
                 ProjectAssignment.objects.create(user_profile=instance, **project_item)
 
         return instance
+
+    def _resolve_technology_tags(self, tech_tag_ids: list[int]) -> list[TechnologyTag]:
+        tag_name_by_id = TECHNOLOGY_TAG_NAME_BY_ID
+        unresolved_ids = sorted(
+            {tag_id for tag_id in tech_tag_ids if tag_id not in tag_name_by_id}
+        )
+        if unresolved_ids:
+            raise serializers.ValidationError(
+                {
+                    "tech_tags": f"Unsupported technology tag ID(s): {', '.join(str(tag_id) for tag_id in unresolved_ids)}"
+                }
+            )
+
+        tags: list[TechnologyTag] = []
+        for tag_id in dict.fromkeys(tech_tag_ids):
+            tag_name = tag_name_by_id[tag_id]
+            tag, _ = TechnologyTag.objects.get_or_create(name=tag_name)
+            tags.append(tag)
+        return tags
 
 
 class UpdateRoleSerializer(serializers.Serializer):
