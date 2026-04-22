@@ -1,11 +1,26 @@
-# CI: lint, format, tests on every push/PR
+# CI: lint, format, OpenAPI export, tests on push/PR
+#
+# Branch protection often requires the legacy Status API context name "CI" (exactly).
+# GitHub Actions only publishes a *Check run* named "CI / CI", which does not satisfy
+# that rule and shows "Expected — Waiting for status to be reported". We also publish
+# a commit status with context "CI" on the PR head SHA so the required rule turns green.
 name: CI
 
 on:
   push:
     branches: [main, master, dev]
+  # Run for PRs targeting any branch so required checks always get a run (avoid
+  # "Expected — Waiting for status to be reported" when base branch isn't listed).
   pull_request:
-    branches: [main, master, dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  statuses: write
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   CI:
@@ -31,5 +46,37 @@ jobs:
       - name: Black
         run: black --check .
 
+      - name: Export OpenAPI schema (drf-spectacular)
+        run: python manage.py spectacular --file schema.yml
+
+      - name: schema.yml matches committed export
+        run: git diff --exit-code schema.yml || { echo "Run: python manage.py spectacular --file schema.yml && git add schema.yml"; exit 1; }
+
       - name: Tests
         run: pytest
+
+      # Satisfies branch protection rules that require the Status API context "CI"
+      - name: Report CI status for branch protection
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const head =
+              context.payload.pull_request?.head?.sha;
+            const sha = head ?? context.sha;
+            const outcome = '${{ job.status }}';
+            const state =
+              outcome === 'success' ? 'success' : 'failure';
+            const desc =
+              state === 'success'
+                ? 'CI passed'
+                : `CI did not complete successfully (${outcome})`;
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha,
+              state,
+              context: 'CI',
+              description: desc.slice(0, 140),
+              target_url: `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
