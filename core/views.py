@@ -37,6 +37,7 @@ from .models import (
     Department,
     DocumentType,
     EmployeeDocument,
+    EmployeeProfileChangeHistory,
     LeaveAdjustment,
     LeaveBalance,
     LeavePolicy,
@@ -66,6 +67,7 @@ from .serializers import (
     AvatarUploadSerializer,
     ChecklistTemplateSerializer,
     EmployeeCVSerializer,
+    EmployeeProfileChangeHistorySerializer,
     EmployeeProfileSerializer,
     GoogleExchangeSerializer,
     LeaveAdjustmentSerializer,
@@ -86,6 +88,7 @@ from .serializers import (
     UserProfileSerializer,
     UserSerializer,
 )
+from .services.profile_change_history import log_employee_profile_change, role_value
 from .shared.employee_utils import soft_delete_employee_profile
 from .utils import (
     generate_secure_password,
@@ -706,6 +709,7 @@ class EmployeeProfileViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="update-role")
     def update_role(self, request, pk=None):
         instance = self.get_object()
+        old_role = role_value(instance.role)
         serializer = UpdateRoleSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -721,6 +725,13 @@ class EmployeeProfileViewSet(viewsets.ModelViewSet):
         instance.permissions = get_role_permissions_bitmap(role)
 
         instance.save()
+        log_employee_profile_change(
+            employee=instance,
+            field=EmployeeProfileChangeHistory.TrackedField.ROLE,
+            old_value=old_role,
+            new_value=role_value(instance.role),
+            changed_by=request.user if request.user.is_authenticated else None,
+        )
         return Response(self.get_serializer(instance).data)
 
     @extend_schema(
@@ -1480,6 +1491,34 @@ class EmployeeTechLeadsView(APIView):
             {"data": {"tech_leads": tech_leads_list}},
             status=status.HTTP_200_OK,
         )
+
+
+class EmployeeProfileChangeHistoryView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, employee_id):
+        try:
+            employee_profile = UserProfile.objects.get(user_id=employee_id)
+        except UserProfile.DoesNotExist:
+            return Response(
+                {"detail": "Employee not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        is_hr_admin = IsHRAdminOrReadOnlyOwnProfile()._is_hr_admin(request.user)
+        if not is_hr_admin and request.user.id != employee_id:
+            return Response(
+                {"detail": "You do not have permission to view this history."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        history = (
+            EmployeeProfileChangeHistory.objects.filter(employee=employee_profile)
+            .select_related("changed_by")
+            .order_by("-changed_at")
+        )
+        serializer = EmployeeProfileChangeHistorySerializer(history, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 # Asset Management API Views

@@ -728,6 +728,22 @@ paths:
           description: No response body
         '403':
           description: No response body
+  /api/employees/{employee_id}/profile-change-history/:
+    get:
+      operationId: employees_profile_change_history_retrieve
+      parameters:
+      - in: path
+        name: employee_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - employees
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
   /api/employees/{employee_id}/tech-leads/:
     get:
       operationId: employees_tech_leads_retrieve
@@ -2781,6 +2797,13 @@ components:
           type: string
           nullable: true
           maxLength: 100
+        career_level:
+          type: string
+          nullable: true
+          maxLength: 100
+        current_salary:
+          type: string
+          readOnly: true
         tech_tags:
           type: string
         permissions_bitmap:
@@ -2791,6 +2814,7 @@ components:
           items:
             $ref: '#/components/schemas/ProjectAssignment'
       required:
+      - current_salary
       - email
       - id
       - is_active
@@ -2860,6 +2884,15 @@ components:
           type: string
           nullable: true
           maxLength: 100
+        career_level:
+          type: string
+          nullable: true
+          maxLength: 100
+        salary:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+          writeOnly: true
         tech_tags:
           type: string
         assigned_projects:
@@ -3381,6 +3414,15 @@ components:
           type: string
           nullable: true
           maxLength: 100
+        career_level:
+          type: string
+          nullable: true
+          maxLength: 100
+        salary:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+          writeOnly: true
         tech_tags:
           type: string
         assigned_projects:

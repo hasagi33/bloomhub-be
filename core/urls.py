@@ -12,6 +12,7 @@ from .views import (
     ChecklistTemplateViewSet,
     CPFLevelListView,
     DepartmentListView,
+    EmployeeProfileChangeHistoryView,
     EmployeeProfileViewSet,
     EmployeeTechLeadsView,
     GoogleExchangeView,
@@ -96,6 +97,11 @@ urlpatterns = [
     path("cpf-levels/", CPFLevelListView.as_view(), name="cpf_level_list"),
     path(
         "cpf-levels/<str:role>/", CPFLevelListView.as_view(), name="cpf_level_by_role"
+    ),
+    path(
+        "employees/<int:employee_id>/profile-change-history/",
+        EmployeeProfileChangeHistoryView.as_view(),
+        name="employee_profile_change_history",
     ),
     path(
         "employees/<int:employee_id>/tech-leads/",

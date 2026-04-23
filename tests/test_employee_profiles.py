@@ -1,9 +1,19 @@
+from datetime import date
+
 from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from core.models import EmployeeDocument, Permission, TechnologyTag, UserProfile
+from core.models import (
+    EmployeeDocument,
+    EmployeeProfileChangeHistory,
+    Permission,
+    Role,
+    SalaryRecord,
+    TechnologyTag,
+    UserProfile,
+)
 
 
 class EmployeeProfileTestCase(APITestCase):
@@ -352,4 +362,279 @@ class EmployeeProfileTestCase(APITestCase):
         self.assertEqual(res.data["employees"]["count"], 1)
         self.assertEqual(
             res.data["employees"]["results"][0]["email"], "normal@test.com"
+        )
+
+    def test_logs_created_for_role_salary_and_cpf_level_changes(self):
+        hr_user = User.objects.get(id=self.hr_user.id)
+        role_a = Role.objects.create(name="ENGINEER")
+        role_b = Role.objects.create(name="SENIOR_ENGINEER")
+        self.normal_profile.role = role_a
+        self.normal_profile.cpf_level = "L1"
+        self.normal_profile.save(update_fields=["role", "cpf_level"])
+        SalaryRecord.objects.create(
+            user_profile=self.normal_profile,
+            amount="5000.00",
+            effective_date=self.normal_profile.updated_at.date(),
+        )
+
+        self.client.force_authenticate(user=hr_user)
+        res = self.client.patch(
+            f"/api/employees/{self.normal_profile.id}/",
+            {"role": role_b.id, "cpf_level": "L2", "salary": "5500.00"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        history = EmployeeProfileChangeHistory.objects.filter(
+            employee=self.normal_profile
+        )
+        self.assertEqual(history.count(), 3)
+        self.assertTrue(history.filter(field="role").exists())
+        self.assertTrue(history.filter(field="cpf_level").exists())
+        self.assertTrue(history.filter(field="salary").exists())
+
+    def test_no_logs_for_unchanged_values(self):
+        hr_user = User.objects.get(id=self.hr_user.id)
+        role = Role.objects.create(name="UNCHANGED_ROLE")
+        self.normal_profile.role = role
+        self.normal_profile.cpf_level = "L3"
+        self.normal_profile.save(update_fields=["role", "cpf_level"])
+        SalaryRecord.objects.create(
+            user_profile=self.normal_profile,
+            amount="6000.00",
+            effective_date=self.normal_profile.updated_at.date(),
+        )
+
+        self.client.force_authenticate(user=hr_user)
+        res = self.client.patch(
+            f"/api/employees/{self.normal_profile.id}/",
+            {"role": role.id, "cpf_level": "L3", "salary": "6000.00"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            EmployeeProfileChangeHistory.objects.filter(
+                employee=self.normal_profile
+            ).count(),
+            0,
+        )
+
+    def test_no_logs_for_untracked_fields(self):
+        hr_user = User.objects.get(id=self.hr_user.id)
+        self.client.force_authenticate(user=hr_user)
+
+        res = self.client.patch(
+            f"/api/employees/{self.normal_profile.id}/",
+            {"phone_number": "+6591234567"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            EmployeeProfileChangeHistory.objects.filter(
+                employee=self.normal_profile
+            ).count(),
+            0,
+        )
+
+    def test_profile_change_history_endpoint_permissions(self):
+        entry = EmployeeProfileChangeHistory.objects.create(
+            employee=self.normal_profile,
+            field=EmployeeProfileChangeHistory.TrackedField.CPF_LEVEL,
+            old_value="L1",
+            new_value="L2",
+            changed_by=self.hr_user,
+        )
+        self.assertIsNotNone(entry.id)
+
+        self.client.force_authenticate(user=self.normal_user)
+        owner_res = self.client.get(
+            f"/api/employees/{self.normal_user.id}/profile-change-history/"
+        )
+        self.assertEqual(owner_res.status_code, status.HTTP_200_OK)
+
+        self.client.force_authenticate(user=self.hr_user)
+        hr_res = self.client.get(
+            f"/api/employees/{self.normal_user.id}/profile-change-history/"
+        )
+        self.assertEqual(hr_res.status_code, status.HTTP_200_OK)
+
+        self.client.force_authenticate(user=self.other_user)
+        forbidden_res = self.client.get(
+            f"/api/employees/{self.normal_user.id}/profile-change-history/"
+        )
+        self.assertEqual(forbidden_res.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_profile_change_history_endpoint_ordering_and_payload(self):
+        first = EmployeeProfileChangeHistory.objects.create(
+            employee=self.normal_profile,
+            field=EmployeeProfileChangeHistory.TrackedField.SALARY,
+            old_value=5000,
+            new_value=5500,
+            changed_by=self.hr_user,
+        )
+        second = EmployeeProfileChangeHistory.objects.create(
+            employee=self.normal_profile,
+            field=EmployeeProfileChangeHistory.TrackedField.CPF_LEVEL,
+            old_value="L2",
+            new_value="L3",
+            changed_by=self.hr_user,
+        )
+        self.assertIsNotNone(first.id)
+        self.assertIsNotNone(second.id)
+
+        self.client.force_authenticate(user=self.hr_user)
+        res = self.client.get(
+            f"/api/employees/{self.normal_user.id}/profile-change-history/"
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertGreaterEqual(len(res.data), 2)
+        self.assertGreater(res.data[0]["id"], res.data[1]["id"])
+        self.assertEqual(res.data[0]["employee_id"], self.normal_user.id)
+        self.assertIn("changed_by_name", res.data[0])
+        self.assertIn("changed_by_email", res.data[0])
+
+    def test_logs_created_for_newly_tracked_profile_fields(self):
+        hr_user = User.objects.get(id=self.hr_user.id)
+        manager_one = User.objects.create_user(
+            username="mgr1", email="mgr1@test.com", password="pass", first_name="Alice"
+        )
+        manager_two = User.objects.create_user(
+            username="mgr2", email="mgr2@test.com", password="pass", first_name="Ben"
+        )
+        manager_one_profile = manager_one.profile
+        manager_two_profile = manager_two.profile
+
+        self.normal_profile.department = "Engineering"
+        self.normal_profile.employment_status = "active"
+        self.normal_profile.career_level = "L2"
+        self.normal_profile.start_date = date(2026, 4, 1)
+        self.normal_profile.save(
+            update_fields=[
+                "department",
+                "employment_status",
+                "career_level",
+                "start_date",
+            ]
+        )
+        self.normal_profile.managers.set([manager_one_profile])
+
+        self.client.force_authenticate(user=hr_user)
+        res = self.client.patch(
+            f"/api/employees/{self.normal_profile.id}/",
+            {
+                "department": "Platform",
+                "employment_status": "inactive",
+                "career_level": "L3",
+                "start_date": "2026-05-01",
+                "managers": [manager_two_profile.id, manager_one_profile.id],
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        history = EmployeeProfileChangeHistory.objects.filter(
+            employee=self.normal_profile
+        )
+        self.assertTrue(history.filter(field="department").exists())
+        self.assertTrue(history.filter(field="employment_status").exists())
+        self.assertTrue(history.filter(field="career_level").exists())
+        self.assertTrue(history.filter(field="start_date").exists())
+        manager_log = history.filter(field="manager_ids").first()
+        self.assertIsNotNone(manager_log)
+        self.assertEqual(
+            manager_log.new_value["ids"], sorted(manager_log.new_value["ids"])
+        )
+        self.assertEqual(len(manager_log.new_value["names"]), 2)
+
+    def test_no_log_for_unchanged_new_tracked_fields(self):
+        hr_user = User.objects.get(id=self.hr_user.id)
+        manager = User.objects.create_user(
+            username="mgr3", email="mgr3@test.com", password="pass", first_name="Chris"
+        )
+        manager_profile = manager.profile
+
+        self.normal_profile.department = "Engineering"
+        self.normal_profile.employment_status = "active"
+        self.normal_profile.career_level = "L2"
+        self.normal_profile.start_date = date(2026, 4, 1)
+        self.normal_profile.save(
+            update_fields=[
+                "department",
+                "employment_status",
+                "career_level",
+                "start_date",
+            ]
+        )
+        self.normal_profile.managers.set([manager_profile])
+
+        self.client.force_authenticate(user=hr_user)
+        res = self.client.patch(
+            f"/api/employees/{self.normal_profile.id}/",
+            {
+                "department": "Engineering",
+                "employment_status": "active",
+                "career_level": "L2",
+                "start_date": "2026-04-01",
+                "managers": [manager_profile.id],
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            EmployeeProfileChangeHistory.objects.filter(
+                employee=self.normal_profile
+            ).count(),
+            0,
+        )
+
+    def test_manager_ids_order_only_change_does_not_create_log(self):
+        hr_user = User.objects.get(id=self.hr_user.id)
+        manager_one = User.objects.create_user(
+            username="mgr4", email="mgr4@test.com", password="pass"
+        )
+        manager_two = User.objects.create_user(
+            username="mgr5", email="mgr5@test.com", password="pass"
+        )
+        manager_one_profile = manager_one.profile
+        manager_two_profile = manager_two.profile
+        self.normal_profile.managers.set([manager_one_profile, manager_two_profile])
+
+        self.client.force_authenticate(user=hr_user)
+        res = self.client.patch(
+            f"/api/employees/{self.normal_profile.id}/",
+            {"managers": [manager_two_profile.id, manager_one_profile.id]},
+            format="json",
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertFalse(
+            EmployeeProfileChangeHistory.objects.filter(
+                employee=self.normal_profile, field="manager_ids"
+            ).exists()
+        )
+
+    def test_trimmed_string_and_normalized_date_comparisons_do_not_log(self):
+        hr_user = User.objects.get(id=self.hr_user.id)
+        self.normal_profile.department = "Engineering"
+        self.normal_profile.career_level = "L3"
+        self.normal_profile.start_date = date(2026, 4, 1)
+        self.normal_profile.save(
+            update_fields=["department", "career_level", "start_date"]
+        )
+
+        self.client.force_authenticate(user=hr_user)
+        res = self.client.patch(
+            f"/api/employees/{self.normal_profile.id}/",
+            {
+                "department": "  Engineering  ",
+                "career_level": "  L3 ",
+                "start_date": "2026-04-01",
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            EmployeeProfileChangeHistory.objects.filter(
+                employee=self.normal_profile
+            ).count(),
+            0,
         )

@@ -433,6 +433,48 @@ class ChangeLog(models.Model):
         return f"{self.user_profile.user.username} – {self.field_name} @ {self.changed_at.isoformat()}"
 
 
+class EmployeeProfileChangeHistory(models.Model):
+    class TrackedField(models.TextChoices):
+        ROLE = "role", "Role"
+        SALARY = "salary", "Salary"
+        CPF_LEVEL = "cpf_level", "CPF Level"
+        DEPARTMENT = "department", "Department"
+        MANAGER_IDS = "manager_ids", "Manager IDs"
+        EMPLOYMENT_STATUS = "employment_status", "Employment Status"
+        CAREER_LEVEL = "career_level", "Career Level"
+        START_DATE = "start_date", "Start Date"
+
+    employee = models.ForeignKey(
+        UserProfile,
+        on_delete=models.CASCADE,
+        related_name="profile_change_history",
+    )
+    field = models.CharField(max_length=32, choices=TrackedField.choices)
+    old_value = models.JSONField(null=True, blank=True)
+    new_value = models.JSONField(null=True, blank=True)
+    changed_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="employee_profile_changes_made",
+    )
+    changed_at = models.DateTimeField(auto_now_add=True)
+    metadata = models.JSONField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Employee Profile Change History"
+        verbose_name_plural = "Employee Profile Change History"
+        ordering = ["-changed_at"]
+        indexes = [
+            models.Index(fields=["employee", "-changed_at"]),
+            models.Index(fields=["field"]),
+        ]
+
+    def __str__(self):
+        return f"{self.employee.user.username} - {self.field} @ {self.changed_at.isoformat()}"
+
+
 class AssetStatus(models.TextChoices):
     ACTIVE = "active", "Active"
     LOST = "lost", "Lost"

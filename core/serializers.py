@@ -15,6 +15,7 @@ from core.models import (
     Assignment,
     ChecklistTemplate,
     EmployeeDocument,
+    EmployeeProfileChangeHistory,
     LeaveAdjustment,
     LeaveApprovalWorkflow,
     LeaveBalance,
@@ -23,9 +24,19 @@ from core.models import (
     Project,
     ProjectAssignment,
     ReplacementLog,
+    SalaryRecord,
     TaskTemplate,
     TechnologyTag,
     UserProfile,
+)
+from core.services.profile_change_history import (
+    log_employee_profile_change,
+    manager_payload_from_ids,
+    normalize_enum_like,
+    normalize_iso_date,
+    normalize_manager_ids,
+    normalize_trimmed_string,
+    role_value,
 )
 from core.utils import (
     apply_profile_updates_and_save,
@@ -281,6 +292,10 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
     last_name = serializers.CharField(source="user.last_name", required=False)
     email = serializers.EmailField(source="user.email", required=True)
     role_name = serializers.CharField(source="role.name", read_only=True)
+    salary = serializers.DecimalField(
+        max_digits=12, decimal_places=2, required=False, write_only=True
+    )
+    current_salary = serializers.SerializerMethodField(read_only=True)
     manager_names = serializers.SerializerMethodField()
     permissions_bitmap = serializers.SerializerMethodField()
     tech_tags = TechnologyTagIdsField(required=False)
@@ -293,6 +308,9 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
 
     def get_permissions_bitmap(self, obj) -> str:
         return bin(obj.computed_permissions_bitmap)[2:]
+
+    def get_current_salary(self, obj):
+        return obj.current_salary
 
     class Meta:
         model = UserProfile
@@ -312,6 +330,7 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
         user_data = validated_data.pop("user", {})
         managers_data = validated_data.pop("managers", [])
         tech_tag_ids = validated_data.pop("tech_tags", None)
+        new_salary = validated_data.pop("salary", None)
         validated_data.pop("project_assignments", None)
         email = user_data.get("email")
         first_name = user_data.get("first_name", "")
@@ -338,6 +357,12 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
             instance.managers.set(managers_data)
         if tech_tag_ids is not None:
             instance.tech_tags.set(self._resolve_technology_tags(tech_tag_ids))
+        if new_salary is not None:
+            SalaryRecord.objects.create(
+                user_profile=instance,
+                amount=new_salary,
+                effective_date=instance.updated_at.date(),
+            )
         return instance
 
     def update(self, instance, validated_data):
@@ -345,6 +370,17 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
         managers_data = validated_data.pop("managers", None)
         tech_tag_ids = validated_data.pop("tech_tags", None)
         projects_data = validated_data.pop("project_assignments", None)
+        new_salary = validated_data.pop("salary", None)
+        old_role = role_value(instance.role)
+        old_cpf_level = instance.cpf_level
+        old_salary = instance.current_salary
+        old_department = normalize_trimmed_string(instance.department)
+        old_employment_status = normalize_enum_like(instance.employment_status)
+        old_career_level = normalize_trimmed_string(instance.career_level)
+        old_start_date = normalize_iso_date(instance.start_date)
+        old_manager_ids = normalize_manager_ids(instance.managers.all())
+        request = self.context.get("request")
+        changed_by = request.user if request and request.user.is_authenticated else None
 
         if user_data:
             user = instance.user
@@ -375,6 +411,85 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
             instance.project_assignments.all().delete()
             for project_item in projects_data:
                 ProjectAssignment.objects.create(user_profile=instance, **project_item)
+
+        if "role" in validated_data:
+            log_employee_profile_change(
+                employee=instance,
+                field=EmployeeProfileChangeHistory.TrackedField.ROLE,
+                old_value=old_role,
+                new_value=role_value(instance.role),
+                changed_by=changed_by,
+            )
+
+        if "cpf_level" in validated_data:
+            log_employee_profile_change(
+                employee=instance,
+                field=EmployeeProfileChangeHistory.TrackedField.CPF_LEVEL,
+                old_value=old_cpf_level,
+                new_value=instance.cpf_level,
+                changed_by=changed_by,
+            )
+
+        if "department" in validated_data:
+            log_employee_profile_change(
+                employee=instance,
+                field=EmployeeProfileChangeHistory.TrackedField.DEPARTMENT,
+                old_value={"value": old_department},
+                new_value={"value": normalize_trimmed_string(instance.department)},
+                changed_by=changed_by,
+            )
+
+        if "employment_status" in validated_data:
+            log_employee_profile_change(
+                employee=instance,
+                field=EmployeeProfileChangeHistory.TrackedField.EMPLOYMENT_STATUS,
+                old_value={"value": old_employment_status},
+                new_value={"value": normalize_enum_like(instance.employment_status)},
+                changed_by=changed_by,
+            )
+
+        if "career_level" in validated_data:
+            log_employee_profile_change(
+                employee=instance,
+                field=EmployeeProfileChangeHistory.TrackedField.CAREER_LEVEL,
+                old_value={"value": old_career_level},
+                new_value={"value": normalize_trimmed_string(instance.career_level)},
+                changed_by=changed_by,
+            )
+
+        if "start_date" in validated_data:
+            log_employee_profile_change(
+                employee=instance,
+                field=EmployeeProfileChangeHistory.TrackedField.START_DATE,
+                old_value={"value": old_start_date},
+                new_value={"value": normalize_iso_date(instance.start_date)},
+                changed_by=changed_by,
+            )
+
+        if managers_data is not None:
+            new_manager_ids = normalize_manager_ids(instance.managers.all())
+            log_employee_profile_change(
+                employee=instance,
+                field=EmployeeProfileChangeHistory.TrackedField.MANAGER_IDS,
+                old_value=manager_payload_from_ids(old_manager_ids),
+                new_value=manager_payload_from_ids(new_manager_ids),
+                changed_by=changed_by,
+            )
+
+        if new_salary is not None:
+            if old_salary != new_salary:
+                SalaryRecord.objects.create(
+                    user_profile=instance,
+                    amount=new_salary,
+                    effective_date=instance.updated_at.date(),
+                )
+            log_employee_profile_change(
+                employee=instance,
+                field=EmployeeProfileChangeHistory.TrackedField.SALARY,
+                old_value=float(old_salary) if old_salary is not None else None,
+                new_value=float(new_salary),
+                changed_by=changed_by,
+            )
 
         return instance
 
@@ -445,6 +560,37 @@ class EmployeeCVSerializer(serializers.ModelSerializer):
         if not obj.file:
             return None
         return obj.file.name
+
+
+class EmployeeProfileChangeHistorySerializer(serializers.ModelSerializer):
+    employee_id = serializers.IntegerField(source="employee.user_id", read_only=True)
+    changed_by = serializers.IntegerField(source="changed_by_id", read_only=True)
+    changed_by_name = serializers.SerializerMethodField()
+    changed_by_email = serializers.SerializerMethodField()
+
+    class Meta:
+        model = EmployeeProfileChangeHistory
+        fields = [
+            "id",
+            "employee_id",
+            "field",
+            "old_value",
+            "new_value",
+            "changed_by",
+            "changed_by_name",
+            "changed_by_email",
+            "changed_at",
+        ]
+
+    def get_changed_by_name(self, obj):
+        if not obj.changed_by:
+            return None
+        return obj.changed_by.get_full_name() or obj.changed_by.username
+
+    def get_changed_by_email(self, obj):
+        if not obj.changed_by:
+            return None
+        return obj.changed_by.email
 
 
 # Asset Management Serializers
