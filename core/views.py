@@ -1,13 +1,18 @@
 import csv
+import hashlib
 import io
+from collections import defaultdict
 from typing import Any, cast
-from urllib.parse import unquote
+from urllib.parse import unquote, urlparse
 
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
-from django.db import models
+from django.core.validators import URLValidator
+from django.db import models, transaction
+from django.db.models import Max, Prefetch
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
@@ -30,6 +35,8 @@ from .models import (
     ChecklistTemplate,
     CPFLevel,
     Department,
+    DocumentType,
+    EmployeeDocument,
     LeaveAdjustment,
     LeaveBalance,
     LeavePolicy,
@@ -58,6 +65,7 @@ from .serializers import (
     AssignmentSerializer,
     AvatarUploadSerializer,
     ChecklistTemplateSerializer,
+    EmployeeCVSerializer,
     EmployeeProfileSerializer,
     GoogleExchangeSerializer,
     LeaveAdjustmentSerializer,
@@ -646,6 +654,11 @@ class EmployeeProfileViewSet(viewsets.ModelViewSet):
     search_fields = EMPLOYEE_PROFILE_SEARCH_FIELDS
     ordering_fields = EMPLOYEE_PROFILE_ORDERING_FIELDS
 
+    def get_permissions(self):
+        if self.action == "cvs" and self.request.method == "POST":
+            return [IsAuthenticated()]
+        return [permission() for permission in self.permission_classes]
+
     def get_queryset(self):
         user = self.request.user
         if not user.is_authenticated:
@@ -653,9 +666,30 @@ class EmployeeProfileViewSet(viewsets.ModelViewSet):
 
         perm = IsHRAdminOrReadOnlyOwnProfile()
         if perm._is_hr_admin(user):
-            return UserProfile.objects.all()
+            qs = UserProfile.objects.all()
+        else:
+            qs = UserProfile.objects.filter(user=user)
 
-        return UserProfile.objects.filter(user=user)
+        action_name = getattr(self, "action", None)
+        if action_name == "profile_page_bundle":
+            qs = qs.select_related("user", "role").prefetch_related(
+                "managers",
+                "project_assignments__project",
+                "tech_tags",
+            )
+        elif action_name == "profile_modal_bundle":
+            qs = qs.select_related("user", "role").prefetch_related(
+                "managers",
+                "project_assignments__project",
+                "tech_tags",
+                Prefetch(
+                    "documents",
+                    queryset=EmployeeDocument.objects.filter(
+                        doc_type=DocumentType.CV
+                    ).order_by("-uploaded_at"),
+                ),
+            )
+        return qs
 
     def perform_destroy(self, instance):
         soft_delete_employee_profile(instance)
@@ -764,6 +798,53 @@ class EmployeeProfileViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
     @extend_schema(
+        summary="Employee Profiles page bundle",
+        description=(
+            "Single payload for the HR Employee Profiles screen: current user's permission "
+            "bitmask (integer), the same employee list as GET /api/employees/, and shared "
+            "lookup data (departments, roles, projects, eligible managers, global CPF levels). "
+            "Uses the same RBAC as listing employees."
+        ),
+        responses={200: None, 403: None},
+    )
+    @action(detail=False, methods=["get"], url_path="profile-page-bundle")
+    def profile_page_bundle(self, request):
+        try:
+            actor_profile = request.user.profile
+        except Exception:
+            return Response(
+                {"detail": "User profile not found."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        bits = actor_profile.computed_permissions_bitmap
+
+        queryset = self.filter_queryset(self.get_queryset())
+        serializer = self.get_serializer(queryset, many=True)
+        employees_payload = serializer.data
+        total = queryset.count()
+
+        lookups = {
+            "departments": _profile_modal_bundle_departments(),
+            "roles": _profile_modal_bundle_roles(),
+            "projects": _profile_modal_bundle_projects(),
+            "managers": _profile_modal_bundle_managers(request),
+            "cpf_levels": list(
+                CPFLevel.objects.order_by("name").values_list("name", flat=True)
+            ),
+        }
+
+        return Response(
+            {
+                "permissions": bits,
+                "permission_bits": bits,
+                "permissions_bitmap": bits,
+                "employees": {"results": employees_payload, "count": total},
+                "lookups": lookups,
+            }
+        )
+
+    @extend_schema(
         summary="Bulk update employee profile fields",
         description=(
             "Update multiple employee fields in a single request. Accepts any combination of "
@@ -810,6 +891,370 @@ class EmployeeProfileViewSet(viewsets.ModelViewSet):
             serializer.save()
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @extend_schema(
+        summary="Profile modal bundle",
+        description=(
+            "Single round-trip payload for the employee profile modal: employee detail, "
+            "CV versions, shared lookups (departments, roles, projects, managers), and "
+            "CPF levels for the employee's role. Optional `sections` selects subsets; omit "
+            "to return all. Supports conditional GET via If-None-Match (ETag)."
+        ),
+        parameters=[
+            OpenApiParameter(
+                name="sections",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Comma-separated: employee, cvs, lookups, cpf_levels. Default: all."
+                ),
+            ),
+        ],
+        responses={200: None, 304: None, 400: None},
+    )
+    @action(detail=True, methods=["get"], url_path="profile-modal-bundle")
+    def profile_modal_bundle(self, request, pk=None):
+        profile = self.get_object()
+
+        sections_raw = (request.query_params.get("sections") or "").strip()
+        if sections_raw:
+            sections_set = frozenset(
+                s.strip().lower() for s in sections_raw.split(",") if s.strip()
+            )
+            invalid = sections_set - _PROFILE_MODAL_BUNDLE_SECTIONS
+            if invalid:
+                return Response(
+                    {
+                        "detail": (
+                            "Unknown section(s): "
+                            f"{', '.join(sorted(invalid))}. "
+                            f"Allowed: {', '.join(sorted(_PROFILE_MODAL_BUNDLE_SECTIONS))}."
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            sections = sections_set
+        else:
+            sections = _PROFILE_MODAL_BUNDLE_SECTIONS
+
+        etag = _profile_modal_bundle_etag(profile, sections)
+        if_none_match = (request.META.get("HTTP_IF_NONE_MATCH") or "").strip()
+        if if_none_match == etag:
+            not_modified = Response(status=status.HTTP_304_NOT_MODIFIED)
+            not_modified["ETag"] = etag
+            return not_modified
+
+        payload: dict[str, Any] = {}
+
+        if "employee" in sections:
+            payload["employee"] = EmployeeProfileSerializer(
+                profile, context={"request": request}
+            ).data
+
+        if "cvs" in sections:
+            cvs = profile.documents.filter(doc_type=DocumentType.CV).order_by(
+                "-uploaded_at"
+            )
+            payload["cv_versions"] = EmployeeCVSerializer(cvs, many=True).data
+
+        if "lookups" in sections:
+            payload["lookups"] = {
+                "departments": _profile_modal_bundle_departments(),
+                "roles": _profile_modal_bundle_roles(),
+                "projects": _profile_modal_bundle_projects(),
+                "managers": _profile_modal_bundle_managers(request),
+            }
+
+        if "cpf_levels" in sections:
+            payload["cpf_levels_for_role"] = _cpf_level_names_for_profile(profile)
+
+        response = Response(payload)
+        response["ETag"] = etag
+        return response
+
+    @action(
+        detail=True,
+        methods=["get", "post"],
+        url_path="cvs",
+        parser_classes=[
+            parsers.MultiPartParser,
+            parsers.FormParser,
+            parsers.JSONParser,
+        ],
+    )
+    def cvs(self, request, pk=None):
+        profile = self.get_object()
+
+        if request.method == "GET":
+            cvs = profile.documents.filter(doc_type=DocumentType.CV).order_by(
+                "-uploaded_at"
+            )
+            return Response(EmployeeCVSerializer(cvs, many=True).data)
+
+        if not self._can_upload_cv(request.user, profile):
+            return Response(
+                {
+                    "detail": "You do not have permission to upload CVs for this profile."
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        is_file_upload = bool(request.FILES.get("file"))
+        if is_file_upload:
+            return self._create_file_cv(request, profile)
+        return self._create_external_cv(request, profile)
+
+    @action(
+        detail=True,
+        methods=["get"],
+        url_path=r"cvs/(?P<cv_id>\d+)/download",
+    )
+    def cv_download(self, request, pk=None, cv_id=None):
+        profile = self.get_object()
+        try:
+            cv = profile.documents.get(pk=cv_id, doc_type=DocumentType.CV)
+        except EmployeeDocument.DoesNotExist:
+            return Response(
+                {"detail": "CV record not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if cv.source_type == EmployeeDocument.SourceType.EXTERNAL_LINK:
+            if not cv.external_url:
+                return Response(
+                    {"detail": "External URL is not available for this CV."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            return Response({"url": cv.external_url})
+
+        if not cv.file:
+            return Response(
+                {"detail": "File is not available for this CV."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response({"signed_url": cv.file.url})
+
+    def _can_upload_cv(self, user, profile: UserProfile) -> bool:
+        perm = IsHRAdminOrReadOnlyOwnProfile()
+        if perm._is_hr_admin(user):
+            return True
+        return getattr(profile, "user_id", None) == getattr(user, "id", None)
+
+    def _create_file_cv(self, request, profile: UserProfile):
+        cv_file = request.FILES.get("file")
+        if not cv_file:
+            return Response(
+                {"detail": "File is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        max_size_bytes = 10 * 1024 * 1024
+        if cv_file.size > max_size_bytes:
+            return Response(
+                {"detail": "File size exceeds 10MB limit."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        allowed_extensions = {".pdf", ".doc", ".docx"}
+        filename = getattr(cv_file, "name", "") or ""
+        lower_name = filename.lower()
+        if not any(lower_name.endswith(ext) for ext in allowed_extensions):
+            return Response(
+                {"detail": "Only PDF, DOC, and DOCX files are allowed."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        latest_version = (
+            profile.documents.filter(doc_type=DocumentType.CV).aggregate(
+                max_version=models.Max("version")
+            )["max_version"]
+            or 0
+        )
+
+        with transaction.atomic():
+            profile.documents.filter(doc_type=DocumentType.CV, is_current=True).update(
+                is_current=False
+            )
+            doc = EmployeeDocument.objects.create(
+                user_profile=profile,
+                doc_type=DocumentType.CV,
+                file=cv_file,
+                version=latest_version + 1,
+                is_current=True,
+                source_type=EmployeeDocument.SourceType.FILE,
+                provider=EmployeeDocument.ProviderType.INTERNAL,
+                file_name=filename,
+                file_size=cv_file.size,
+                mime_type=getattr(cv_file, "content_type", "") or None,
+            )
+
+        return Response(EmployeeCVSerializer(doc).data, status=status.HTTP_201_CREATED)
+
+    def _create_external_cv(self, request, profile: UserProfile):
+        source_type = request.data.get("source_type", EmployeeDocument.SourceType.FILE)
+        if source_type != EmployeeDocument.SourceType.EXTERNAL_LINK:
+            return Response(
+                {
+                    "detail": "Provide a file for uploads, or use source_type=external_link with external_url."
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        external_url = request.data.get("external_url")
+        if not external_url:
+            return Response(
+                {"detail": "external_url is required for external_link CVs."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            URLValidator()(external_url)
+        except DjangoValidationError:
+            return Response(
+                {"detail": "external_url must be a valid URL."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        provider = request.data.get("provider", EmployeeDocument.ProviderType.OTHER)
+        allowed_providers = {
+            EmployeeDocument.ProviderType.CANVA,
+            EmployeeDocument.ProviderType.OTHER,
+            EmployeeDocument.ProviderType.INTERNAL,
+        }
+        if provider not in allowed_providers:
+            return Response(
+                {"detail": "provider must be one of: internal, canva, other."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        latest_version = (
+            profile.documents.filter(doc_type=DocumentType.CV).aggregate(
+                max_version=models.Max("version")
+            )["max_version"]
+            or 0
+        )
+
+        canva_design_id = request.data.get("canva_design_id")
+        if provider == EmployeeDocument.ProviderType.CANVA and not canva_design_id:
+            parsed = urlparse(external_url)
+            path_parts = [part for part in parsed.path.split("/") if part]
+            if path_parts:
+                canva_design_id = path_parts[-1]
+
+        with transaction.atomic():
+            profile.documents.filter(doc_type=DocumentType.CV, is_current=True).update(
+                is_current=False
+            )
+            doc = EmployeeDocument.objects.create(
+                user_profile=profile,
+                doc_type=DocumentType.CV,
+                version=latest_version + 1,
+                is_current=True,
+                source_type=EmployeeDocument.SourceType.EXTERNAL_LINK,
+                provider=provider,
+                external_url=external_url,
+                file_name=request.data.get("file_name") or None,
+                canva_design_id=canva_design_id or None,
+            )
+
+        return Response(EmployeeCVSerializer(doc).data, status=status.HTTP_201_CREATED)
+
+
+_PROFILE_MODAL_BUNDLE_SECTIONS = frozenset({"employee", "cvs", "lookups", "cpf_levels"})
+
+
+def _profile_modal_bundle_departments() -> list[str]:
+    return list(Department.objects.order_by("name").values_list("name", flat=True))
+
+
+def _profile_modal_bundle_roles() -> list[dict[str, Any]]:
+    return list(Role.objects.all().order_by("name").values("id", "name"))
+
+
+def _profile_modal_bundle_projects() -> list[dict[str, Any]]:
+    assignments = ProjectAssignment.objects.select_related(
+        "project", "user_profile__user"
+    ).all()
+
+    leaders_by_project: dict[int, list] = defaultdict(list)
+    members_by_project: dict[int, list] = defaultdict(list)
+
+    for assignment in assignments:
+        ap = assignment.user_profile
+        person = {
+            "id": ap.user_id,
+            "name": ap.full_name or ap.user.username,
+        }
+        members_by_project[assignment.project_id].append(person)
+        if ap.career_level and "lead" in ap.career_level.lower():
+            leaders_by_project[assignment.project_id].append(person)
+
+    projects = Project.objects.all().order_by("name")
+    return [
+        {
+            "id": project.id,
+            "name": project.name,
+            "description": project.description,
+            "client": project.client,
+            "app_stack": project.app_stack,
+            "leaders": leaders_by_project.get(project.id, []),
+            "members": members_by_project.get(project.id, []),
+        }
+        for project in projects
+    ]
+
+
+def _profile_modal_bundle_managers(request) -> list[dict[str, Any]]:
+    manager_roles = ["MGR", "MGR+", "ADMIN"]
+    employees = (
+        UserProfile.objects.filter(role__name__in=manager_roles)
+        .select_related("user", "role")
+        .prefetch_related("managers", "project_assignments__project")
+        .order_by("full_name")
+    )
+    return EmployeeProfileSerializer(
+        employees, many=True, context={"request": request}
+    ).data
+
+
+def _cpf_level_names_for_profile(profile: UserProfile) -> list[str]:
+    role = getattr(profile, "role", None)
+    if not role:
+        return []
+    candidates = [role.name]
+    upper_name = role.name.upper()
+    if upper_name != role.name:
+        candidates.append(upper_name)
+    for lookup_name in candidates:
+        try:
+            role_obj = Role.objects.prefetch_related("cpf_levels").get(name=lookup_name)
+            return list(
+                role_obj.cpf_levels.order_by("name").values_list("name", flat=True)
+            )
+        except Role.DoesNotExist:
+            continue
+    return []
+
+
+def _profile_modal_bundle_etag(profile: UserProfile, sections: frozenset[str]) -> str:
+    sections_key = ",".join(sorted(sections))
+    revision_bits = [
+        str(profile.pk),
+        profile.updated_at.isoformat() if profile.updated_at else "",
+        sections_key,
+    ]
+    if "lookups" in sections:
+        revision_bits.append(
+            "l:"
+            f"{Department.objects.aggregate(m=Max('id'))['m'] or 0}:"
+            f"{Role.objects.aggregate(m=Max('id'))['m'] or 0}:"
+            f"{Project.objects.aggregate(m=Max('id'))['m'] or 0}:"
+            f"{UserProfile.objects.aggregate(m=Max('id'))['m'] or 0}"
+        )
+    digest = hashlib.sha256("|".join(revision_bits).encode()).hexdigest()[:32]
+    return f'W/"pm-bundle-{digest}"'
 
 
 # Dropdown/Reference Data Endpoints

@@ -387,6 +387,8 @@ paths:
           description: ''
         '400':
           description: No response body
+        '403':
+          description: No response body
         '404':
           description: No response body
   /api/auth/google/exchange/:
@@ -463,11 +465,51 @@ paths:
       - Auth
       security:
       - jwtAuth: []
+      - {}
       responses:
         '205':
           description: No response body
         '400':
           description: No response body
+  /api/auth/permissions/:
+    get:
+      operationId: auth_permissions_retrieve
+      description: Get current user's permissions based on bearer token. Returns permission
+        list with module_name and feature_action.
+      tags:
+      - Auth
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user_id:
+                    type: integer
+                  username:
+                    type: string
+                  role:
+                    type: string
+                    nullable: true
+                  permissions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        module_name:
+                          type: string
+                        feature_action:
+                          type: string
+                        bit_position:
+                          type: integer
+                  total_permissions:
+                    type: integer
+          description: ''
   /api/auth/profile/:
     get:
       operationId: auth_profile_retrieve
@@ -546,6 +588,61 @@ paths:
                 $ref: '#/components/schemas/Token'
           description: ''
         '400':
+          description: No response body
+  /api/auth/session/:
+    get:
+      operationId: auth_session_retrieve
+      description: Get current session information including user profile and permissions.
+        Requires Bearer token.
+      tags:
+      - Auth
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+          description: ''
+  /api/cpf-levels/:
+    get:
+      operationId: cpf_levels_retrieve
+      description: Get CPF levels, optionally filtered by role
+      tags:
+      - cpf-levels
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/cpf-levels/{role}/:
+    get:
+      operationId: cpf_levels_retrieve_2
+      description: Get CPF levels, optionally filtered by role
+      parameters:
+      - in: path
+        name: role
+        schema:
+          type: string
+        required: true
+      tags:
+      - cpf-levels
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/departments/:
+    get:
+      operationId: departments_retrieve
+      description: Get all unique departments
+      tags:
+      - departments
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
           description: No response body
   /api/employees/:
     get:
@@ -630,6 +727,28 @@ paths:
         '400':
           description: No response body
         '403':
+          description: No response body
+  /api/employees/{employee_id}/tech-leads/:
+    get:
+      operationId: employees_tech_leads_retrieve
+      description: |-
+        Get tech leads for a specific employee based on their project assignments.
+        Returns list of tech leads with their associated project names.
+        Format: "John Doe (Project Name)"
+
+        If employee is tech lead level, returns CTO info instead.
+      parameters:
+      - in: path
+        name: employee_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - employees
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
           description: No response body
   /api/employees/{id}/:
     get:
@@ -762,6 +881,172 @@ paths:
           description: No response body
         '404':
           description: No response body
+  /api/employees/{id}/bulk-update/:
+    patch:
+      operationId: employees_bulk_update_partial_update
+      description: Update multiple employee fields in a single request. Accepts any
+        combination of editable fields (first_name, last_name, full_name, email_address,
+        department, role, managers, start_date, hire_date, phone_number, address,
+        employment_status, emergency_contact_name, emergency_contact_phone, birthday,
+        career_level, cpf_level, tech_tags, avatar, avatar_url). Requires 'Employee
+        Profiles / update_any_profile' permission.
+      summary: Bulk update employee profile fields
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Employee Profile.
+        required: true
+      tags:
+      - Employee Profiles
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedEmployeeProfileRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedEmployeeProfileRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedEmployeeProfileRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeProfile'
+          description: ''
+        '400':
+          description: No response body
+        '404':
+          description: No response body
+        '403':
+          description: No response body
+  /api/employees/{id}/cvs/:
+    get:
+      operationId: employees_cvs_retrieve
+      description: |-
+        CRUD endpoints for employee profiles.
+        Permissions: HR/Admin can fully manage. Employees can do read-only operations on their own profile.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Employee Profile.
+        required: true
+      tags:
+      - Employee Profiles
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeProfile'
+          description: ''
+    post:
+      operationId: employees_cvs_create
+      description: |-
+        CRUD endpoints for employee profiles.
+        Permissions: HR/Admin can fully manage. Employees can do read-only operations on their own profile.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Employee Profile.
+        required: true
+      tags:
+      - Employee Profiles
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/EmployeeProfileRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/EmployeeProfileRequest'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmployeeProfileRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeProfile'
+          description: ''
+  /api/employees/{id}/cvs/{cv_id}/download/:
+    get:
+      operationId: employees_cvs_download_retrieve
+      description: |-
+        CRUD endpoints for employee profiles.
+        Permissions: HR/Admin can fully manage. Employees can do read-only operations on their own profile.
+      parameters:
+      - in: path
+        name: cv_id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Employee Profile.
+        required: true
+      tags:
+      - Employee Profiles
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeProfile'
+          description: ''
+  /api/employees/{id}/profile-modal-bundle/:
+    get:
+      operationId: employees_profile_modal_bundle_retrieve
+      description: 'Single round-trip payload for the employee profile modal: employee
+        detail, CV versions, shared lookups (departments, roles, projects, managers),
+        and CPF levels for the employee''s role. Optional `sections` selects subsets;
+        omit to return all. Supports conditional GET via If-None-Match (ETag).'
+      summary: Profile modal bundle
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Employee Profile.
+        required: true
+      - in: query
+        name: sections
+        schema:
+          type: string
+        description: 'Comma-separated: employee, cvs, lookups, cpf_levels. Default:
+          all.'
+      tags:
+      - Employee Profiles
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+        '304':
+          description: No response body
+        '400':
+          description: No response body
   /api/employees/{id}/update-permissions/:
     post:
       operationId: employees_update_permissions_create
@@ -841,6 +1126,83 @@ paths:
         '400':
           description: No response body
         '404':
+          description: No response body
+        '403':
+          description: No response body
+  /api/employees/managers/:
+    get:
+      operationId: employees_managers_list
+      description: Returns employees with MGR, MGR+, or ADMIN roles who can be assigned
+        as managers. Optionally filter by role using ?role=MGR or ?role=MGR%2B,ADMIN
+        query parameter (comma-separated for multiple roles, use %2B for + character).
+      summary: Get employees eligible to be managers
+      parameters:
+      - in: query
+        name: department
+        schema:
+          type: string
+      - in: query
+        name: employment_status
+        schema:
+          type: string
+          enum:
+          - active
+          - inactive
+        description: |-
+          * `active` - Active
+          * `inactive` - Inactive
+      - in: query
+        name: is_active
+        schema:
+          type: boolean
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - in: query
+        name: role
+        schema:
+          type: string
+        description: Filter by role(s) - comma-separated list (e.g., MGR or MGR,MGR%2B,ADMIN)
+      - in: query
+        name: role__name
+        schema:
+          type: string
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - Employee Profiles
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EmployeeProfile'
+          description: ''
+  /api/employees/profile-page-bundle/:
+    get:
+      operationId: employees_profile_page_bundle_retrieve
+      description: 'Single payload for the HR Employee Profiles screen: current user''s
+        permission bitmask (integer), the same employee list as GET /api/employees/,
+        and shared lookup data (departments, roles, projects, eligible managers, global
+        CPF levels). Uses the same RBAC as listing employees.'
+      summary: Employee Profiles page bundle
+      tags:
+      - Employee Profiles
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
           description: No response body
         '403':
           description: No response body
@@ -1497,6 +1859,211 @@ paths:
                     status:
                       type: string
           description: ''
+  /api/onboarding/templates/:
+    get:
+      operationId: onboarding_templates_list
+      description: |-
+        CRUD endpoints for checklist templates.
+        HR only — create, update, delete, and clone templates.
+      tags:
+      - Onboarding / Offboarding
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ChecklistTemplate'
+          description: ''
+    post:
+      operationId: onboarding_templates_create
+      description: |-
+        CRUD endpoints for checklist templates.
+        HR only — create, update, delete, and clone templates.
+      tags:
+      - Onboarding / Offboarding
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChecklistTemplateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ChecklistTemplateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ChecklistTemplateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChecklistTemplate'
+          description: ''
+  /api/onboarding/templates/{id}/:
+    get:
+      operationId: onboarding_templates_retrieve
+      description: |-
+        CRUD endpoints for checklist templates.
+        HR only — create, update, delete, and clone templates.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Checklist Template.
+        required: true
+      tags:
+      - Onboarding / Offboarding
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChecklistTemplate'
+          description: ''
+    put:
+      operationId: onboarding_templates_update
+      description: |-
+        CRUD endpoints for checklist templates.
+        HR only — create, update, delete, and clone templates.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Checklist Template.
+        required: true
+      tags:
+      - Onboarding / Offboarding
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChecklistTemplateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ChecklistTemplateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ChecklistTemplateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChecklistTemplate'
+          description: ''
+    patch:
+      operationId: onboarding_templates_partial_update
+      description: |-
+        CRUD endpoints for checklist templates.
+        HR only — create, update, delete, and clone templates.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Checklist Template.
+        required: true
+      tags:
+      - Onboarding / Offboarding
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedChecklistTemplateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedChecklistTemplateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedChecklistTemplateRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChecklistTemplate'
+          description: ''
+    delete:
+      operationId: onboarding_templates_destroy
+      description: |-
+        CRUD endpoints for checklist templates.
+        HR only — create, update, delete, and clone templates.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Checklist Template.
+        required: true
+      tags:
+      - Onboarding / Offboarding
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/onboarding/templates/{id}/clone/:
+    post:
+      operationId: onboarding_templates_clone_create
+      description: Creates a full copy of an existing template including all its tasks.
+      summary: Clone a checklist template
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Checklist Template.
+        required: true
+      tags:
+      - Onboarding / Offboarding
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChecklistTemplateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ChecklistTemplateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ChecklistTemplateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChecklistTemplate'
+          description: ''
+  /api/projects/:
+    get:
+      operationId: projects_retrieve
+      description: Get all projects with leaders and members
+      tags:
+      - projects
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
   /api/replacement-logs/:
     get:
       operationId: replacement_logs_list
@@ -1640,6 +2207,17 @@ paths:
         '204':
           description: No response body
         '404':
+          description: No response body
+  /api/roles/:
+    get:
+      operationId: roles_retrieve
+      description: Get all roles
+      tags:
+      - roles
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
           description: No response body
   /api/user-profiles/:
     get:
@@ -2080,6 +2658,41 @@ components:
     BlankEnum:
       enum:
       - ''
+    ChecklistTemplate:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          maxLength: 150
+        type:
+          $ref: '#/components/schemas/TypeEnum'
+        task_templates:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaskTemplate'
+      required:
+      - id
+      - name
+      - type
+    ChecklistTemplateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 150
+        type:
+          $ref: '#/components/schemas/TypeEnum'
+        task_templates:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaskTemplateRequest'
+      required:
+      - name
+      - type
     ConditionEnum:
       enum:
       - excellent
@@ -2133,16 +2746,21 @@ components:
         role_name:
           type: string
           readOnly: true
-        manager:
-          type: integer
-          nullable: true
-        manager_name:
+        managers:
+          type: array
+          items:
+            type: integer
+        manager_names:
           type: string
           readOnly: true
         start_date:
           type: string
           format: date
           nullable: true
+        phone_number:
+          type: string
+          nullable: true
+          maxLength: 15
         emergency_contact_phone:
           type: string
           nullable: true
@@ -2159,14 +2777,24 @@ components:
         is_active:
           type: boolean
           readOnly: true
+        cpf_level:
+          type: string
+          nullable: true
+          maxLength: 100
+        tech_tags:
+          type: string
         permissions_bitmap:
           type: string
           readOnly: true
+        assigned_projects:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProjectAssignment'
       required:
       - email
       - id
       - is_active
-      - manager_name
+      - manager_names
       - permissions_bitmap
       - role_name
       - username
@@ -2203,13 +2831,18 @@ components:
         role:
           type: integer
           nullable: true
-        manager:
-          type: integer
-          nullable: true
+        managers:
+          type: array
+          items:
+            type: integer
         start_date:
           type: string
           format: date
           nullable: true
+        phone_number:
+          type: string
+          nullable: true
+          maxLength: 15
         emergency_contact_phone:
           type: string
           nullable: true
@@ -2223,6 +2856,16 @@ components:
           type: string
           format: binary
           nullable: true
+        cpf_level:
+          type: string
+          nullable: true
+          maxLength: 100
+        tech_tags:
+          type: string
+        assigned_projects:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProjectAssignmentRequest'
       required:
       - email
     EmploymentStatusEnum:
@@ -2261,15 +2904,13 @@ components:
           readOnly: true
         old_allocated:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           description: Previous allocated days
         new_allocated:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           description: New allocated days
         reason:
           type: string
@@ -2318,30 +2959,26 @@ components:
           readOnly: true
         allocated:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           description: Total days allocated for this period
         used:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           description: Days already used/approved
         remaining:
           type: string
           readOnly: true
         carryover:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           description: Days carried over from previous year
         year:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           description: Calendar year for this balance
         last_updated:
           type: string
@@ -2370,15 +3007,13 @@ components:
           readOnly: true
         allocated_days_per_year:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           description: Number of days allocated per year
         carryover_days:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           description: Maximum days that can be carried over to next year
         requires_approval:
           type: boolean
@@ -2388,15 +3023,13 @@ components:
           description: Whether a covering employee must be assigned
         min_notice_in_days:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           description: Minimum days notice required before leave start date
         max_consecutive_days:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Maximum consecutive days allowed (optional)
         created_at:
@@ -2673,6 +3306,19 @@ components:
     NullEnum:
       enum:
       - null
+    PatchedChecklistTemplateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 150
+        type:
+          $ref: '#/components/schemas/TypeEnum'
+        task_templates:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaskTemplateRequest'
     PatchedEmployeeProfileRequest:
       type: object
       properties:
@@ -2706,13 +3352,18 @@ components:
         role:
           type: integer
           nullable: true
-        manager:
-          type: integer
-          nullable: true
+        managers:
+          type: array
+          items:
+            type: integer
         start_date:
           type: string
           format: date
           nullable: true
+        phone_number:
+          type: string
+          nullable: true
+          maxLength: 15
         emergency_contact_phone:
           type: string
           nullable: true
@@ -2726,6 +3377,16 @@ components:
           type: string
           format: binary
           nullable: true
+        cpf_level:
+          type: string
+          nullable: true
+          maxLength: 100
+        tech_tags:
+          type: string
+        assigned_projects:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProjectAssignmentRequest'
     PatchedLeaveRequestListRequest:
       type: object
       description: Minimal serializer for listing leave requests.
@@ -2740,6 +3401,66 @@ components:
           format: date
         status:
           $ref: '#/components/schemas/StatusB39Enum'
+    ProjectAssignment:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        project_id:
+          type: integer
+        project_name:
+          type: string
+          readOnly: true
+        role:
+          type: string
+          nullable: true
+          maxLength: 100
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+          nullable: true
+        status:
+          $ref: '#/components/schemas/ProjectAssignmentStatusEnum'
+      required:
+      - id
+      - project_id
+      - project_name
+      - start_date
+    ProjectAssignmentRequest:
+      type: object
+      properties:
+        project_id:
+          type: integer
+        role:
+          type: string
+          nullable: true
+          maxLength: 100
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+          nullable: true
+        status:
+          $ref: '#/components/schemas/ProjectAssignmentStatusEnum'
+      required:
+      - project_id
+      - start_date
+    ProjectAssignmentStatusEnum:
+      enum:
+      - active
+      - completed
+      - on_hold
+      type: string
+      description: |-
+        * `active` - Active
+        * `completed` - Completed
+        * `on_hold` - On Hold
     RegisterRequest:
       type: object
       properties:
@@ -2863,6 +3584,16 @@ components:
       required:
       - asset
       - reason
+    RoleResponsibleEnum:
+      enum:
+      - HR
+      - IT
+      - Manager
+      type: string
+      description: |-
+        * `HR` - HR
+        * `IT` - IT
+        * `Manager` - Manager
     StatusB39Enum:
       enum:
       - pending
@@ -2887,6 +3618,39 @@ components:
         * `lost` - Lost
         * `returned` - Returned
         * `damaged` - Damaged
+    TaskTemplate:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        title:
+          type: string
+          maxLength: 200
+        order:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        role_responsible:
+          $ref: '#/components/schemas/RoleResponsibleEnum'
+      required:
+      - id
+      - title
+    TaskTemplateRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        order:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        role_responsible:
+          $ref: '#/components/schemas/RoleResponsibleEnum'
+      required:
+      - title
     Token:
       type: object
       properties:
@@ -2900,6 +3664,14 @@ components:
       - access
       - refresh
       - user
+    TypeEnum:
+      enum:
+      - onboarding
+      - offboarding
+      type: string
+      description: |-
+        * `onboarding` - Onboarding
+        * `offboarding` - Offboarding
     UpdatePermissionsRequest:
       type: object
       properties:
@@ -2959,6 +3731,15 @@ components:
         career_level:
           type: string
           readOnly: true
+        is_staff:
+          type: boolean
+          title: Staff status
+          description: Designates whether the user can log into this admin site.
+        is_superuser:
+          type: boolean
+          title: Superuser status
+          description: Designates that this user has all permissions without explicitly
+            assigning them.
       required:
       - avatar_url
       - career_level
@@ -2987,6 +3768,10 @@ components:
           type: string
           format: date
           nullable: true
+        phone_number:
+          type: string
+          nullable: true
+          maxLength: 15
         emergency_contact_phone:
           type: string
           nullable: true
@@ -3014,6 +3799,10 @@ components:
           type: string
           format: date
           nullable: true
+        phone_number:
+          type: string
+          nullable: true
+          maxLength: 15
         emergency_contact_phone:
           type: string
           nullable: true
@@ -3043,6 +3832,15 @@ components:
         last_name:
           type: string
           maxLength: 150
+        is_staff:
+          type: boolean
+          title: Staff status
+          description: Designates whether the user can log into this admin site.
+        is_superuser:
+          type: boolean
+          title: Superuser status
+          description: Designates that this user has all permissions without explicitly
+            assigning them.
       required:
       - username
   securitySchemes:

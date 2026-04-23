@@ -14,6 +14,7 @@ from core.models import (
     Asset,
     Assignment,
     ChecklistTemplate,
+    EmployeeDocument,
     LeaveAdjustment,
     LeaveApprovalWorkflow,
     LeaveBalance,
@@ -417,6 +418,33 @@ class UpdatePermissionsSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 "Must be a valid binary string containing only 1s and 0s."
             )
+
+
+class EmployeeCVSerializer(serializers.ModelSerializer):
+    profile = serializers.IntegerField(source="user_profile_id", read_only=True)
+    file_key = serializers.SerializerMethodField()
+
+    class Meta:
+        model = EmployeeDocument
+        fields = [
+            "id",
+            "profile",
+            "file_key",
+            "uploaded_at",
+            "is_current",
+            "file_name",
+            "file_size",
+            "mime_type",
+            "source_type",
+            "provider",
+            "external_url",
+            "canva_design_id",
+        ]
+
+    def get_file_key(self, obj: EmployeeDocument) -> str | None:
+        if not obj.file:
+            return None
+        return obj.file.name
 
 
 # Asset Management Serializers

@@ -1,5 +1,6 @@
 import sys
 from decimal import Decimal
+from pathlib import Path
 
 from django.conf import settings
 from django.contrib.auth.models import User
@@ -8,9 +9,40 @@ from django.core.validators import MinValueValidator
 from django.db import models
 from django.db.models.signals import post_save
 from django.dispatch import receiver
+from django.utils import timezone
 from django.utils.text import slugify
 
 from .avatar_utils import generate_initials_avatar_png, get_initials
+
+
+def employee_document_upload_to(instance: "EmployeeDocument", filename: str) -> str:
+    """
+    Group uploads under employee_documents/{first}-{last}-{profile_id}/{year}/{month}/
+    so R2/S3 prefixes match a person's name for easier browsing.
+    """
+
+    profile = instance.user_profile
+    user = profile.user
+
+    first_raw = (user.first_name or "").strip()
+    last_raw = (user.last_name or "").strip()
+    if not first_raw and not last_raw and profile.full_name:
+        parts = profile.full_name.strip().split(None, 1)
+        first_raw = parts[0] if parts else ""
+        last_raw = parts[1] if len(parts) > 1 else ""
+
+    first = slugify(first_raw) or "user"
+    last = slugify(last_raw) or "user"
+
+    path = Path(filename)
+    ext = path.suffix.lower() or ".pdf"
+    stem = slugify(path.stem) or "document"
+
+    now = timezone.now()
+    return (
+        f"employee_documents/{first}-{last}-{profile.pk}/"
+        f"{now:%Y}/{now:%m}/{stem}{ext}"
+    )
 
 
 def user_avatar_upload_to(instance: "UserProfile", filename: str) -> str:
@@ -269,15 +301,38 @@ class DocumentType(models.TextChoices):
 
 
 class EmployeeDocument(models.Model):
+    class SourceType(models.TextChoices):
+        FILE = "file", "File"
+        EXTERNAL_LINK = "external_link", "External Link"
+
+    class ProviderType(models.TextChoices):
+        INTERNAL = "internal", "Internal"
+        CANVA = "canva", "Canva"
+        OTHER = "other", "Other"
+
     user_profile = models.ForeignKey(
         UserProfile, on_delete=models.CASCADE, related_name="documents"
     )
     doc_type = models.CharField(
         max_length=20, choices=DocumentType.choices, default=DocumentType.CV
     )
-    file = models.FileField(upload_to="employee_documents/%Y/%m/%d/")
+    file = models.FileField(
+        upload_to=employee_document_upload_to, null=True, blank=True
+    )
     version = models.PositiveIntegerField(default=1)
     uploaded_at = models.DateTimeField(auto_now_add=True)
+    is_current = models.BooleanField(default=False)
+    source_type = models.CharField(
+        max_length=20, choices=SourceType.choices, default=SourceType.FILE
+    )
+    provider = models.CharField(
+        max_length=20, choices=ProviderType.choices, default=ProviderType.INTERNAL
+    )
+    external_url = models.URLField(blank=True, null=True)
+    file_name = models.CharField(max_length=255, blank=True, null=True)
+    file_size = models.PositiveBigIntegerField(blank=True, null=True)
+    mime_type = models.CharField(max_length=100, blank=True, null=True)
+    canva_design_id = models.CharField(max_length=100, blank=True, null=True)
 
     class Meta:
         unique_together = ("user_profile", "doc_type", "version")
