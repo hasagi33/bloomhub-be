@@ -381,6 +381,111 @@ This system provides flexible, granular permission management while maintaining 
 
 ---
 
+## Performance Reviews Module
+
+Structured performance evaluations with automated workflows and comprehensive audit trail.
+
+### Features
+
+- **Review scheduling & management**: Create quarterly, mid-year, annual, probation, or custom reviews with flexible scheduling
+- **Shared & private notes**: Employees and reviewers can add secure notes with visibility controls
+- **Action points tracking**: Define and track action items with progress, due dates, and ownership
+- **Document attachments**: Upload supporting documents (reviews, feedback, forms)
+- **CPF & performance fields**: Track CPF progression levels and performance scores (0-100)
+- **Reminders**: Automated reminders at configurable intervals before scheduled reviews
+- **Complete audit trail**: History events for all changes (review created, updated, notes added, status changed, etc.)
+- **Role-based permissions**: Staff/admin users and permission-gated direct reports can manage reviews
+
+### API Endpoints
+
+All endpoints require authentication (`Authorization: Bearer <token>`).
+
+#### Main Review Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/performance-reviews/` | GET, POST | List reviews (filtered by permissions) or create a new review |
+| `/api/performance-reviews/{id}/` | GET, PUT, PATCH, DELETE | Retrieve, update, or delete a specific review |
+| `/api/performance-reviews/{id}/status/` | PATCH | Update review status (scheduled → in_progress → completed/cancelled) |
+| `/api/performance-reviews/summary/` | GET | Get summary metrics (count, status breakdown, recent activity) |
+
+#### Nested Resources (within `/api/performance-reviews/{id}/`)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/performance-reviews/{id}/notes/` | GET, POST | List/create notes (shared or private) |
+| `/api/performance-reviews/{id}/notes/{note_id}/` | GET, PUT, PATCH, DELETE | Manage individual notes |
+| `/api/performance-reviews/{id}/action-points/` | GET, POST | List/create action points with tracking |
+| `/api/performance-reviews/{id}/action-points/{action_point_id}/` | GET, PUT, PATCH, DELETE | Manage individual action points |
+| `/api/performance-reviews/{id}/attachments/` | GET, POST | List/upload document attachments |
+| `/api/performance-reviews/{id}/attachments/{attachment_id}/` | GET, DELETE | Download or remove attachments |
+| `/api/performance-reviews/{id}/history/` | GET | View full audit trail of changes |
+
+### Example Usage
+
+#### Create a Performance Review
+
+```bash
+curl -X POST http://localhost:8000/api/performance-reviews/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "review_type": "quarterly",
+    "employee": 2,
+    "reviewer": 1,
+    "scheduled_date": "2026-05-31",
+    "period_start": "2026-01-01",
+    "period_end": "2026-03-31",
+    "title": "Q1 2026 Review",
+    "reminder_offsets_days": [7, 1]
+  }'
+```
+
+#### Add a Shared Note
+
+```bash
+curl -X POST http://localhost:8000/api/performance-reviews/1/notes/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content": "Great work on the project delivery!",
+    "visibility": "shared"
+  }'
+```
+
+#### Add an Action Point
+
+```bash
+curl -X POST http://localhost:8000/api/performance-reviews/1/action-points/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Complete advanced Python course",
+    "description": "Improve async programming skills",
+    "owner": 2,
+    "due_date": "2026-06-30"
+  }'
+```
+
+#### Upload Attachment
+
+```bash
+curl -X POST http://localhost:8000/api/performance-reviews/1/attachments/ \
+  -H "Authorization: Bearer <token>" \
+  -F "file=@feedback.pdf" \
+  -F "description=Q1 feedback document"
+```
+
+### Interactive API Documentation
+
+View the complete Performance Reviews API documentation:
+
+- **Swagger UI:** http://localhost:8000/api/schema/swagger-ui/ (search for "Performance Reviews")
+- **ReDoc:** http://localhost:8000/api/schema/redoc/ (Performance Reviews section)
+- **Raw OpenAPI:** http://localhost:8000/api/schema/
+
+---
+
 ## PR labels (GitStream)
 
 Labels are applied automatically by [gitStream](https://gitstream.cm) based on the PR contents:
