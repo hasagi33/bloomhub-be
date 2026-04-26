@@ -47,10 +47,10 @@ jobs:
         run: black --check .
 
       - name: Export OpenAPI schema (drf-spectacular)
-        run: python manage.py spectacular --file schema.yml
+        run: python manage.py spectacular --file schema.yaml
 
-      - name: schema.yml matches committed export
-        run: git diff --exit-code schema.yml || { echo "Run: python manage.py spectacular --file schema.yml && git add schema.yml"; exit 1; }
+      - name: schema.yaml matches committed export
+        run: git diff --exit-code schema.yaml || { echo "Run: python manage.py spectacular --file schema.yaml && git add schema.yaml"; exit 1; }
 
       - name: Tests
         run: pytest
