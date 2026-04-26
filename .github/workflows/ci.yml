@@ -50,7 +50,11 @@ jobs:
         run: python manage.py spectacular --file schema.yaml
 
       - name: schema.yaml matches committed export
-        run: git diff --exit-code schema.yaml || { echo "Run: python manage.py spectacular --file schema.yaml && git add schema.yaml"; exit 1; }
+        run: |
+          git diff --exit-code schema.yaml || {
+            echo "Run: python manage.py spectacular --file schema.yaml && git add schema.yaml"
+            exit 1
+          }
 
       - name: Tests
         run: pytest
