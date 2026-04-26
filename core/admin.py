@@ -12,6 +12,12 @@ from .models import (
     LeaveBalance,
     LeavePolicy,
     LeaveRequest,
+    PerformanceReview,
+    PerformanceReviewActionPoint,
+    PerformanceReviewAttachment,
+    PerformanceReviewHistoryEvent,
+    PerformanceReviewNote,
+    PerformanceReviewReminder,
     Project,
     ProjectAssignment,
     Role,
@@ -279,4 +285,105 @@ class LeaveApprovalWorkflowAdmin(admin.ModelAdmin):
         "leave_request__employee__full_name",
     )
     readonly_fields = ("created_at", "updated_at")
+    ordering = ["-created_at"]
+
+
+# ──────────────────────────────────────────
+# Performance Review Admin
+# ──────────────────────────────────────────
+
+
+@admin.register(PerformanceReview)
+class PerformanceReviewAdmin(admin.ModelAdmin):
+    list_display = (
+        "employee",
+        "reviewer",
+        "review_type",
+        "scheduled_date",
+        "status",
+        "overall_rating",
+        "cpf_current_level",
+        "cpf_recommended_level",
+    )
+    list_filter = ("status", "review_type", "scheduled_date")
+    search_fields = (
+        "employee__full_name",
+        "employee__user__username",
+        "reviewer__full_name",
+        "reviewer__user__username",
+        "title",
+    )
+    ordering = ["-scheduled_date", "-created_at"]
+
+
+@admin.register(PerformanceReviewNote)
+class PerformanceReviewNoteAdmin(admin.ModelAdmin):
+    list_display = ("review", "author", "visibility", "created_at", "updated_at")
+    list_filter = ("visibility", "created_at")
+    search_fields = (
+        "review__employee__full_name",
+        "review__employee__user__username",
+        "author__full_name",
+        "content",
+    )
+    ordering = ["-created_at"]
+
+
+@admin.register(PerformanceReviewActionPoint)
+class PerformanceReviewActionPointAdmin(admin.ModelAdmin):
+    list_display = ("title", "review", "owner", "status", "progress", "due_date")
+    list_filter = ("status", "due_date")
+    search_fields = (
+        "title",
+        "review__employee__full_name",
+        "owner__full_name",
+    )
+    ordering = ["due_date", "created_at"]
+
+
+@admin.register(PerformanceReviewAttachment)
+class PerformanceReviewAttachmentAdmin(admin.ModelAdmin):
+    list_display = (
+        "review",
+        "uploaded_by",
+        "original_name",
+        "size_bytes",
+        "created_at",
+    )
+    list_filter = ("created_at",)
+    search_fields = (
+        "review__employee__full_name",
+        "original_name",
+        "description",
+    )
+    ordering = ["-created_at"]
+
+
+@admin.register(PerformanceReviewReminder)
+class PerformanceReviewReminderAdmin(admin.ModelAdmin):
+    list_display = (
+        "review",
+        "recipient",
+        "reminder_type",
+        "scheduled_for",
+        "is_sent",
+        "is_read",
+    )
+    list_filter = ("reminder_type", "is_sent", "is_read", "scheduled_for")
+    search_fields = (
+        "review__employee__full_name",
+        "recipient__full_name",
+        "message",
+    )
+    ordering = ["-scheduled_for", "-created_at"]
+
+
+@admin.register(PerformanceReviewHistoryEvent)
+class PerformanceReviewHistoryEventAdmin(admin.ModelAdmin):
+    list_display = ("review", "event_type", "actor", "created_at")
+    list_filter = ("event_type", "created_at")
+    search_fields = (
+        "review__employee__full_name",
+        "description",
+    )
     ordering = ["-created_at"]

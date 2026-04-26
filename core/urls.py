@@ -22,6 +22,8 @@ from .views import (
     LeaveRequestViewSet,
     LoginView,
     LogoutView,
+    PerformanceReviewReminderViewSet,
+    PerformanceReviewViewSet,
     PermissionsView,
     ProjectListView,
     RegisterView,
@@ -47,6 +49,14 @@ router.register(r"leave-balances", LeaveBalanceViewSet, basename="leave-balance"
 router.register(r"leave-requests", LeaveRequestViewSet, basename="leave-request")
 router.register(
     r"leave-adjustments", LeaveAdjustmentViewSet, basename="leave-adjustment"
+)
+router.register(
+    r"performance-reviews", PerformanceReviewViewSet, basename="performance-review"
+)
+router.register(
+    r"performance-review-reminders",
+    PerformanceReviewReminderViewSet,
+    basename="performance-review-reminder",
 )
 
 urlpatterns = [

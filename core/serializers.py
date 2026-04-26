@@ -21,6 +21,12 @@ from core.models import (
     LeaveBalance,
     LeavePolicy,
     LeaveRequest,
+    PerformanceReview,
+    PerformanceReviewActionPoint,
+    PerformanceReviewAttachment,
+    PerformanceReviewHistoryEvent,
+    PerformanceReviewNote,
+    PerformanceReviewReminder,
     Project,
     ProjectAssignment,
     ReplacementLog,
@@ -1217,6 +1223,381 @@ class LeaveApprovalWorkflowSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["created_at", "updated_at"]
+
+
+# ──────────────────────────────────────────
+# Performance Review Serializers
+# ──────────────────────────────────────────
+
+
+class PerformanceReviewNoteSerializer(serializers.ModelSerializer):
+    author_id = serializers.IntegerField(source="author.id", read_only=True)
+    author_name = serializers.CharField(
+        source="author.user.get_full_name", read_only=True, allow_null=True
+    )
+    edited_by_id = serializers.IntegerField(
+        source="edited_by.id", read_only=True, allow_null=True
+    )
+    edited_by_name = serializers.CharField(
+        source="edited_by.user.get_full_name", read_only=True, allow_null=True
+    )
+
+    class Meta:
+        model = PerformanceReviewNote
+        fields = [
+            "id",
+            "author_id",
+            "author_name",
+            "visibility",
+            "content",
+            "edited_by_id",
+            "edited_by_name",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "author_id",
+            "author_name",
+            "edited_by_id",
+            "edited_by_name",
+            "created_at",
+            "updated_at",
+        ]
+
+
+class PerformanceReviewActionPointSerializer(serializers.ModelSerializer):
+    owner = serializers.PrimaryKeyRelatedField(
+        queryset=UserProfile.objects.all(), required=False, allow_null=True
+    )
+    owner_id = serializers.IntegerField(
+        source="owner.id", read_only=True, allow_null=True
+    )
+    owner_name = serializers.CharField(
+        source="owner.user.get_full_name", read_only=True, allow_null=True
+    )
+    created_by_id = serializers.IntegerField(
+        source="created_by.id", read_only=True, allow_null=True
+    )
+    created_by_name = serializers.CharField(
+        source="created_by.user.get_full_name", read_only=True, allow_null=True
+    )
+
+    class Meta:
+        model = PerformanceReviewActionPoint
+        fields = [
+            "id",
+            "title",
+            "description",
+            "owner",
+            "owner_id",
+            "owner_name",
+            "due_date",
+            "status",
+            "progress",
+            "completed_at",
+            "created_by_id",
+            "created_by_name",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "owner_id",
+            "owner_name",
+            "created_by_id",
+            "created_by_name",
+            "created_at",
+            "updated_at",
+        ]
+
+
+class PerformanceReviewAttachmentSerializer(serializers.ModelSerializer):
+    uploaded_by_id = serializers.IntegerField(
+        source="uploaded_by.id", read_only=True, allow_null=True
+    )
+    uploaded_by_name = serializers.CharField(
+        source="uploaded_by.user.get_full_name", read_only=True, allow_null=True
+    )
+    file_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PerformanceReviewAttachment
+        fields = [
+            "id",
+            "file",
+            "file_url",
+            "original_name",
+            "content_type",
+            "size_bytes",
+            "description",
+            "uploaded_by_id",
+            "uploaded_by_name",
+            "created_at",
+        ]
+        read_only_fields = [
+            "file_url",
+            "original_name",
+            "content_type",
+            "size_bytes",
+            "uploaded_by_id",
+            "uploaded_by_name",
+            "created_at",
+        ]
+
+    def validate_file(self, value):
+        max_size_mb = 10
+        if value.size > max_size_mb * 1024 * 1024:
+            raise serializers.ValidationError(
+                f"Attachment must be under {max_size_mb} MB."
+            )
+        return value
+
+    def get_file_url(self, obj):
+        try:
+            return obj.file.url
+        except Exception:
+            return None
+
+
+class PerformanceReviewHistoryEventSerializer(serializers.ModelSerializer):
+    actor_id = serializers.IntegerField(
+        source="actor.id", read_only=True, allow_null=True
+    )
+    actor_name = serializers.CharField(
+        source="actor.user.get_full_name", read_only=True, allow_null=True
+    )
+    event_type_display = serializers.CharField(
+        source="get_event_type_display", read_only=True
+    )
+
+    class Meta:
+        model = PerformanceReviewHistoryEvent
+        fields = [
+            "id",
+            "event_type",
+            "event_type_display",
+            "description",
+            "metadata",
+            "actor_id",
+            "actor_name",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+
+class PerformanceReviewReminderSerializer(serializers.ModelSerializer):
+    review_id = serializers.IntegerField(source="review.id", read_only=True)
+    employee_id = serializers.IntegerField(source="review.employee.id", read_only=True)
+    employee_name = serializers.CharField(
+        source="review.employee.user.get_full_name", read_only=True
+    )
+    review_type = serializers.CharField(source="review.review_type", read_only=True)
+    review_type_display = serializers.CharField(
+        source="review.get_review_type_display", read_only=True
+    )
+    recipient_id = serializers.IntegerField(source="recipient.id", read_only=True)
+    recipient_name = serializers.CharField(
+        source="recipient.user.get_full_name", read_only=True
+    )
+    reminder_type_display = serializers.CharField(
+        source="get_reminder_type_display", read_only=True
+    )
+
+    class Meta:
+        model = PerformanceReviewReminder
+        fields = [
+            "id",
+            "review_id",
+            "employee_id",
+            "employee_name",
+            "review_type",
+            "review_type_display",
+            "recipient_id",
+            "recipient_name",
+            "reminder_type",
+            "reminder_type_display",
+            "message",
+            "scheduled_for",
+            "is_sent",
+            "sent_at",
+            "is_read",
+            "read_at",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+
+class PerformanceReviewListSerializer(serializers.ModelSerializer):
+    employee_id = serializers.IntegerField(source="employee.id", read_only=True)
+    employee_name = serializers.CharField(
+        source="employee.user.get_full_name", read_only=True
+    )
+    employee_avatar = serializers.SerializerMethodField()
+    reviewer_id = serializers.IntegerField(
+        source="reviewer.id", read_only=True, allow_null=True
+    )
+    reviewer_name = serializers.CharField(
+        source="reviewer.user.get_full_name", read_only=True, allow_null=True
+    )
+    review_type_display = serializers.CharField(
+        source="get_review_type_display", read_only=True
+    )
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+    progress = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PerformanceReview
+        fields = [
+            "id",
+            "employee_id",
+            "employee_name",
+            "employee_avatar",
+            "reviewer_id",
+            "reviewer_name",
+            "review_type",
+            "review_type_display",
+            "title",
+            "scheduled_date",
+            "status",
+            "status_display",
+            "overall_rating",
+            "outcome",
+            "progress",
+            "cpf_score",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_employee_avatar(self, obj):
+        profile = obj.employee
+        if profile.avatar_url:
+            return profile.avatar_url
+        if profile.avatar:
+            return profile.avatar.url
+        return None
+
+    def get_progress(self, obj):
+        if obj.status == PerformanceReview.Status.COMPLETED:
+            return 100
+        if obj.status == PerformanceReview.Status.SCHEDULED:
+            return 0
+
+        completed_fields = 0
+        if obj.overall_rating is not None:
+            completed_fields += 1
+        if obj.summary.strip():
+            completed_fields += 1
+        if obj.notes.exists():
+            completed_fields += 1
+        if obj.action_points.exists():
+            completed_fields += 1
+
+        return int((completed_fields / 4) * 100)
+
+
+class PerformanceReviewDetailSerializer(PerformanceReviewListSerializer):
+    period_start = serializers.DateField(read_only=True)
+    period_end = serializers.DateField(read_only=True)
+    next_review_date = serializers.DateField(read_only=True)
+    performance_score = serializers.IntegerField(read_only=True, allow_null=True)
+    cpf_current_level = serializers.CharField(read_only=True)
+    cpf_recommended_level = serializers.CharField(read_only=True)
+    summary = serializers.CharField(read_only=True)
+    employee_comments = serializers.CharField(read_only=True)
+    reviewer_comments = serializers.CharField(read_only=True)
+    reminder_offsets_days = serializers.JSONField(read_only=True)
+    completed_at = serializers.DateTimeField(read_only=True, allow_null=True)
+    notes = PerformanceReviewNoteSerializer(many=True, read_only=True)
+    action_points = PerformanceReviewActionPointSerializer(many=True, read_only=True)
+    attachments = PerformanceReviewAttachmentSerializer(many=True, read_only=True)
+    history_events = PerformanceReviewHistoryEventSerializer(many=True, read_only=True)
+
+    class Meta(PerformanceReviewListSerializer.Meta):
+        fields = PerformanceReviewListSerializer.Meta.fields + [
+            "period_start",
+            "period_end",
+            "next_review_date",
+            "performance_score",
+            "cpf_current_level",
+            "cpf_recommended_level",
+            "summary",
+            "employee_comments",
+            "reviewer_comments",
+            "reminder_offsets_days",
+            "completed_at",
+            "notes",
+            "action_points",
+            "attachments",
+            "history_events",
+        ]
+
+
+class PerformanceReviewCreateUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PerformanceReview
+        fields = [
+            "employee",
+            "reviewer",
+            "review_type",
+            "title",
+            "period_start",
+            "period_end",
+            "scheduled_date",
+            "next_review_date",
+            "status",
+            "outcome",
+            "overall_rating",
+            "performance_score",
+            "cpf_score",
+            "cpf_current_level",
+            "cpf_recommended_level",
+            "summary",
+            "employee_comments",
+            "reviewer_comments",
+            "reminder_offsets_days",
+            "completed_at",
+        ]
+
+    def validate(self, data):
+        period_start = data.get("period_start")
+        period_end = data.get("period_end")
+        if period_start and period_end and period_start > period_end:
+            raise serializers.ValidationError(
+                {"period_end": "Period end must be after period start."}
+            )
+
+        employee = data.get("employee")
+        reviewer = data.get("reviewer")
+        if employee and reviewer and employee.pk == reviewer.pk:
+            raise serializers.ValidationError(
+                {"reviewer": "Reviewer cannot be the same as employee."}
+            )
+
+        reminder_offsets_days = data.get("reminder_offsets_days")
+        if reminder_offsets_days is not None:
+            if not isinstance(reminder_offsets_days, list):
+                raise serializers.ValidationError(
+                    {"reminder_offsets_days": "Expected a list of integer day offsets."}
+                )
+            normalized_offsets = []
+            for offset in reminder_offsets_days:
+                try:
+                    offset_value = int(offset)
+                except (TypeError, ValueError):
+                    raise serializers.ValidationError(
+                        {
+                            "reminder_offsets_days": "All reminder offsets must be valid integers."
+                        }
+                    )
+                if offset_value < 0:
+                    raise serializers.ValidationError(
+                        {
+                            "reminder_offsets_days": "Reminder offsets cannot be negative."
+                        }
+                    )
+                normalized_offsets.append(offset_value)
+            data["reminder_offsets_days"] = normalized_offsets
+
+        return data
 
 
 # ──────────────────────────────────────────
