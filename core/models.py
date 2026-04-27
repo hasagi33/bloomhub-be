@@ -5,7 +5,7 @@ from pathlib import Path
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.files.base import ContentFile
-from django.core.validators import MinValueValidator
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.db.models.signals import post_save
 from django.dispatch import receiver
@@ -1043,6 +1043,410 @@ class LeaveAdjustment(models.Model):
 
     def __str__(self):
         return f"{self.employee.user.get_full_name()} - {self.get_leave_type_display()} adjusted from {self.old_allocated} to {self.new_allocated} days"
+
+
+# ──────────────────────────────────────────
+# Performance Reviews
+# ──────────────────────────────────────────
+
+
+class PerformanceReview(models.Model):
+    class ReviewType(models.TextChoices):
+        QUARTERLY = "quarterly", "Quarterly Review"
+        MID_YEAR = "mid_year", "Mid-Year Review"
+        ANNUAL = "annual", "Annual Review"
+        PROBATION = "probation", "Probation Review"
+        CUSTOM = "custom", "Custom Review"
+
+    class Status(models.TextChoices):
+        SCHEDULED = "scheduled", "Scheduled"
+        IN_PROGRESS = "in_progress", "In Progress"
+        COMPLETED = "completed", "Completed"
+        CANCELLED = "cancelled", "Cancelled"
+
+    class Outcome(models.TextChoices):
+        EXCEEDS_EXPECTATIONS = "exceeds_expectations", "Exceeds Expectations"
+        MEETS_EXPECTATIONS = "meets_expectations", "Meets Expectations"
+        PARTIALLY_MEETS = "partially_meets", "Partially Meets Expectations"
+        NEEDS_IMPROVEMENT = "needs_improvement", "Needs Improvement"
+        UNSATISFACTORY = "unsatisfactory", "Unsatisfactory"
+
+    employee = models.ForeignKey(
+        UserProfile,
+        on_delete=models.CASCADE,
+        related_name="performance_reviews",
+    )
+    reviewer = models.ForeignKey(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="reviews_to_conduct",
+    )
+    created_by = models.ForeignKey(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="performance_reviews_created",
+    )
+    updated_by = models.ForeignKey(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="performance_reviews_updated",
+    )
+    review_type = models.CharField(
+        max_length=20,
+        choices=ReviewType.choices,
+        default=ReviewType.QUARTERLY,
+    )
+    title = models.CharField(max_length=200, blank=True, default="")
+    period_start = models.DateField(null=True, blank=True)
+    period_end = models.DateField(null=True, blank=True)
+    scheduled_date = models.DateField(
+        help_text="Date on which the formal performance review is due."
+    )
+    next_review_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Optional follow-up review date for the next cycle.",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.SCHEDULED,
+    )
+    outcome = models.CharField(
+        max_length=30,
+        choices=Outcome.choices,
+        blank=True,
+        default="",
+    )
+    overall_rating = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(1), MaxValueValidator(5)],
+        help_text="Overall review rating on a 1-5 scale.",
+    )
+    performance_score = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text="Optional normalized performance score (0-100).",
+    )
+    cpf_score = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text="Optional CPF score (0-100).",
+    )
+    cpf_current_level = models.CharField(max_length=100, blank=True, default="")
+    cpf_recommended_level = models.CharField(max_length=100, blank=True, default="")
+    summary = models.TextField(
+        blank=True,
+        default="",
+        help_text="High-level review outcome summary.",
+    )
+    employee_comments = models.TextField(blank=True, default="")
+    reviewer_comments = models.TextField(blank=True, default="")
+    reminder_offsets_days = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Reminder offsets (days before scheduled date) used by reminder jobs.",
+    )
+    completed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Performance Review"
+        verbose_name_plural = "Performance Reviews"
+        ordering = ["-scheduled_date", "-created_at"]
+        indexes = [
+            models.Index(fields=["status", "scheduled_date"]),
+            models.Index(fields=["employee", "scheduled_date"]),
+            models.Index(fields=["reviewer", "scheduled_date"]),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(overall_rating__isnull=True)
+                    | models.Q(overall_rating__gte=1, overall_rating__lte=5)
+                ),
+                name="perf_review_rating_between_1_and_5",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(performance_score__isnull=True)
+                    | models.Q(performance_score__gte=0, performance_score__lte=100)
+                ),
+                name="perf_review_performance_score_between_0_100",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(cpf_score__isnull=True)
+                    | models.Q(cpf_score__gte=0, cpf_score__lte=100)
+                ),
+                name="perf_review_cpf_score_between_0_100",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(period_start__isnull=True)
+                    | models.Q(period_end__isnull=True)
+                    | models.Q(period_start__lte=models.F("period_end"))
+                ),
+                name="perf_review_period_start_before_end",
+            ),
+        ]
+
+    def __str__(self):
+        employee_name = (
+            self.employee.user.get_full_name() or self.employee.user.username
+        )
+        return f"{employee_name} - {self.get_review_type_display()} ({self.scheduled_date})"
+
+
+class PerformanceReviewNote(models.Model):
+    class Visibility(models.TextChoices):
+        SHARED = "shared", "Shared"
+        PRIVATE = "private", "Private"
+
+    review = models.ForeignKey(
+        PerformanceReview,
+        on_delete=models.CASCADE,
+        related_name="notes",
+    )
+    author = models.ForeignKey(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="performance_review_notes",
+    )
+    visibility = models.CharField(
+        max_length=20,
+        choices=Visibility.choices,
+        default=Visibility.SHARED,
+    )
+    content = models.TextField()
+    edited_by = models.ForeignKey(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="performance_review_notes_edited",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Performance Review Note"
+        verbose_name_plural = "Performance Review Notes"
+        ordering = ["created_at"]
+        indexes = [
+            models.Index(fields=["review", "visibility"]),
+            models.Index(fields=["author", "created_at"]),
+        ]
+
+    def __str__(self):
+        return f"Note #{self.pk} ({self.visibility}) for review #{self.review_id}"
+
+
+class PerformanceReviewActionPoint(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        IN_PROGRESS = "in_progress", "In Progress"
+        COMPLETED = "completed", "Completed"
+        CANCELLED = "cancelled", "Cancelled"
+
+    review = models.ForeignKey(
+        PerformanceReview,
+        on_delete=models.CASCADE,
+        related_name="action_points",
+    )
+    title = models.CharField(max_length=200)
+    description = models.TextField(blank=True, default="")
+    owner = models.ForeignKey(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="performance_review_action_points",
+    )
+    created_by = models.ForeignKey(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="performance_review_action_points_created",
+    )
+    due_date = models.DateField(null=True, blank=True)
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING,
+    )
+    progress = models.PositiveSmallIntegerField(
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+    )
+    completed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Performance Review Action Point"
+        verbose_name_plural = "Performance Review Action Points"
+        ordering = ["due_date", "created_at"]
+        indexes = [
+            models.Index(fields=["review", "status"]),
+            models.Index(fields=["owner", "due_date"]),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(progress__gte=0, progress__lte=100),
+                name="perf_review_action_point_progress_between_0_100",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.title} ({self.status})"
+
+
+class PerformanceReviewAttachment(models.Model):
+    review = models.ForeignKey(
+        PerformanceReview,
+        on_delete=models.CASCADE,
+        related_name="attachments",
+    )
+    uploaded_by = models.ForeignKey(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="performance_review_attachments",
+    )
+    file = models.FileField(upload_to="performance_reviews/attachments/%Y/%m/%d/")
+    original_name = models.CharField(max_length=255, blank=True, default="")
+    content_type = models.CharField(max_length=100, blank=True, default="")
+    size_bytes = models.PositiveBigIntegerField(default=0)
+    description = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Performance Review Attachment"
+        verbose_name_plural = "Performance Review Attachments"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["review", "created_at"]),
+            models.Index(fields=["uploaded_by", "created_at"]),
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.file:
+            if not self.original_name:
+                self.original_name = self.file.name.split("/")[-1]
+            if not self.size_bytes:
+                self.size_bytes = self.file.size
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.original_name or self.file.name} (review #{self.review_id})"
+
+
+class PerformanceReviewReminder(models.Model):
+    class ReminderType(models.TextChoices):
+        UPCOMING = "upcoming", "Upcoming"
+        DUE_TODAY = "due_today", "Due Today"
+        OVERDUE = "overdue", "Overdue"
+
+    review = models.ForeignKey(
+        PerformanceReview,
+        on_delete=models.CASCADE,
+        related_name="reminders",
+    )
+    recipient = models.ForeignKey(
+        UserProfile,
+        on_delete=models.CASCADE,
+        related_name="performance_review_reminders",
+    )
+    reminder_type = models.CharField(max_length=20, choices=ReminderType.choices)
+    message = models.CharField(max_length=255, blank=True, default="")
+    scheduled_for = models.DateTimeField()
+    is_sent = models.BooleanField(default=False)
+    sent_at = models.DateTimeField(null=True, blank=True)
+    is_read = models.BooleanField(default=False)
+    read_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Performance Review Reminder"
+        verbose_name_plural = "Performance Review Reminders"
+        ordering = ["-scheduled_for", "-created_at"]
+        indexes = [
+            models.Index(fields=["recipient", "is_read", "scheduled_for"]),
+            models.Index(fields=["is_sent", "scheduled_for"]),
+            models.Index(fields=["review", "reminder_type"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["review", "recipient", "reminder_type", "scheduled_for"],
+                name="perf_review_reminder_unique_slot",
+            )
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.get_reminder_type_display()} reminder for "
+            f"review #{self.review_id} -> user_profile #{self.recipient_id}"
+        )
+
+
+class PerformanceReviewHistoryEvent(models.Model):
+    class EventType(models.TextChoices):
+        CREATED = "created", "Created"
+        UPDATED = "updated", "Updated"
+        SCHEDULED = "scheduled", "Scheduled"
+        RESCHEDULED = "rescheduled", "Rescheduled"
+        STATUS_CHANGED = "status_changed", "Status Changed"
+        OUTCOME_UPDATED = "outcome_updated", "Outcome Updated"
+        NOTE_ADDED = "note_added", "Note Added"
+        NOTE_UPDATED = "note_updated", "Note Updated"
+        ACTION_POINT_ADDED = "action_point_added", "Action Point Added"
+        ACTION_POINT_UPDATED = "action_point_updated", "Action Point Updated"
+        ATTACHMENT_ADDED = "attachment_added", "Attachment Added"
+        ATTACHMENT_REMOVED = "attachment_removed", "Attachment Removed"
+        REMINDER_GENERATED = "reminder_generated", "Reminder Generated"
+        REMINDER_READ = "reminder_read", "Reminder Read"
+
+    review = models.ForeignKey(
+        PerformanceReview,
+        on_delete=models.CASCADE,
+        related_name="history_events",
+    )
+    actor = models.ForeignKey(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="performance_review_history_events",
+    )
+    event_type = models.CharField(max_length=30, choices=EventType.choices)
+    description = models.CharField(max_length=255, blank=True, default="")
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Performance Review History Event"
+        verbose_name_plural = "Performance Review History Events"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["review", "created_at"]),
+            models.Index(fields=["event_type", "created_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.get_event_type_display()} (review #{self.review_id})"
 
 
 # ──────────────────────────────────────────

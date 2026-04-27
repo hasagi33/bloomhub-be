@@ -2069,6 +2069,745 @@ paths:
               schema:
                 $ref: '#/components/schemas/ChecklistTemplate'
           description: ''
+  /api/performance-review-reminders/:
+    get:
+      operationId: performance_review_reminders_list
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      tags:
+      - Performance Reviews
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PerformanceReviewReminder'
+          description: ''
+  /api/performance-review-reminders/{id}/:
+    get:
+      operationId: performance_review_reminders_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - Performance Reviews
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerformanceReviewReminder'
+          description: ''
+  /api/performance-review-reminders/{id}/mark-read/:
+    post:
+      operationId: performance_review_reminders_mark_read_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - Performance Reviews
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerformanceReviewReminder'
+          description: ''
+  /api/performance-reviews/:
+    get:
+      operationId: performance_reviews_list
+      description: |-
+        ViewSet for performance reviews with nested notes, action points,
+        attachments, summary metrics, and history.
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      tags:
+      - Performance Reviews
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PerformanceReviewList'
+          description: ''
+    post:
+      operationId: performance_reviews_create
+      description: |-
+        ViewSet for performance reviews with nested notes, action points,
+        attachments, summary metrics, and history.
+      tags:
+      - Performance Reviews
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PerformanceReviewCreateUpdateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PerformanceReviewCreateUpdateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PerformanceReviewCreateUpdateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerformanceReviewCreateUpdate'
+          description: ''
+  /api/performance-reviews/{id}/:
+    get:
+      operationId: performance_reviews_retrieve
+      description: |-
+        ViewSet for performance reviews with nested notes, action points,
+        attachments, summary metrics, and history.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - Performance Reviews
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerformanceReviewDetail'
+          description: ''
+    put:
+      operationId: performance_reviews_update
+      description: |-
+        ViewSet for performance reviews with nested notes, action points,
+        attachments, summary metrics, and history.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - Performance Reviews
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PerformanceReviewCreateUpdateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PerformanceReviewCreateUpdateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PerformanceReviewCreateUpdateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerformanceReviewCreateUpdate'
+          description: ''
+    patch:
+      operationId: performance_reviews_partial_update
+      description: |-
+        ViewSet for performance reviews with nested notes, action points,
+        attachments, summary metrics, and history.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - Performance Reviews
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedPerformanceReviewCreateUpdateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedPerformanceReviewCreateUpdateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedPerformanceReviewCreateUpdateRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerformanceReviewCreateUpdate'
+          description: ''
+    delete:
+      operationId: performance_reviews_destroy
+      description: |-
+        ViewSet for performance reviews with nested notes, action points,
+        attachments, summary metrics, and history.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - Performance Reviews
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/performance-reviews/{id}/action-points/:
+    get:
+      operationId: performance_reviews_action_points_list
+      description: |-
+        ViewSet for performance reviews with nested notes, action points,
+        attachments, summary metrics, and history.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      tags:
+      - Performance Reviews
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PerformanceReviewActionPoint'
+          description: ''
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerformanceReviewActionPoint'
+          description: ''
+    post:
+      operationId: performance_reviews_action_points_create
+      description: |-
+        ViewSet for performance reviews with nested notes, action points,
+        attachments, summary metrics, and history.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      tags:
+      - Performance Reviews
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PerformanceReviewActionPointRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PerformanceReviewActionPointRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PerformanceReviewActionPointRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PerformanceReviewActionPoint'
+          description: ''
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerformanceReviewActionPoint'
+          description: ''
+  /api/performance-reviews/{id}/action-points/{action_point_id}/:
+    patch:
+      operationId: performance_reviews_action_points_partial_update
+      description: |-
+        ViewSet for performance reviews with nested notes, action points,
+        attachments, summary metrics, and history.
+      parameters:
+      - in: path
+        name: action_point_id
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - Performance Reviews
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedPerformanceReviewActionPointRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedPerformanceReviewActionPointRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedPerformanceReviewActionPointRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerformanceReviewActionPoint'
+          description: ''
+        '204':
+          description: No response body
+    delete:
+      operationId: performance_reviews_action_points_destroy
+      description: |-
+        ViewSet for performance reviews with nested notes, action points,
+        attachments, summary metrics, and history.
+      parameters:
+      - in: path
+        name: action_point_id
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - Performance Reviews
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerformanceReviewActionPoint'
+          description: ''
+        '204':
+          description: No response body
+  /api/performance-reviews/{id}/attachments/:
+    get:
+      operationId: performance_reviews_attachments_list
+      description: |-
+        ViewSet for performance reviews with nested notes, action points,
+        attachments, summary metrics, and history.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      tags:
+      - Performance Reviews
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PerformanceReviewAttachment'
+          description: ''
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerformanceReviewAttachment'
+          description: ''
+    post:
+      operationId: performance_reviews_attachments_create
+      description: |-
+        ViewSet for performance reviews with nested notes, action points,
+        attachments, summary metrics, and history.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      tags:
+      - Performance Reviews
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PerformanceReviewAttachmentRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PerformanceReviewAttachmentRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PerformanceReviewAttachment'
+          description: ''
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerformanceReviewAttachment'
+          description: ''
+  /api/performance-reviews/{id}/attachments/{attachment_id}/:
+    delete:
+      operationId: performance_reviews_attachments_destroy
+      description: |-
+        ViewSet for performance reviews with nested notes, action points,
+        attachments, summary metrics, and history.
+      parameters:
+      - in: path
+        name: attachment_id
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - Performance Reviews
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/performance-reviews/{id}/history/:
+    get:
+      operationId: performance_reviews_history_list
+      description: |-
+        ViewSet for performance reviews with nested notes, action points,
+        attachments, summary metrics, and history.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      tags:
+      - Performance Reviews
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PerformanceReviewHistoryEvent'
+          description: ''
+  /api/performance-reviews/{id}/notes/:
+    get:
+      operationId: performance_reviews_notes_list
+      description: |-
+        ViewSet for performance reviews with nested notes, action points,
+        attachments, summary metrics, and history.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      tags:
+      - Performance Reviews
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PerformanceReviewNote'
+          description: ''
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerformanceReviewNote'
+          description: ''
+    post:
+      operationId: performance_reviews_notes_create
+      description: |-
+        ViewSet for performance reviews with nested notes, action points,
+        attachments, summary metrics, and history.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      tags:
+      - Performance Reviews
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PerformanceReviewNoteRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PerformanceReviewNoteRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PerformanceReviewNoteRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PerformanceReviewNote'
+          description: ''
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerformanceReviewNote'
+          description: ''
+  /api/performance-reviews/{id}/notes/{note_id}/:
+    patch:
+      operationId: performance_reviews_notes_partial_update
+      description: |-
+        ViewSet for performance reviews with nested notes, action points,
+        attachments, summary metrics, and history.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: note_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - Performance Reviews
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedPerformanceReviewNoteRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedPerformanceReviewNoteRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedPerformanceReviewNoteRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerformanceReviewNote'
+          description: ''
+        '204':
+          description: No response body
+    delete:
+      operationId: performance_reviews_notes_destroy
+      description: |-
+        ViewSet for performance reviews with nested notes, action points,
+        attachments, summary metrics, and history.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: note_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - Performance Reviews
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerformanceReviewNote'
+          description: ''
+        '204':
+          description: No response body
+  /api/performance-reviews/{id}/status/:
+    post:
+      operationId: performance_reviews_status_create
+      description: |-
+        ViewSet for performance reviews with nested notes, action points,
+        attachments, summary metrics, and history.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - Performance Reviews
+      requestBody:
+        content:
+          type:
+            schema:
+              type: object
+              additionalProperties: {}
+              description: Unspecified request body
+          properties:
+            schema:
+              status:
+                type: string
+              comment:
+                type: string
+          required:
+            schema:
+              type: object
+              additionalProperties: {}
+              description: Unspecified request body
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerformanceReviewDetail'
+          description: ''
+  /api/performance-reviews/summary/:
+    get:
+      operationId: performance_reviews_summary_retrieve
+      description: |-
+        ViewSet for performance reviews with nested notes, action points,
+        attachments, summary metrics, and history.
+      tags:
+      - Performance Reviews
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  due_this_week:
+                    type: integer
+                  in_progress:
+                    type: integer
+                  completed_this_quarter:
+                    type: integer
+                  average_rating:
+                    type: number
+          description: ''
   /api/projects/:
     get:
       operationId: projects_retrieve
@@ -2909,6 +3648,38 @@ components:
       description: |-
         * `active` - Active
         * `inactive` - Inactive
+    EventTypeEnum:
+      enum:
+      - created
+      - updated
+      - scheduled
+      - rescheduled
+      - status_changed
+      - outcome_updated
+      - note_added
+      - note_updated
+      - action_point_added
+      - action_point_updated
+      - attachment_added
+      - attachment_removed
+      - reminder_generated
+      - reminder_read
+      type: string
+      description: |-
+        * `created` - Created
+        * `updated` - Updated
+        * `scheduled` - Scheduled
+        * `rescheduled` - Rescheduled
+        * `status_changed` - Status Changed
+        * `outcome_updated` - Outcome Updated
+        * `note_added` - Note Added
+        * `note_updated` - Note Updated
+        * `action_point_added` - Action Point Added
+        * `action_point_updated` - Action Point Updated
+        * `attachment_added` - Attachment Added
+        * `attachment_removed` - Attachment Removed
+        * `reminder_generated` - Reminder Generated
+        * `reminder_read` - Reminder Read
     GoogleExchangeRequest:
       type: object
       properties:
@@ -2937,13 +3708,15 @@ components:
           readOnly: true
         old_allocated:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           description: Previous allocated days
         new_allocated:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           description: New allocated days
         reason:
           type: string
@@ -2992,26 +3765,30 @@ components:
           readOnly: true
         allocated:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           description: Total days allocated for this period
         used:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           description: Days already used/approved
         remaining:
           type: string
           readOnly: true
         carryover:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           description: Days carried over from previous year
         year:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           description: Calendar year for this balance
         last_updated:
           type: string
@@ -3040,13 +3817,15 @@ components:
           readOnly: true
         allocated_days_per_year:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           description: Number of days allocated per year
         carryover_days:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           description: Maximum days that can be carried over to next year
         requires_approval:
           type: boolean
@@ -3056,13 +3835,15 @@ components:
           description: Whether a covering employee must be assigned
         min_notice_in_days:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           description: Minimum days notice required before leave start date
         max_consecutive_days:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Maximum consecutive days allowed (optional)
         created_at:
@@ -3339,6 +4120,20 @@ components:
     NullEnum:
       enum:
       - null
+    OutcomeEnum:
+      enum:
+      - exceeds_expectations
+      - meets_expectations
+      - partially_meets
+      - needs_improvement
+      - unsatisfactory
+      type: string
+      description: |-
+        * `exceeds_expectations` - Exceeds Expectations
+        * `meets_expectations` - Meets Expectations
+        * `partially_meets` - Partially Meets Expectations
+        * `needs_improvement` - Needs Improvement
+        * `unsatisfactory` - Unsatisfactory
     PatchedChecklistTemplateRequest:
       type: object
       properties:
@@ -3443,6 +4238,827 @@ components:
           format: date
         status:
           $ref: '#/components/schemas/StatusB39Enum'
+    PatchedPerformanceReviewActionPointRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          type: string
+        owner:
+          type: integer
+          nullable: true
+        due_date:
+          type: string
+          format: date
+          nullable: true
+        status:
+          $ref: '#/components/schemas/PerformanceReviewActionPointStatusEnum'
+        progress:
+          type: integer
+          maximum: 100
+          minimum: 0
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+    PatchedPerformanceReviewCreateUpdateRequest:
+      type: object
+      properties:
+        employee:
+          type: integer
+        reviewer:
+          type: integer
+          nullable: true
+        review_type:
+          $ref: '#/components/schemas/ReviewTypeEnum'
+        title:
+          type: string
+          maxLength: 200
+        period_start:
+          type: string
+          format: date
+          nullable: true
+        period_end:
+          type: string
+          format: date
+          nullable: true
+        scheduled_date:
+          type: string
+          format: date
+          description: Date on which the formal performance review is due.
+        next_review_date:
+          type: string
+          format: date
+          nullable: true
+          description: Optional follow-up review date for the next cycle.
+        status:
+          $ref: '#/components/schemas/StatusC59Enum'
+        outcome:
+          oneOf:
+          - $ref: '#/components/schemas/OutcomeEnum'
+          - $ref: '#/components/schemas/BlankEnum'
+        overall_rating:
+          type: integer
+          maximum: 5
+          minimum: 1
+          nullable: true
+          description: Overall review rating on a 1-5 scale.
+        performance_score:
+          type: integer
+          maximum: 100
+          minimum: 0
+          nullable: true
+          description: Optional normalized performance score (0-100).
+        cpf_score:
+          type: integer
+          maximum: 100
+          minimum: 0
+          nullable: true
+          description: Optional CPF score (0-100).
+        cpf_current_level:
+          type: string
+          maxLength: 100
+        cpf_recommended_level:
+          type: string
+          maxLength: 100
+        summary:
+          type: string
+          description: High-level review outcome summary.
+        employee_comments:
+          type: string
+        reviewer_comments:
+          type: string
+        reminder_offsets_days:
+          description: Reminder offsets (days before scheduled date) used by reminder
+            jobs.
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+    PatchedPerformanceReviewNoteRequest:
+      type: object
+      properties:
+        visibility:
+          $ref: '#/components/schemas/VisibilityEnum'
+        content:
+          type: string
+          minLength: 1
+    PerformanceReviewActionPoint:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        title:
+          type: string
+          maxLength: 200
+        description:
+          type: string
+        owner:
+          type: integer
+          nullable: true
+        owner_id:
+          type: integer
+          readOnly: true
+          nullable: true
+        owner_name:
+          type: string
+          readOnly: true
+          nullable: true
+        due_date:
+          type: string
+          format: date
+          nullable: true
+        status:
+          $ref: '#/components/schemas/PerformanceReviewActionPointStatusEnum'
+        progress:
+          type: integer
+          maximum: 100
+          minimum: 0
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_by_id:
+          type: integer
+          readOnly: true
+          nullable: true
+        created_by_name:
+          type: string
+          readOnly: true
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - created_by_id
+      - created_by_name
+      - id
+      - owner_id
+      - owner_name
+      - title
+      - updated_at
+    PerformanceReviewActionPointRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          type: string
+        owner:
+          type: integer
+          nullable: true
+        due_date:
+          type: string
+          format: date
+          nullable: true
+        status:
+          $ref: '#/components/schemas/PerformanceReviewActionPointStatusEnum'
+        progress:
+          type: integer
+          maximum: 100
+          minimum: 0
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - title
+    PerformanceReviewActionPointStatusEnum:
+      enum:
+      - pending
+      - in_progress
+      - completed
+      - cancelled
+      type: string
+      description: |-
+        * `pending` - Pending
+        * `in_progress` - In Progress
+        * `completed` - Completed
+        * `cancelled` - Cancelled
+    PerformanceReviewAttachment:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        file:
+          type: string
+          format: uri
+        file_url:
+          type: string
+          readOnly: true
+        original_name:
+          type: string
+          readOnly: true
+        content_type:
+          type: string
+          readOnly: true
+        size_bytes:
+          type: integer
+          readOnly: true
+        description:
+          type: string
+        uploaded_by_id:
+          type: integer
+          readOnly: true
+          nullable: true
+        uploaded_by_name:
+          type: string
+          readOnly: true
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - content_type
+      - created_at
+      - file
+      - file_url
+      - id
+      - original_name
+      - size_bytes
+      - uploaded_by_id
+      - uploaded_by_name
+    PerformanceReviewAttachmentRequest:
+      type: object
+      properties:
+        file:
+          type: string
+          format: binary
+        description:
+          type: string
+      required:
+      - file
+    PerformanceReviewCreateUpdate:
+      type: object
+      properties:
+        employee:
+          type: integer
+        reviewer:
+          type: integer
+          nullable: true
+        review_type:
+          $ref: '#/components/schemas/ReviewTypeEnum'
+        title:
+          type: string
+          maxLength: 200
+        period_start:
+          type: string
+          format: date
+          nullable: true
+        period_end:
+          type: string
+          format: date
+          nullable: true
+        scheduled_date:
+          type: string
+          format: date
+          description: Date on which the formal performance review is due.
+        next_review_date:
+          type: string
+          format: date
+          nullable: true
+          description: Optional follow-up review date for the next cycle.
+        status:
+          $ref: '#/components/schemas/StatusC59Enum'
+        outcome:
+          oneOf:
+          - $ref: '#/components/schemas/OutcomeEnum'
+          - $ref: '#/components/schemas/BlankEnum'
+        overall_rating:
+          type: integer
+          maximum: 5
+          minimum: 1
+          nullable: true
+          description: Overall review rating on a 1-5 scale.
+        performance_score:
+          type: integer
+          maximum: 100
+          minimum: 0
+          nullable: true
+          description: Optional normalized performance score (0-100).
+        cpf_score:
+          type: integer
+          maximum: 100
+          minimum: 0
+          nullable: true
+          description: Optional CPF score (0-100).
+        cpf_current_level:
+          type: string
+          maxLength: 100
+        cpf_recommended_level:
+          type: string
+          maxLength: 100
+        summary:
+          type: string
+          description: High-level review outcome summary.
+        employee_comments:
+          type: string
+        reviewer_comments:
+          type: string
+        reminder_offsets_days:
+          description: Reminder offsets (days before scheduled date) used by reminder
+            jobs.
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - employee
+      - scheduled_date
+    PerformanceReviewCreateUpdateRequest:
+      type: object
+      properties:
+        employee:
+          type: integer
+        reviewer:
+          type: integer
+          nullable: true
+        review_type:
+          $ref: '#/components/schemas/ReviewTypeEnum'
+        title:
+          type: string
+          maxLength: 200
+        period_start:
+          type: string
+          format: date
+          nullable: true
+        period_end:
+          type: string
+          format: date
+          nullable: true
+        scheduled_date:
+          type: string
+          format: date
+          description: Date on which the formal performance review is due.
+        next_review_date:
+          type: string
+          format: date
+          nullable: true
+          description: Optional follow-up review date for the next cycle.
+        status:
+          $ref: '#/components/schemas/StatusC59Enum'
+        outcome:
+          oneOf:
+          - $ref: '#/components/schemas/OutcomeEnum'
+          - $ref: '#/components/schemas/BlankEnum'
+        overall_rating:
+          type: integer
+          maximum: 5
+          minimum: 1
+          nullable: true
+          description: Overall review rating on a 1-5 scale.
+        performance_score:
+          type: integer
+          maximum: 100
+          minimum: 0
+          nullable: true
+          description: Optional normalized performance score (0-100).
+        cpf_score:
+          type: integer
+          maximum: 100
+          minimum: 0
+          nullable: true
+          description: Optional CPF score (0-100).
+        cpf_current_level:
+          type: string
+          maxLength: 100
+        cpf_recommended_level:
+          type: string
+          maxLength: 100
+        summary:
+          type: string
+          description: High-level review outcome summary.
+        employee_comments:
+          type: string
+        reviewer_comments:
+          type: string
+        reminder_offsets_days:
+          description: Reminder offsets (days before scheduled date) used by reminder
+            jobs.
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - employee
+      - scheduled_date
+    PerformanceReviewDetail:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        employee_id:
+          type: integer
+          readOnly: true
+        employee_name:
+          type: string
+          readOnly: true
+        employee_avatar:
+          type: string
+          readOnly: true
+        reviewer_id:
+          type: integer
+          readOnly: true
+          nullable: true
+        reviewer_name:
+          type: string
+          readOnly: true
+          nullable: true
+        review_type:
+          $ref: '#/components/schemas/ReviewTypeEnum'
+        review_type_display:
+          type: string
+          readOnly: true
+        title:
+          type: string
+          maxLength: 200
+        scheduled_date:
+          type: string
+          format: date
+          description: Date on which the formal performance review is due.
+        status:
+          $ref: '#/components/schemas/StatusC59Enum'
+        status_display:
+          type: string
+          readOnly: true
+        overall_rating:
+          type: integer
+          maximum: 5
+          minimum: 1
+          nullable: true
+          description: Overall review rating on a 1-5 scale.
+        outcome:
+          oneOf:
+          - $ref: '#/components/schemas/OutcomeEnum'
+          - $ref: '#/components/schemas/BlankEnum'
+        progress:
+          type: string
+          readOnly: true
+        cpf_score:
+          type: integer
+          maximum: 100
+          minimum: 0
+          nullable: true
+          description: Optional CPF score (0-100).
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        period_start:
+          type: string
+          format: date
+          readOnly: true
+        period_end:
+          type: string
+          format: date
+          readOnly: true
+        next_review_date:
+          type: string
+          format: date
+          readOnly: true
+        performance_score:
+          type: integer
+          readOnly: true
+          nullable: true
+        cpf_current_level:
+          type: string
+          readOnly: true
+        cpf_recommended_level:
+          type: string
+          readOnly: true
+        summary:
+          type: string
+          readOnly: true
+        employee_comments:
+          type: string
+          readOnly: true
+        reviewer_comments:
+          type: string
+          readOnly: true
+        reminder_offsets_days:
+          readOnly: true
+        completed_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        notes:
+          type: array
+          items:
+            $ref: '#/components/schemas/PerformanceReviewNote'
+          readOnly: true
+        action_points:
+          type: array
+          items:
+            $ref: '#/components/schemas/PerformanceReviewActionPoint'
+          readOnly: true
+        attachments:
+          type: array
+          items:
+            $ref: '#/components/schemas/PerformanceReviewAttachment'
+          readOnly: true
+        history_events:
+          type: array
+          items:
+            $ref: '#/components/schemas/PerformanceReviewHistoryEvent'
+          readOnly: true
+      required:
+      - action_points
+      - attachments
+      - completed_at
+      - cpf_current_level
+      - cpf_recommended_level
+      - created_at
+      - employee_avatar
+      - employee_comments
+      - employee_id
+      - employee_name
+      - history_events
+      - id
+      - next_review_date
+      - notes
+      - performance_score
+      - period_end
+      - period_start
+      - progress
+      - reminder_offsets_days
+      - review_type_display
+      - reviewer_comments
+      - reviewer_id
+      - reviewer_name
+      - scheduled_date
+      - status_display
+      - summary
+      - updated_at
+    PerformanceReviewHistoryEvent:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        event_type:
+          allOf:
+          - $ref: '#/components/schemas/EventTypeEnum'
+          readOnly: true
+        event_type_display:
+          type: string
+          readOnly: true
+        description:
+          type: string
+          readOnly: true
+        metadata:
+          readOnly: true
+        actor_id:
+          type: integer
+          readOnly: true
+          nullable: true
+        actor_name:
+          type: string
+          readOnly: true
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - actor_id
+      - actor_name
+      - created_at
+      - description
+      - event_type
+      - event_type_display
+      - id
+      - metadata
+    PerformanceReviewList:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        employee_id:
+          type: integer
+          readOnly: true
+        employee_name:
+          type: string
+          readOnly: true
+        employee_avatar:
+          type: string
+          readOnly: true
+        reviewer_id:
+          type: integer
+          readOnly: true
+          nullable: true
+        reviewer_name:
+          type: string
+          readOnly: true
+          nullable: true
+        review_type:
+          $ref: '#/components/schemas/ReviewTypeEnum'
+        review_type_display:
+          type: string
+          readOnly: true
+        title:
+          type: string
+          maxLength: 200
+        scheduled_date:
+          type: string
+          format: date
+          description: Date on which the formal performance review is due.
+        status:
+          $ref: '#/components/schemas/StatusC59Enum'
+        status_display:
+          type: string
+          readOnly: true
+        overall_rating:
+          type: integer
+          maximum: 5
+          minimum: 1
+          nullable: true
+          description: Overall review rating on a 1-5 scale.
+        outcome:
+          oneOf:
+          - $ref: '#/components/schemas/OutcomeEnum'
+          - $ref: '#/components/schemas/BlankEnum'
+        progress:
+          type: string
+          readOnly: true
+        cpf_score:
+          type: integer
+          maximum: 100
+          minimum: 0
+          nullable: true
+          description: Optional CPF score (0-100).
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - employee_avatar
+      - employee_id
+      - employee_name
+      - id
+      - progress
+      - review_type_display
+      - reviewer_id
+      - reviewer_name
+      - scheduled_date
+      - status_display
+      - updated_at
+    PerformanceReviewNote:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        author_id:
+          type: integer
+          readOnly: true
+        author_name:
+          type: string
+          readOnly: true
+          nullable: true
+        visibility:
+          $ref: '#/components/schemas/VisibilityEnum'
+        content:
+          type: string
+        edited_by_id:
+          type: integer
+          readOnly: true
+          nullable: true
+        edited_by_name:
+          type: string
+          readOnly: true
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - author_id
+      - author_name
+      - content
+      - created_at
+      - edited_by_id
+      - edited_by_name
+      - id
+      - updated_at
+    PerformanceReviewNoteRequest:
+      type: object
+      properties:
+        visibility:
+          $ref: '#/components/schemas/VisibilityEnum'
+        content:
+          type: string
+          minLength: 1
+      required:
+      - content
+    PerformanceReviewReminder:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        review_id:
+          type: integer
+          readOnly: true
+        employee_id:
+          type: integer
+          readOnly: true
+        employee_name:
+          type: string
+          readOnly: true
+        review_type:
+          type: string
+          readOnly: true
+        review_type_display:
+          type: string
+          readOnly: true
+        recipient_id:
+          type: integer
+          readOnly: true
+        recipient_name:
+          type: string
+          readOnly: true
+        reminder_type:
+          allOf:
+          - $ref: '#/components/schemas/ReminderTypeEnum'
+          readOnly: true
+        reminder_type_display:
+          type: string
+          readOnly: true
+        message:
+          type: string
+          readOnly: true
+        scheduled_for:
+          type: string
+          format: date-time
+          readOnly: true
+        is_sent:
+          type: boolean
+          readOnly: true
+        sent_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        is_read:
+          type: boolean
+          readOnly: true
+        read_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - employee_id
+      - employee_name
+      - id
+      - is_read
+      - is_sent
+      - message
+      - read_at
+      - recipient_id
+      - recipient_name
+      - reminder_type
+      - reminder_type_display
+      - review_id
+      - review_type
+      - review_type_display
+      - scheduled_for
+      - sent_at
     ProjectAssignment:
       type: object
       properties:
@@ -3546,6 +5162,16 @@ components:
       - password
       - password_confirm
       - username
+    ReminderTypeEnum:
+      enum:
+      - upcoming
+      - due_today
+      - overdue
+      type: string
+      description: |-
+        * `upcoming` - Upcoming
+        * `due_today` - Due Today
+        * `overdue` - Overdue
     ReplacementLog:
       type: object
       description: Serializer for ReplacementLog model
@@ -3626,6 +5252,20 @@ components:
       required:
       - asset
       - reason
+    ReviewTypeEnum:
+      enum:
+      - quarterly
+      - mid_year
+      - annual
+      - probation
+      - custom
+      type: string
+      description: |-
+        * `quarterly` - Quarterly Review
+        * `mid_year` - Mid-Year Review
+        * `annual` - Annual Review
+        * `probation` - Probation Review
+        * `custom` - Custom Review
     RoleResponsibleEnum:
       enum:
       - HR
@@ -3647,6 +5287,18 @@ components:
         * `pending` - Pending
         * `approved` - Approved
         * `rejected` - Rejected
+        * `cancelled` - Cancelled
+    StatusC59Enum:
+      enum:
+      - scheduled
+      - in_progress
+      - completed
+      - cancelled
+      type: string
+      description: |-
+        * `scheduled` - Scheduled
+        * `in_progress` - In Progress
+        * `completed` - Completed
         * `cancelled` - Cancelled
     StatusEnum:
       enum:
@@ -3671,8 +5323,9 @@ components:
           maxLength: 200
         order:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
         role_responsible:
           $ref: '#/components/schemas/RoleResponsibleEnum'
       required:
@@ -3687,8 +5340,9 @@ components:
           maxLength: 200
         order:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
         role_responsible:
           $ref: '#/components/schemas/RoleResponsibleEnum'
       required:
@@ -3885,6 +5539,14 @@ components:
             assigning them.
       required:
       - username
+    VisibilityEnum:
+      enum:
+      - shared
+      - private
+      type: string
+      description: |-
+        * `shared` - Shared
+        * `private` - Private
   securitySchemes:
     JWTAuth:
       type: http

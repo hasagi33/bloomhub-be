@@ -2,6 +2,7 @@ import csv
 import hashlib
 import io
 from collections import defaultdict
+from datetime import timedelta
 from typing import Any, cast
 from urllib.parse import unquote, urlparse
 
@@ -12,7 +13,8 @@ from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.core.validators import URLValidator
 from django.db import models, transaction
-from django.db.models import Max, Prefetch
+from django.db.models import Avg, Max, Prefetch
+from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
@@ -42,6 +44,12 @@ from .models import (
     LeaveBalance,
     LeavePolicy,
     LeaveRequest,
+    PerformanceReview,
+    PerformanceReviewActionPoint,
+    PerformanceReviewAttachment,
+    PerformanceReviewHistoryEvent,
+    PerformanceReviewNote,
+    PerformanceReviewReminder,
     Permission,
     Project,
     ProjectAssignment,
@@ -55,7 +63,13 @@ from .permissions import (
     IsHRAdminForAdjustment,
     IsHRAdminOrReadOnlyOwnProfile,
     IsManagerForApproval,
+    IsReviewCreator,
+    IsReviewEditor,
+    IsReviewViewer,
+    can_attach_review_documents,
+    can_edit_review_note,
     has_asset_permission,
+    has_review_permission,
 )
 from .serializers import (
     APIRootResponseSerializer,
@@ -79,6 +93,14 @@ from .serializers import (
     LeaveRequestListSerializer,
     LeaveRequestRejectSerializer,
     LoginSerializer,
+    PerformanceReviewActionPointSerializer,
+    PerformanceReviewAttachmentSerializer,
+    PerformanceReviewCreateUpdateSerializer,
+    PerformanceReviewDetailSerializer,
+    PerformanceReviewHistoryEventSerializer,
+    PerformanceReviewListSerializer,
+    PerformanceReviewNoteSerializer,
+    PerformanceReviewReminderSerializer,
     RegisterSerializer,
     ReplacementLogSerializer,
     TokenSerializer,
@@ -87,6 +109,10 @@ from .serializers import (
     UploadRolePermissionsResponseSerializer,
     UserProfileSerializer,
     UserSerializer,
+)
+from .services.performance_review_service import (
+    materialize_performance_review_reminders,
+    sync_performance_review_reminders_for_review,
 )
 from .services.profile_change_history import log_employee_profile_change, role_value
 from .shared.employee_utils import soft_delete_employee_profile
@@ -124,6 +150,12 @@ class APIRootView(APIView):
                     "admin": {
                         "upload_role_permissions": "POST /api/admin/upload-role-permissions/",
                         "supported_operations": ["override", "add", "remove", "merge"],
+                    },
+                    "performance_reviews": {
+                        "reviews": "GET/POST /api/performance-reviews/",
+                        "review_detail": "GET/PATCH/DELETE /api/performance-reviews/{id}/",
+                        "summary": "GET /api/performance-reviews/summary/",
+                        "review_reminders": "GET /api/performance-review-reminders/",
                     },
                     "django_admin": "GET /admin/",
                 },
@@ -2477,3 +2509,579 @@ class LeaveAdjustmentViewSet(viewsets.ReadOnlyModelViewSet):
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ["employee", "leave_type"]
     ordering = ["-adjusted_at"]
+
+
+# ──────────────────────────────────────────
+# Performance Reviews Views
+# ──────────────────────────────────────────
+
+
+@extend_schema(tags=["Performance Reviews"])
+class PerformanceReviewViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for performance reviews with nested notes, action points,
+    attachments, summary metrics, and history.
+    """
+
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = [
+        "status",
+        "review_type",
+        "employee",
+        "reviewer",
+        "scheduled_date",
+    ]
+    ordering_fields = ["scheduled_date", "created_at", "updated_at"]
+    ordering = ["-scheduled_date", "-created_at"]
+
+    def get_queryset(self):
+        queryset = (
+            PerformanceReview.objects.select_related(
+                "employee__user",
+                "reviewer__user",
+                "created_by__user",
+                "updated_by__user",
+            )
+            .prefetch_related(
+                "notes__author__user",
+                "action_points__owner__user",
+                "attachments__uploaded_by__user",
+                "history_events__actor__user",
+            )
+            .all()
+        )
+        user = self.request.user
+
+        if user.is_staff or user.is_superuser:
+            return queryset
+
+        if has_review_permission(user, "view_any_review_history"):
+            return queryset
+
+        profile = user.profile
+        visibility_filter = models.Q(employee=profile) | models.Q(reviewer=profile)
+        if has_review_permission(user, "view_team_reviews"):
+            visibility_filter |= models.Q(employee__managers=profile)
+
+        return queryset.filter(visibility_filter).distinct()
+
+    def get_permissions(self):
+        if self.action == "create":
+            permission_classes = [IsAuthenticated, IsReviewCreator]
+        elif self.action in ["update", "partial_update", "destroy", "update_status"]:
+            permission_classes = [IsAuthenticated, IsReviewEditor]
+        else:
+            permission_classes = [IsAuthenticated, IsReviewViewer]
+        return [permission() for permission in permission_classes]
+
+    def get_serializer_class(self):
+        if self.action == "list":
+            return PerformanceReviewListSerializer
+        if self.action == "retrieve":
+            return PerformanceReviewDetailSerializer
+        if self.action in ["create", "update", "partial_update"]:
+            return PerformanceReviewCreateUpdateSerializer
+        return PerformanceReviewDetailSerializer
+
+    def _get_actor_profile(self):
+        return self.request.user.profile
+
+    def _log_history(
+        self,
+        review,
+        event_type,
+        description="",
+        metadata=None,
+        actor=None,
+    ):
+        PerformanceReviewHistoryEvent.objects.create(
+            review=review,
+            actor=actor if actor is not None else self._get_actor_profile(),
+            event_type=event_type,
+            description=description,
+            metadata=metadata or {},
+        )
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        profile = request.user.profile
+
+        review = serializer.save(created_by=profile, updated_by=profile)
+        self._log_history(
+            review=review,
+            event_type=PerformanceReviewHistoryEvent.EventType.CREATED,
+            description="Performance review created.",
+            metadata={
+                "status": review.status,
+                "scheduled_date": review.scheduled_date.isoformat(),
+            },
+        )
+        sync_performance_review_reminders_for_review(review, actor=profile)
+
+        response_serializer = PerformanceReviewDetailSerializer(review)
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop("partial", False)
+        review = self.get_object()
+        old_status = review.status
+        old_outcome = review.outcome
+
+        serializer = self.get_serializer(review, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        updated_review = serializer.save(updated_by=request.user.profile)
+
+        self._log_history(
+            review=updated_review,
+            event_type=PerformanceReviewHistoryEvent.EventType.UPDATED,
+            description="Performance review updated.",
+        )
+
+        if old_status != updated_review.status:
+            self._log_history(
+                review=updated_review,
+                event_type=PerformanceReviewHistoryEvent.EventType.STATUS_CHANGED,
+                description=f"Status changed from {old_status} to {updated_review.status}.",
+                metadata={"from": old_status, "to": updated_review.status},
+            )
+        if old_outcome != updated_review.outcome:
+            self._log_history(
+                review=updated_review,
+                event_type=PerformanceReviewHistoryEvent.EventType.OUTCOME_UPDATED,
+                description="Review outcome updated.",
+                metadata={"from": old_outcome, "to": updated_review.outcome},
+            )
+        sync_performance_review_reminders_for_review(
+            updated_review,
+            actor=request.user.profile,
+        )
+
+        response_serializer = PerformanceReviewDetailSerializer(updated_review)
+        return Response(response_serializer.data, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        request={
+            "type": "object",
+            "properties": {
+                "status": {"type": "string"},
+                "comment": {"type": "string"},
+            },
+            "required": ["status"],
+        },
+        responses={200: PerformanceReviewDetailSerializer},
+    )
+    @action(detail=True, methods=["post"], url_path="status")
+    def update_status(self, request, pk=None):
+        review = self.get_object()
+        new_status = request.data.get("status")
+        comment = request.data.get("comment", "")
+        allowed_statuses = {choice[0] for choice in PerformanceReview.Status.choices}
+        if new_status not in allowed_statuses:
+            return Response(
+                {"error": "Invalid status value."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        old_status = review.status
+        review.status = new_status
+        review.updated_by = request.user.profile
+        if new_status == PerformanceReview.Status.COMPLETED and not review.completed_at:
+            review.completed_at = timezone.now()
+        review.save()
+
+        self._log_history(
+            review=review,
+            event_type=PerformanceReviewHistoryEvent.EventType.STATUS_CHANGED,
+            description=comment or f"Status changed from {old_status} to {new_status}.",
+            metadata={"from": old_status, "to": new_status},
+        )
+        sync_performance_review_reminders_for_review(review, actor=request.user.profile)
+
+        serializer = PerformanceReviewDetailSerializer(review)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        responses={
+            200: {
+                "type": "object",
+                "properties": {
+                    "due_this_week": {"type": "integer"},
+                    "in_progress": {"type": "integer"},
+                    "completed_this_quarter": {"type": "integer"},
+                    "average_rating": {"type": "number"},
+                },
+            }
+        }
+    )
+    @action(detail=False, methods=["get"], url_path="summary")
+    def summary(self, request):
+        queryset = self.get_queryset()
+        today = timezone.now().date()
+        week_end = today + timedelta(days=7)
+        quarter_start_month = ((today.month - 1) // 3) * 3 + 1
+        quarter_start = today.replace(month=quarter_start_month, day=1)
+
+        due_this_week = queryset.filter(
+            status__in=[
+                PerformanceReview.Status.SCHEDULED,
+                PerformanceReview.Status.IN_PROGRESS,
+            ],
+            scheduled_date__gte=today,
+            scheduled_date__lte=week_end,
+        ).count()
+        in_progress = queryset.filter(
+            status=PerformanceReview.Status.IN_PROGRESS
+        ).count()
+        completed_this_quarter = queryset.filter(
+            status=PerformanceReview.Status.COMPLETED,
+            completed_at__date__gte=quarter_start,
+            completed_at__date__lte=today,
+        ).count()
+        average_rating = (
+            queryset.filter(
+                status=PerformanceReview.Status.COMPLETED,
+                overall_rating__isnull=False,
+            ).aggregate(avg_rating=Avg("overall_rating"))["avg_rating"]
+            or 0
+        )
+
+        return Response(
+            {
+                "due_this_week": due_this_week,
+                "in_progress": in_progress,
+                "completed_this_quarter": completed_this_quarter,
+                "average_rating": round(float(average_rating), 2),
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    @extend_schema(
+        request=PerformanceReviewNoteSerializer,
+        responses={
+            200: PerformanceReviewNoteSerializer(many=True),
+            201: PerformanceReviewNoteSerializer,
+        },
+    )
+    @action(detail=True, methods=["get", "post"], url_path="notes")
+    def notes(self, request, pk=None):
+        review = self.get_object()
+
+        if request.method == "GET":
+            serializer = PerformanceReviewNoteSerializer(review.notes.all(), many=True)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        serializer = PerformanceReviewNoteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        note = PerformanceReviewNote(
+            review=review,
+            author=request.user.profile,
+            visibility=serializer.validated_data["visibility"],
+            content=serializer.validated_data["content"],
+        )
+
+        if not can_edit_review_note(request.user, note):
+            return Response(
+                {"error": "You do not have permission to create this note type."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        note.save()
+        self._log_history(
+            review=review,
+            event_type=PerformanceReviewHistoryEvent.EventType.NOTE_ADDED,
+            description=f"{note.visibility.capitalize()} note added.",
+            metadata={"note_id": note.id, "visibility": note.visibility},
+        )
+        response_serializer = PerformanceReviewNoteSerializer(note)
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+
+    @extend_schema(
+        request=PerformanceReviewNoteSerializer,
+        responses={200: PerformanceReviewNoteSerializer, 204: None},
+    )
+    @action(
+        detail=True,
+        methods=["patch", "delete"],
+        url_path=r"notes/(?P<note_id>[^/.]+)",
+    )
+    def note_detail(self, request, pk=None, note_id=None):
+        review = self.get_object()
+        try:
+            note = review.notes.get(pk=note_id)
+        except PerformanceReviewNote.DoesNotExist:
+            return Response(
+                {"error": "Note not found."}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        if not can_edit_review_note(request.user, note):
+            return Response(
+                {"error": "You do not have permission to modify this note."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if request.method == "PATCH":
+            serializer = PerformanceReviewNoteSerializer(
+                note, data=request.data, partial=True
+            )
+            serializer.is_valid(raise_exception=True)
+            updated_note = serializer.save(edited_by=request.user.profile)
+            self._log_history(
+                review=review,
+                event_type=PerformanceReviewHistoryEvent.EventType.NOTE_UPDATED,
+                description=f"Note #{updated_note.id} updated.",
+                metadata={"note_id": updated_note.id},
+            )
+            return Response(
+                PerformanceReviewNoteSerializer(updated_note).data,
+                status=status.HTTP_200_OK,
+            )
+
+        note_id_value = note.id
+        note.delete()
+        self._log_history(
+            review=review,
+            event_type=PerformanceReviewHistoryEvent.EventType.NOTE_UPDATED,
+            description=f"Note #{note_id_value} deleted.",
+            metadata={"note_id": note_id_value},
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @extend_schema(
+        request=PerformanceReviewActionPointSerializer,
+        responses={
+            200: PerformanceReviewActionPointSerializer(many=True),
+            201: PerformanceReviewActionPointSerializer,
+        },
+    )
+    @action(detail=True, methods=["get", "post"], url_path="action-points")
+    def action_points(self, request, pk=None):
+        review = self.get_object()
+
+        if request.method == "GET":
+            serializer = PerformanceReviewActionPointSerializer(
+                review.action_points.all(), many=True
+            )
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        if not IsReviewEditor().has_object_permission(request, self, review):
+            return Response(
+                {"error": "You do not have permission to add action points."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        serializer = PerformanceReviewActionPointSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        action_point = serializer.save(
+            review=review,
+            created_by=request.user.profile,
+        )
+        self._log_history(
+            review=review,
+            event_type=PerformanceReviewHistoryEvent.EventType.ACTION_POINT_ADDED,
+            description=f"Action point '{action_point.title}' added.",
+            metadata={"action_point_id": action_point.id},
+        )
+        return Response(
+            PerformanceReviewActionPointSerializer(action_point).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @extend_schema(
+        request=PerformanceReviewActionPointSerializer,
+        responses={200: PerformanceReviewActionPointSerializer, 204: None},
+    )
+    @action(
+        detail=True,
+        methods=["patch", "delete"],
+        url_path=r"action-points/(?P<action_point_id>[^/.]+)",
+    )
+    def action_point_detail(self, request, pk=None, action_point_id=None):
+        review = self.get_object()
+        if not IsReviewEditor().has_object_permission(request, self, review):
+            return Response(
+                {"error": "You do not have permission to modify action points."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        try:
+            action_point = review.action_points.get(pk=action_point_id)
+        except PerformanceReviewActionPoint.DoesNotExist:
+            return Response(
+                {"error": "Action point not found."}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        if request.method == "PATCH":
+            serializer = PerformanceReviewActionPointSerializer(
+                action_point, data=request.data, partial=True
+            )
+            serializer.is_valid(raise_exception=True)
+            updated_action_point = serializer.save()
+            self._log_history(
+                review=review,
+                event_type=PerformanceReviewHistoryEvent.EventType.ACTION_POINT_UPDATED,
+                description=f"Action point '{updated_action_point.title}' updated.",
+                metadata={"action_point_id": updated_action_point.id},
+            )
+            return Response(
+                PerformanceReviewActionPointSerializer(updated_action_point).data,
+                status=status.HTTP_200_OK,
+            )
+
+        deleted_id = action_point.id
+        action_point.delete()
+        self._log_history(
+            review=review,
+            event_type=PerformanceReviewHistoryEvent.EventType.ACTION_POINT_UPDATED,
+            description=f"Action point #{deleted_id} deleted.",
+            metadata={"action_point_id": deleted_id},
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @extend_schema(
+        request=PerformanceReviewAttachmentSerializer,
+        responses={
+            200: PerformanceReviewAttachmentSerializer(many=True),
+            201: PerformanceReviewAttachmentSerializer,
+        },
+    )
+    @action(
+        detail=True,
+        methods=["get", "post"],
+        url_path="attachments",
+        parser_classes=[parsers.MultiPartParser, parsers.FormParser],
+    )
+    def attachments(self, request, pk=None):
+        review = self.get_object()
+
+        if request.method == "GET":
+            serializer = PerformanceReviewAttachmentSerializer(
+                review.attachments.all(), many=True
+            )
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        if not can_attach_review_documents(request.user, review):
+            return Response(
+                {"error": "You do not have permission to upload attachments."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        serializer = PerformanceReviewAttachmentSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        uploaded_file = serializer.validated_data["file"]
+        attachment = serializer.save(
+            review=review,
+            uploaded_by=request.user.profile,
+            content_type=getattr(uploaded_file, "content_type", ""),
+        )
+        self._log_history(
+            review=review,
+            event_type=PerformanceReviewHistoryEvent.EventType.ATTACHMENT_ADDED,
+            description=f"Attachment '{attachment.original_name}' uploaded.",
+            metadata={"attachment_id": attachment.id, "name": attachment.original_name},
+        )
+        return Response(
+            PerformanceReviewAttachmentSerializer(attachment).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @extend_schema(responses={204: None})
+    @action(
+        detail=True,
+        methods=["delete"],
+        url_path=r"attachments/(?P<attachment_id>[^/.]+)",
+    )
+    def delete_attachment(self, request, pk=None, attachment_id=None):
+        review = self.get_object()
+        if not can_attach_review_documents(request.user, review):
+            return Response(
+                {"error": "You do not have permission to delete attachments."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        try:
+            attachment = review.attachments.get(pk=attachment_id)
+        except PerformanceReviewAttachment.DoesNotExist:
+            return Response(
+                {"error": "Attachment not found."}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        deleted_id = attachment.id
+        deleted_name = attachment.original_name
+        attachment.delete()
+        self._log_history(
+            review=review,
+            event_type=PerformanceReviewHistoryEvent.EventType.ATTACHMENT_REMOVED,
+            description=f"Attachment '{deleted_name}' deleted.",
+            metadata={"attachment_id": deleted_id, "name": deleted_name},
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @extend_schema(responses={200: PerformanceReviewHistoryEventSerializer(many=True)})
+    @action(detail=True, methods=["get"], url_path="history")
+    def history(self, request, pk=None):
+        review = self.get_object()
+        serializer = PerformanceReviewHistoryEventSerializer(
+            review.history_events.all(), many=True
+        )
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+@extend_schema(tags=["Performance Reviews"])
+class PerformanceReviewReminderViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = PerformanceReviewReminderSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ["is_read", "is_sent", "reminder_type"]
+    ordering_fields = ["scheduled_for", "created_at"]
+    ordering = ["-scheduled_for", "-created_at"]
+
+    def list(self, request, *args, **kwargs):
+        actor = request.user.profile if hasattr(request.user, "profile") else None
+        materialize_performance_review_reminders(actor=actor)
+        return super().list(request, *args, **kwargs)
+
+    def get_queryset(self):
+        queryset = PerformanceReviewReminder.objects.select_related(
+            "review__employee__user",
+            "recipient__user",
+        ).filter(is_sent=True)
+        user = self.request.user
+        if (
+            user.is_staff
+            or user.is_superuser
+            or has_review_permission(user, "view_any_review_history")
+        ):
+            return queryset
+        return queryset.filter(recipient=user.profile)
+
+    @extend_schema(responses={200: PerformanceReviewReminderSerializer})
+    @action(detail=True, methods=["post"], url_path="mark-read")
+    def mark_read(self, request, pk=None):
+        reminder = self.get_object()
+        is_owner = reminder.recipient_id == request.user.profile.id
+        is_admin = (
+            request.user.is_staff
+            or request.user.is_superuser
+            or has_review_permission(request.user, "view_any_review_history")
+        )
+        if not (is_owner or is_admin):
+            return Response(
+                {"error": "You do not have permission to mark this reminder as read."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if not reminder.is_read:
+            reminder.is_read = True
+            reminder.read_at = timezone.now()
+            reminder.save(update_fields=["is_read", "read_at"])
+            PerformanceReviewHistoryEvent.objects.create(
+                review=reminder.review,
+                actor=request.user.profile,
+                event_type=PerformanceReviewHistoryEvent.EventType.REMINDER_READ,
+                description="Reminder marked as read.",
+                metadata={"reminder_id": reminder.id},
+            )
+
+        serializer = self.get_serializer(reminder)
+        return Response(serializer.data, status=status.HTTP_200_OK)
