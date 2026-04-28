@@ -615,7 +615,11 @@ paths:
       - jwtAuth: []
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CPFLevelListResponse'
+          description: ''
   /api/cpf-levels/{role}/:
     get:
       operationId: cpf_levels_retrieve_2
@@ -632,7 +636,11 @@ paths:
       - jwtAuth: []
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CPFLevelListResponse'
+          description: ''
   /api/departments/:
     get:
       operationId: departments_retrieve
@@ -643,7 +651,11 @@ paths:
       - jwtAuth: []
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DepartmentListResponse'
+          description: ''
   /api/employees/:
     get:
       operationId: employees_list
@@ -730,7 +742,7 @@ paths:
           description: No response body
   /api/employees/{employee_id}/profile-change-history/:
     get:
-      operationId: employees_profile_change_history_retrieve
+      operationId: employees_profile_change_history_list
       parameters:
       - in: path
         name: employee_id
@@ -743,7 +755,13 @@ paths:
       - jwtAuth: []
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EmployeeProfileChangeHistory'
+          description: ''
   /api/employees/{employee_id}/tech-leads/:
     get:
       operationId: employees_tech_leads_retrieve
@@ -765,7 +783,18 @@ paths:
       - jwtAuth: []
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeTechLeadsResponse'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
   /api/employees/{id}/:
     get:
       operationId: employees_retrieve
@@ -2073,12 +2102,32 @@ paths:
     get:
       operationId: performance_review_reminders_list
       parameters:
+      - in: query
+        name: is_read
+        schema:
+          type: boolean
+      - in: query
+        name: is_sent
+        schema:
+          type: boolean
       - name: ordering
         required: false
         in: query
         description: Which field to use when ordering the results.
         schema:
           type: string
+      - in: query
+        name: reminder_type
+        schema:
+          type: string
+          enum:
+          - due_today
+          - overdue
+          - upcoming
+        description: |-
+          * `upcoming` - Upcoming
+          * `due_today` - Due Today
+          * `overdue` - Overdue
       tags:
       - Performance Reviews
       security:
@@ -2099,7 +2148,8 @@ paths:
       - in: path
         name: id
         schema:
-          type: string
+          type: integer
+        description: A unique integer value identifying this Performance Review Reminder.
         required: true
       tags:
       - Performance Reviews
@@ -2119,7 +2169,8 @@ paths:
       - in: path
         name: id
         schema:
-          type: string
+          type: integer
+        description: A unique integer value identifying this Performance Review Reminder.
         required: true
       tags:
       - Performance Reviews
@@ -2139,12 +2190,55 @@ paths:
         ViewSet for performance reviews with nested notes, action points,
         attachments, summary metrics, and history.
       parameters:
+      - in: query
+        name: employee
+        schema:
+          type: integer
       - name: ordering
         required: false
         in: query
         description: Which field to use when ordering the results.
         schema:
           type: string
+      - in: query
+        name: review_type
+        schema:
+          type: string
+          enum:
+          - annual
+          - custom
+          - mid_year
+          - probation
+          - quarterly
+        description: |-
+          * `quarterly` - Quarterly Review
+          * `mid_year` - Mid-Year Review
+          * `annual` - Annual Review
+          * `probation` - Probation Review
+          * `custom` - Custom Review
+      - in: query
+        name: reviewer
+        schema:
+          type: integer
+      - in: query
+        name: scheduled_date
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: status
+        schema:
+          type: string
+          enum:
+          - cancelled
+          - completed
+          - in_progress
+          - scheduled
+        description: |-
+          * `scheduled` - Scheduled
+          * `in_progress` - In Progress
+          * `completed` - Completed
+          * `cancelled` - Cancelled
       tags:
       - Performance Reviews
       security:
@@ -2196,7 +2290,8 @@ paths:
       - in: path
         name: id
         schema:
-          type: string
+          type: integer
+        description: A unique integer value identifying this Performance Review.
         required: true
       tags:
       - Performance Reviews
@@ -2218,7 +2313,8 @@ paths:
       - in: path
         name: id
         schema:
-          type: string
+          type: integer
+        description: A unique integer value identifying this Performance Review.
         required: true
       tags:
       - Performance Reviews
@@ -2252,7 +2348,8 @@ paths:
       - in: path
         name: id
         schema:
-          type: string
+          type: integer
+        description: A unique integer value identifying this Performance Review.
         required: true
       tags:
       - Performance Reviews
@@ -2285,7 +2382,8 @@ paths:
       - in: path
         name: id
         schema:
-          type: string
+          type: integer
+        description: A unique integer value identifying this Performance Review.
         required: true
       tags:
       - Performance Reviews
@@ -2301,10 +2399,15 @@ paths:
         ViewSet for performance reviews with nested notes, action points,
         attachments, summary metrics, and history.
       parameters:
+      - in: query
+        name: employee
+        schema:
+          type: integer
       - in: path
         name: id
         schema:
-          type: string
+          type: integer
+        description: A unique integer value identifying this Performance Review.
         required: true
       - name: ordering
         required: false
@@ -2312,6 +2415,45 @@ paths:
         description: Which field to use when ordering the results.
         schema:
           type: string
+      - in: query
+        name: review_type
+        schema:
+          type: string
+          enum:
+          - annual
+          - custom
+          - mid_year
+          - probation
+          - quarterly
+        description: |-
+          * `quarterly` - Quarterly Review
+          * `mid_year` - Mid-Year Review
+          * `annual` - Annual Review
+          * `probation` - Probation Review
+          * `custom` - Custom Review
+      - in: query
+        name: reviewer
+        schema:
+          type: integer
+      - in: query
+        name: scheduled_date
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: status
+        schema:
+          type: string
+          enum:
+          - cancelled
+          - completed
+          - in_progress
+          - scheduled
+        description: |-
+          * `scheduled` - Scheduled
+          * `in_progress` - In Progress
+          * `completed` - Completed
+          * `cancelled` - Cancelled
       tags:
       - Performance Reviews
       security:
@@ -2337,10 +2479,15 @@ paths:
         ViewSet for performance reviews with nested notes, action points,
         attachments, summary metrics, and history.
       parameters:
+      - in: query
+        name: employee
+        schema:
+          type: integer
       - in: path
         name: id
         schema:
-          type: string
+          type: integer
+        description: A unique integer value identifying this Performance Review.
         required: true
       - name: ordering
         required: false
@@ -2348,6 +2495,45 @@ paths:
         description: Which field to use when ordering the results.
         schema:
           type: string
+      - in: query
+        name: review_type
+        schema:
+          type: string
+          enum:
+          - annual
+          - custom
+          - mid_year
+          - probation
+          - quarterly
+        description: |-
+          * `quarterly` - Quarterly Review
+          * `mid_year` - Mid-Year Review
+          * `annual` - Annual Review
+          * `probation` - Probation Review
+          * `custom` - Custom Review
+      - in: query
+        name: reviewer
+        schema:
+          type: integer
+      - in: query
+        name: scheduled_date
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: status
+        schema:
+          type: string
+          enum:
+          - cancelled
+          - completed
+          - in_progress
+          - scheduled
+        description: |-
+          * `scheduled` - Scheduled
+          * `in_progress` - In Progress
+          * `completed` - Completed
+          * `cancelled` - Cancelled
       tags:
       - Performance Reviews
       requestBody:
@@ -2394,7 +2580,8 @@ paths:
       - in: path
         name: id
         schema:
-          type: string
+          type: integer
+        description: A unique integer value identifying this Performance Review.
         required: true
       tags:
       - Performance Reviews
@@ -2434,7 +2621,8 @@ paths:
       - in: path
         name: id
         schema:
-          type: string
+          type: integer
+        description: A unique integer value identifying this Performance Review.
         required: true
       tags:
       - Performance Reviews
@@ -2456,10 +2644,15 @@ paths:
         ViewSet for performance reviews with nested notes, action points,
         attachments, summary metrics, and history.
       parameters:
+      - in: query
+        name: employee
+        schema:
+          type: integer
       - in: path
         name: id
         schema:
-          type: string
+          type: integer
+        description: A unique integer value identifying this Performance Review.
         required: true
       - name: ordering
         required: false
@@ -2467,6 +2660,45 @@ paths:
         description: Which field to use when ordering the results.
         schema:
           type: string
+      - in: query
+        name: review_type
+        schema:
+          type: string
+          enum:
+          - annual
+          - custom
+          - mid_year
+          - probation
+          - quarterly
+        description: |-
+          * `quarterly` - Quarterly Review
+          * `mid_year` - Mid-Year Review
+          * `annual` - Annual Review
+          * `probation` - Probation Review
+          * `custom` - Custom Review
+      - in: query
+        name: reviewer
+        schema:
+          type: integer
+      - in: query
+        name: scheduled_date
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: status
+        schema:
+          type: string
+          enum:
+          - cancelled
+          - completed
+          - in_progress
+          - scheduled
+        description: |-
+          * `scheduled` - Scheduled
+          * `in_progress` - In Progress
+          * `completed` - Completed
+          * `cancelled` - Cancelled
       tags:
       - Performance Reviews
       security:
@@ -2492,10 +2724,15 @@ paths:
         ViewSet for performance reviews with nested notes, action points,
         attachments, summary metrics, and history.
       parameters:
+      - in: query
+        name: employee
+        schema:
+          type: integer
       - in: path
         name: id
         schema:
-          type: string
+          type: integer
+        description: A unique integer value identifying this Performance Review.
         required: true
       - name: ordering
         required: false
@@ -2503,6 +2740,45 @@ paths:
         description: Which field to use when ordering the results.
         schema:
           type: string
+      - in: query
+        name: review_type
+        schema:
+          type: string
+          enum:
+          - annual
+          - custom
+          - mid_year
+          - probation
+          - quarterly
+        description: |-
+          * `quarterly` - Quarterly Review
+          * `mid_year` - Mid-Year Review
+          * `annual` - Annual Review
+          * `probation` - Probation Review
+          * `custom` - Custom Review
+      - in: query
+        name: reviewer
+        schema:
+          type: integer
+      - in: query
+        name: scheduled_date
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: status
+        schema:
+          type: string
+          enum:
+          - cancelled
+          - completed
+          - in_progress
+          - scheduled
+        description: |-
+          * `scheduled` - Scheduled
+          * `in_progress` - In Progress
+          * `completed` - Completed
+          * `cancelled` - Cancelled
       tags:
       - Performance Reviews
       requestBody:
@@ -2546,7 +2822,8 @@ paths:
       - in: path
         name: id
         schema:
-          type: string
+          type: integer
+        description: A unique integer value identifying this Performance Review.
         required: true
       tags:
       - Performance Reviews
@@ -2562,10 +2839,15 @@ paths:
         ViewSet for performance reviews with nested notes, action points,
         attachments, summary metrics, and history.
       parameters:
+      - in: query
+        name: employee
+        schema:
+          type: integer
       - in: path
         name: id
         schema:
-          type: string
+          type: integer
+        description: A unique integer value identifying this Performance Review.
         required: true
       - name: ordering
         required: false
@@ -2573,6 +2855,45 @@ paths:
         description: Which field to use when ordering the results.
         schema:
           type: string
+      - in: query
+        name: review_type
+        schema:
+          type: string
+          enum:
+          - annual
+          - custom
+          - mid_year
+          - probation
+          - quarterly
+        description: |-
+          * `quarterly` - Quarterly Review
+          * `mid_year` - Mid-Year Review
+          * `annual` - Annual Review
+          * `probation` - Probation Review
+          * `custom` - Custom Review
+      - in: query
+        name: reviewer
+        schema:
+          type: integer
+      - in: query
+        name: scheduled_date
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: status
+        schema:
+          type: string
+          enum:
+          - cancelled
+          - completed
+          - in_progress
+          - scheduled
+        description: |-
+          * `scheduled` - Scheduled
+          * `in_progress` - In Progress
+          * `completed` - Completed
+          * `cancelled` - Cancelled
       tags:
       - Performance Reviews
       security:
@@ -2593,10 +2914,15 @@ paths:
         ViewSet for performance reviews with nested notes, action points,
         attachments, summary metrics, and history.
       parameters:
+      - in: query
+        name: employee
+        schema:
+          type: integer
       - in: path
         name: id
         schema:
-          type: string
+          type: integer
+        description: A unique integer value identifying this Performance Review.
         required: true
       - name: ordering
         required: false
@@ -2604,6 +2930,45 @@ paths:
         description: Which field to use when ordering the results.
         schema:
           type: string
+      - in: query
+        name: review_type
+        schema:
+          type: string
+          enum:
+          - annual
+          - custom
+          - mid_year
+          - probation
+          - quarterly
+        description: |-
+          * `quarterly` - Quarterly Review
+          * `mid_year` - Mid-Year Review
+          * `annual` - Annual Review
+          * `probation` - Probation Review
+          * `custom` - Custom Review
+      - in: query
+        name: reviewer
+        schema:
+          type: integer
+      - in: query
+        name: scheduled_date
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: status
+        schema:
+          type: string
+          enum:
+          - cancelled
+          - completed
+          - in_progress
+          - scheduled
+        description: |-
+          * `scheduled` - Scheduled
+          * `in_progress` - In Progress
+          * `completed` - Completed
+          * `cancelled` - Cancelled
       tags:
       - Performance Reviews
       security:
@@ -2629,10 +2994,15 @@ paths:
         ViewSet for performance reviews with nested notes, action points,
         attachments, summary metrics, and history.
       parameters:
+      - in: query
+        name: employee
+        schema:
+          type: integer
       - in: path
         name: id
         schema:
-          type: string
+          type: integer
+        description: A unique integer value identifying this Performance Review.
         required: true
       - name: ordering
         required: false
@@ -2640,6 +3010,45 @@ paths:
         description: Which field to use when ordering the results.
         schema:
           type: string
+      - in: query
+        name: review_type
+        schema:
+          type: string
+          enum:
+          - annual
+          - custom
+          - mid_year
+          - probation
+          - quarterly
+        description: |-
+          * `quarterly` - Quarterly Review
+          * `mid_year` - Mid-Year Review
+          * `annual` - Annual Review
+          * `probation` - Probation Review
+          * `custom` - Custom Review
+      - in: query
+        name: reviewer
+        schema:
+          type: integer
+      - in: query
+        name: scheduled_date
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: status
+        schema:
+          type: string
+          enum:
+          - cancelled
+          - completed
+          - in_progress
+          - scheduled
+        description: |-
+          * `scheduled` - Scheduled
+          * `in_progress` - In Progress
+          * `completed` - Completed
+          * `cancelled` - Cancelled
       tags:
       - Performance Reviews
       requestBody:
@@ -2681,7 +3090,8 @@ paths:
       - in: path
         name: id
         schema:
-          type: string
+          type: integer
+        description: A unique integer value identifying this Performance Review.
         required: true
       - in: path
         name: note_id
@@ -2721,7 +3131,8 @@ paths:
       - in: path
         name: id
         schema:
-          type: string
+          type: integer
+        description: A unique integer value identifying this Performance Review.
         required: true
       - in: path
         name: note_id
@@ -2751,7 +3162,8 @@ paths:
       - in: path
         name: id
         schema:
-          type: string
+          type: integer
+        description: A unique integer value identifying this Performance Review.
         required: true
       tags:
       - Performance Reviews
@@ -2818,7 +3230,11 @@ paths:
       - jwtAuth: []
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectListResponse'
+          description: ''
   /api/replacement-logs/:
     get:
       operationId: replacement_logs_list
@@ -2973,7 +3389,11 @@ paths:
       - jwtAuth: []
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoleListResponse'
+          description: ''
   /api/user-profiles/:
     get:
       operationId: user_profiles_list
@@ -3413,6 +3833,23 @@ components:
     BlankEnum:
       enum:
       - ''
+    CPFLevelListResponse:
+      type: object
+      properties:
+        user_role:
+          type: string
+          nullable: true
+        requested_role:
+          type: string
+        cpf_levels:
+          type: array
+          items:
+            type: string
+        error:
+          type: string
+      required:
+      - cpf_levels
+      - user_role
     ChecklistTemplate:
       type: object
       properties:
@@ -3462,6 +3899,15 @@ components:
         * `fair` - Fair
         * `poor` - Poor
         * `damaged` - Damaged
+    DepartmentListResponse:
+      type: object
+      properties:
+        departments:
+          type: array
+          items:
+            type: string
+      required:
+      - departments
     EmployeeProfile:
       type: object
       properties:
@@ -3561,6 +4007,42 @@ components:
       - permissions_bitmap
       - role_name
       - username
+    EmployeeProfileChangeHistory:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        employee_id:
+          type: integer
+          readOnly: true
+        field:
+          $ref: '#/components/schemas/FieldEnum'
+        old_value:
+          nullable: true
+        new_value:
+          nullable: true
+        changed_by:
+          type: integer
+          readOnly: true
+        changed_by_name:
+          type: string
+          readOnly: true
+        changed_by_email:
+          type: string
+          readOnly: true
+        changed_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - changed_at
+      - changed_by
+      - changed_by_email
+      - changed_by_name
+      - employee_id
+      - field
+      - id
     EmployeeProfileRequest:
       type: object
       properties:
@@ -3640,6 +4122,22 @@ components:
             $ref: '#/components/schemas/ProjectAssignmentRequest'
       required:
       - email
+    EmployeeTechLeadsData:
+      type: object
+      properties:
+        tech_leads:
+          type: array
+          items:
+            $ref: '#/components/schemas/TechLead'
+      required:
+      - tech_leads
+    EmployeeTechLeadsResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/EmployeeTechLeadsData'
+      required:
+      - data
     EmploymentStatusEnum:
       enum:
       - active
@@ -3680,6 +4178,26 @@ components:
         * `attachment_removed` - Attachment Removed
         * `reminder_generated` - Reminder Generated
         * `reminder_read` - Reminder Read
+    FieldEnum:
+      enum:
+      - role
+      - salary
+      - cpf_level
+      - department
+      - manager_ids
+      - employment_status
+      - career_level
+      - start_date
+      type: string
+      description: |-
+        * `role` - Role
+        * `salary` - Salary
+        * `cpf_level` - CPF Level
+        * `department` - Department
+        * `manager_ids` - Manager IDs
+        * `employment_status` - Employment Status
+        * `career_level` - Career Level
+        * `start_date` - Start Date
     GoogleExchangeRequest:
       type: object
       properties:
@@ -3708,15 +4226,13 @@ components:
           readOnly: true
         old_allocated:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           description: Previous allocated days
         new_allocated:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           description: New allocated days
         reason:
           type: string
@@ -3765,30 +4281,26 @@ components:
           readOnly: true
         allocated:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           description: Total days allocated for this period
         used:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           description: Days already used/approved
         remaining:
           type: string
           readOnly: true
         carryover:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           description: Days carried over from previous year
         year:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           description: Calendar year for this balance
         last_updated:
           type: string
@@ -3817,15 +4329,13 @@ components:
           readOnly: true
         allocated_days_per_year:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           description: Number of days allocated per year
         carryover_days:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           description: Maximum days that can be carried over to next year
         requires_approval:
           type: boolean
@@ -3835,15 +4345,13 @@ components:
           description: Whether a covering employee must be assigned
         min_notice_in_days:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           description: Minimum days notice required before leave start date
         max_consecutive_days:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Maximum consecutive days allowed (optional)
         created_at:
@@ -5119,6 +5627,57 @@ components:
         * `active` - Active
         * `completed` - Completed
         * `on_hold` - On Hold
+    ProjectListResponse:
+      type: object
+      properties:
+        projects:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProjectSummary'
+      required:
+      - projects
+    ProjectPerson:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+      required:
+      - id
+      - name
+    ProjectSummary:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        client:
+          type: string
+          nullable: true
+        app_stack:
+          type: string
+          nullable: true
+        leaders:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProjectPerson'
+        members:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProjectPerson'
+      required:
+      - app_stack
+      - client
+      - description
+      - id
+      - leaders
+      - members
+      - name
     RegisterRequest:
       type: object
       properties:
@@ -5266,6 +5825,15 @@ components:
         * `annual` - Annual Review
         * `probation` - Probation Review
         * `custom` - Custom Review
+    RoleListResponse:
+      type: object
+      properties:
+        roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoleSummary'
+      required:
+      - roles
     RoleResponsibleEnum:
       enum:
       - HR
@@ -5276,6 +5844,16 @@ components:
         * `HR` - HR
         * `IT` - IT
         * `Manager` - Manager
+    RoleSummary:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+      required:
+      - id
+      - name
     StatusB39Enum:
       enum:
       - pending
@@ -5323,9 +5901,8 @@ components:
           maxLength: 200
         order:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
         role_responsible:
           $ref: '#/components/schemas/RoleResponsibleEnum'
       required:
@@ -5340,13 +5917,31 @@ components:
           maxLength: 200
         order:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
         role_responsible:
           $ref: '#/components/schemas/RoleResponsibleEnum'
       required:
       - title
+    TechLead:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        display_name:
+          type: string
+        projects:
+          type: array
+          items:
+            type: string
+        is_cto:
+          type: boolean
+      required:
+      - display_name
+      - id
+      - name
     Token:
       type: object
       properties:

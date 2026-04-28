@@ -18,7 +18,7 @@ from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
-from rest_framework import filters, parsers, permissions, status, viewsets
+from rest_framework import filters, parsers, permissions, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -1303,11 +1303,70 @@ def _profile_modal_bundle_etag(profile: UserProfile, sections: frozenset[str]) -
 # Dropdown/Reference Data Endpoints
 
 
+class DepartmentListResponseSerializer(serializers.Serializer):
+    departments = serializers.ListField(child=serializers.CharField())
+
+
+class ProjectPersonSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+
+
+class ProjectSummarySerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    description = serializers.CharField(allow_blank=True, allow_null=True)
+    client = serializers.CharField(allow_blank=True, allow_null=True)
+    app_stack = serializers.CharField(allow_blank=True, allow_null=True)
+    leaders = ProjectPersonSerializer(many=True)
+    members = ProjectPersonSerializer(many=True)
+
+
+class ProjectListResponseSerializer(serializers.Serializer):
+    projects = ProjectSummarySerializer(many=True)
+
+
+class RoleSummarySerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+
+
+class RoleListResponseSerializer(serializers.Serializer):
+    roles = RoleSummarySerializer(many=True)
+
+
+class CPFLevelListResponseSerializer(serializers.Serializer):
+    user_role = serializers.CharField(allow_null=True)
+    requested_role = serializers.CharField(required=False)
+    cpf_levels = serializers.ListField(child=serializers.CharField())
+    error = serializers.CharField(required=False)
+
+
+class TechLeadSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    display_name = serializers.CharField()
+    projects = serializers.ListField(child=serializers.CharField(), required=False)
+    is_cto = serializers.BooleanField(required=False)
+
+
+class EmployeeTechLeadsDataSerializer(serializers.Serializer):
+    tech_leads = TechLeadSerializer(many=True)
+
+
+class EmployeeTechLeadsResponseSerializer(serializers.Serializer):
+    data = EmployeeTechLeadsDataSerializer()
+
+
 class DepartmentListView(APIView):
     """Get all unique departments"""
 
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        tags=["departments"],
+        responses={200: DepartmentListResponseSerializer},
+    )
     def get(self, request):
         departments = Department.objects.order_by("name").values_list("name", flat=True)
         return Response(
@@ -1321,6 +1380,10 @@ class ProjectListView(APIView):
 
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        tags=["projects"],
+        responses={200: ProjectListResponseSerializer},
+    )
     def get(self, request):
         from collections import defaultdict
 
@@ -1364,6 +1427,10 @@ class RoleListView(APIView):
 
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        tags=["roles"],
+        responses={200: RoleListResponseSerializer},
+    )
     def get(self, request):
         roles = Role.objects.all().order_by("name").values("id", "name")
         return Response({"roles": list(roles)}, status=status.HTTP_200_OK)
@@ -1374,6 +1441,10 @@ class CPFLevelListView(APIView):
 
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        tags=["cpf-levels"],
+        responses={200: CPFLevelListResponseSerializer},
+    )
     def get(self, request, role=None):
         # Get user's role
         user_profile = (
@@ -1432,6 +1503,13 @@ class EmployeeTechLeadsView(APIView):
 
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        tags=["employees"],
+        responses={
+            200: EmployeeTechLeadsResponseSerializer,
+            404: OpenApiTypes.OBJECT,
+        },
+    )
     def get(self, request, employee_id):
         try:
             employee = UserProfile.objects.get(user_id=employee_id)
@@ -1528,6 +1606,10 @@ class EmployeeTechLeadsView(APIView):
 class EmployeeProfileChangeHistoryView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        tags=["employees"],
+        responses={200: EmployeeProfileChangeHistorySerializer(many=True)},
+    )
     def get(self, request, employee_id):
         try:
             employee_profile = UserProfile.objects.get(user_id=employee_id)
@@ -2535,6 +2617,9 @@ class PerformanceReviewViewSet(viewsets.ModelViewSet):
     ordering = ["-scheduled_date", "-created_at"]
 
     def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):
+            return PerformanceReview.objects.none()
+
         queryset = (
             PerformanceReview.objects.select_related(
                 "employee__user",
@@ -3042,6 +3127,9 @@ class PerformanceReviewReminderViewSet(viewsets.ReadOnlyModelViewSet):
         return super().list(request, *args, **kwargs)
 
     def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):
+            return PerformanceReviewReminder.objects.none()
+
         queryset = PerformanceReviewReminder.objects.select_related(
             "review__employee__user",
             "recipient__user",

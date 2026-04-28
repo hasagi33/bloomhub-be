@@ -17,8 +17,8 @@ repos:
         language: system
         files: '\.cm$'
       - id: spectacular-schema
-        name: drf-spectacular schema.yml
-        entry: bash -c 'if [ -d .venv ]; then . .venv/bin/activate; fi; python3 manage.py spectacular --file schema.yml'
+        name: drf-spectacular schema.yaml
+        entry: bash -c 'if [ -d .venv ]; then . .venv/bin/activate; fi; python3 manage.py spectacular --file schema.yaml'
         language: system
         pass_filenames: false
       - id: pytest

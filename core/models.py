@@ -343,6 +343,45 @@ class EmployeeDocument(models.Model):
         return f"{self.user_profile.user.username} - {self.doc_type} (v{self.version})"
 
 
+class DocumentCategory(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    visibility_rule = models.CharField(max_length=100)
+
+    class Meta:
+        verbose_name = "Document Category"
+        verbose_name_plural = "Document Categories"
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+
+class Document(models.Model):
+    employee = models.ForeignKey(
+        UserProfile, on_delete=models.CASCADE, related_name="managed_documents"
+    )
+    category = models.ForeignKey(
+        DocumentCategory, on_delete=models.PROTECT, related_name="documents"
+    )
+    file_key = models.CharField(max_length=500)
+    name = models.CharField(max_length=255)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    expiry_date = models.DateField(blank=True, null=True)
+    signed_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        verbose_name = "Document"
+        verbose_name_plural = "Documents"
+        ordering = ["-uploaded_at"]
+        indexes = [
+            models.Index(fields=["employee", "category"]),
+            models.Index(fields=["expiry_date"]),
+        ]
+
+    def __str__(self):
+        return f"{self.name} ({self.employee.user.username})"
+
+
 class ProjectAssignment(models.Model):
     user_profile = models.ForeignKey(
         UserProfile, on_delete=models.CASCADE, related_name="project_assignments"

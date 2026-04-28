@@ -4,6 +4,8 @@ from django.utils.html import format_html
 from .models import (
     ChangeLog,
     CPFLevel,
+    Document,
+    DocumentCategory,
     EmployeeDocument,
     Equipment,
     EquipmentAssignment,
@@ -108,6 +110,32 @@ class EmployeeDocumentAdmin(admin.ModelAdmin):
     list_display = ("user_profile", "doc_type", "version", "uploaded_at")
     list_filter = ("doc_type",)
     search_fields = ("user_profile__user__username",)
+
+
+@admin.register(DocumentCategory)
+class DocumentCategoryAdmin(admin.ModelAdmin):
+    list_display = ("name", "visibility_rule")
+    search_fields = ("name", "visibility_rule")
+
+
+@admin.register(Document)
+class DocumentAdmin(admin.ModelAdmin):
+    list_display = (
+        "name",
+        "employee",
+        "category",
+        "uploaded_at",
+        "expiry_date",
+        "signed_at",
+    )
+    list_filter = ("category", "uploaded_at", "expiry_date", "signed_at")
+    search_fields = (
+        "name",
+        "file_key",
+        "employee__full_name",
+        "employee__user__username",
+        "category__name",
+    )
 
 
 @admin.register(ProjectAssignment)
