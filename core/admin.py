@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.utils.html import format_html
 
 from .models import (
+    Certificate,
     ChangeLog,
     CPFLevel,
     Document,
@@ -14,6 +15,7 @@ from .models import (
     LeaveBalance,
     LeavePolicy,
     LeaveRequest,
+    PeerSession,
     PerformanceReview,
     PerformanceReviewActionPoint,
     PerformanceReviewAttachment,
@@ -25,6 +27,8 @@ from .models import (
     Role,
     SalaryRecord,
     TechnologyTag,
+    TrainingBudget,
+    TrainingEntry,
     UserProfile,
 )
 
@@ -415,3 +419,102 @@ class PerformanceReviewHistoryEventAdmin(admin.ModelAdmin):
         "description",
     )
     ordering = ["-created_at"]
+
+
+# ──────────────────────────────────────────
+# Training & Development Admin
+# ──────────────────────────────────────────
+
+
+@admin.register(TrainingEntry)
+class TrainingEntryAdmin(admin.ModelAdmin):
+    list_display = (
+        "course_title",
+        "employee",
+        "provider",
+        "training_date",
+        "training_type",
+        "cost",
+        "completed_at",
+    )
+    list_filter = ("training_type", "training_date", "completed_at")
+    search_fields = (
+        "course_title",
+        "provider",
+        "employee__user__username",
+        "employee__full_name",
+    )
+    ordering = ["-training_date"]
+    readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(Certificate)
+class CertificateAdmin(admin.ModelAdmin):
+    list_display = (
+        "title",
+        "employee",
+        "issuer",
+        "issued_date",
+        "expiration_date",
+        "is_expired_display",
+    )
+    list_filter = ("issued_date", "expiration_date")
+    search_fields = (
+        "title",
+        "issuer",
+        "employee__user__username",
+        "employee__full_name",
+    )
+    ordering = ["-issued_date"]
+    readonly_fields = ("created_at", "updated_at", "is_expired_display")
+
+    @admin.display(description="Expired", boolean=True)
+    def is_expired_display(self, obj):
+        return obj.is_expired
+
+
+@admin.register(PeerSession)
+class PeerSessionAdmin(admin.ModelAdmin):
+    list_display = (
+        "topic",
+        "employee",
+        "session_date",
+        "duration_minutes",
+        "incentive_id",
+    )
+    list_filter = ("session_date",)
+    search_fields = (
+        "topic",
+        "employee__user__username",
+        "employee__full_name",
+        "description",
+    )
+    ordering = ["-session_date"]
+    readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(TrainingBudget)
+class TrainingBudgetAdmin(admin.ModelAdmin):
+    list_display = (
+        "employee",
+        "fiscal_year",
+        "allocated_budget",
+        "used_budget",
+        "remaining_display",
+        "percentage_used_display",
+    )
+    list_filter = ("fiscal_year",)
+    search_fields = (
+        "employee__user__username",
+        "employee__full_name",
+    )
+    ordering = ["-fiscal_year", "employee"]
+    readonly_fields = ("created_at", "updated_at", "remaining_display", "percentage_used_display")
+
+    @admin.display(description="Remaining Budget")
+    def remaining_display(self, obj):
+        return f"${obj.remaining_budget:.2f}"
+
+    @admin.display(description="% Used")
+    def percentage_used_display(self, obj):
+        return f"{obj.budget_percentage_used:.1f}%"
