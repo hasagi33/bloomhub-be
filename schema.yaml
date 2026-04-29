@@ -1904,6 +1904,85 @@ paths:
                     status:
                       type: string
           description: ''
+  /api/onboarding/tasks/:
+    get:
+      operationId: onboarding_tasks_list
+      tags:
+      - Onboarding / Offboarding
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ChecklistTask'
+          description: ''
+  /api/onboarding/tasks/{id}/:
+    get:
+      operationId: onboarding_tasks_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Checklist Task.
+        required: true
+      tags:
+      - Onboarding / Offboarding
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChecklistTask'
+          description: ''
+  /api/onboarding/tasks/employee/{employee_id}/:
+    get:
+      operationId: onboarding_tasks_employee_list
+      description: HR users and managers can retrieve checklist tasks for a specific
+        employee. Managers may only see tasks for employees they manage.
+      summary: Get onboarding tasks for a specific employee
+      parameters:
+      - in: path
+        name: employee_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - Onboarding / Offboarding
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ChecklistTask'
+          description: ''
+  /api/onboarding/tasks/my-tasks/:
+    get:
+      operationId: onboarding_tasks_my_tasks_list
+      summary: Get tasks assigned to the authenticated user
+      tags:
+      - Onboarding / Offboarding
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ChecklistTask'
+          description: ''
   /api/onboarding/templates/:
     get:
       operationId: onboarding_templates_list
@@ -3850,6 +3929,54 @@ components:
       required:
       - cpf_levels
       - user_role
+    ChecklistTask:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        checklist_instance:
+          type: integer
+          readOnly: true
+        task_template:
+          allOf:
+          - $ref: '#/components/schemas/TaskTemplate'
+          readOnly: true
+        title:
+          type: string
+          maxLength: 200
+        status:
+          $ref: '#/components/schemas/ChecklistTaskStatusEnum'
+        assigned_to:
+          allOf:
+          - $ref: '#/components/schemas/UserProfile'
+          readOnly: true
+        due_date:
+          type: string
+          format: date
+          nullable: true
+        completed_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - assigned_to
+      - checklist_instance
+      - completed_at
+      - id
+      - task_template
+      - title
+    ChecklistTaskStatusEnum:
+      enum:
+      - todo
+      - in_progress
+      - done
+      type: string
+      description: |-
+        * `todo` - To Do
+        * `in_progress` - In Progress
+        * `done` - Done
     ChecklistTemplate:
       type: object
       properties:
@@ -4226,13 +4353,15 @@ components:
           readOnly: true
         old_allocated:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           description: Previous allocated days
         new_allocated:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           description: New allocated days
         reason:
           type: string
@@ -4281,26 +4410,30 @@ components:
           readOnly: true
         allocated:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           description: Total days allocated for this period
         used:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           description: Days already used/approved
         remaining:
           type: string
           readOnly: true
         carryover:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           description: Days carried over from previous year
         year:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           description: Calendar year for this balance
         last_updated:
           type: string
@@ -4329,13 +4462,15 @@ components:
           readOnly: true
         allocated_days_per_year:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           description: Number of days allocated per year
         carryover_days:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           description: Maximum days that can be carried over to next year
         requires_approval:
           type: boolean
@@ -4345,13 +4480,15 @@ components:
           description: Whether a covering employee must be assigned
         min_notice_in_days:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           description: Minimum days notice required before leave start date
         max_consecutive_days:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Maximum consecutive days allowed (optional)
         created_at:
@@ -5901,8 +6038,9 @@ components:
           maxLength: 200
         order:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
         role_responsible:
           $ref: '#/components/schemas/RoleResponsibleEnum'
       required:
@@ -5917,8 +6055,9 @@ components:
           maxLength: 200
         order:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
         role_responsible:
           $ref: '#/components/schemas/RoleResponsibleEnum'
       required:
