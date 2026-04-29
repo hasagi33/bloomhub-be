@@ -4226,13 +4226,15 @@ components:
           readOnly: true
         old_allocated:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           description: Previous allocated days
         new_allocated:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           description: New allocated days
         reason:
           type: string
@@ -4281,26 +4283,30 @@ components:
           readOnly: true
         allocated:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           description: Total days allocated for this period
         used:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           description: Days already used/approved
         remaining:
           type: string
           readOnly: true
         carryover:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           description: Days carried over from previous year
         year:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           description: Calendar year for this balance
         last_updated:
           type: string
@@ -4329,13 +4335,15 @@ components:
           readOnly: true
         allocated_days_per_year:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           description: Number of days allocated per year
         carryover_days:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           description: Maximum days that can be carried over to next year
         requires_approval:
           type: boolean
@@ -4345,13 +4353,15 @@ components:
           description: Whether a covering employee must be assigned
         min_notice_in_days:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           description: Minimum days notice required before leave start date
         max_consecutive_days:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Maximum consecutive days allowed (optional)
         created_at:
@@ -5901,8 +5911,9 @@ components:
           maxLength: 200
         order:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
         role_responsible:
           $ref: '#/components/schemas/RoleResponsibleEnum'
       required:
@@ -5917,8 +5928,9 @@ components:
           maxLength: 200
         order:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
         role_responsible:
           $ref: '#/components/schemas/RoleResponsibleEnum'
       required:
