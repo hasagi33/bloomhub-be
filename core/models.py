@@ -1601,3 +1601,256 @@ class ChecklistTask(models.Model):
     class Meta:
         verbose_name = "Checklist Task"
         verbose_name_plural = "Checklist Tasks"
+
+
+# ──────────────────────────────────────────
+# Training & Development Management
+# ──────────────────────────────────────────
+
+
+def certificate_upload_to(instance: "Certificate", filename: str) -> str:
+    """
+    Store certificates under training_certificates/{first}-{last}-{profile_id}/{year}/{month}/{filename}
+    Follows the same pattern as employee_document_upload_to for consistency.
+    """
+    profile = instance.employee
+    user = profile.user
+
+    first_raw = (user.first_name or "").strip()
+    last_raw = (user.last_name or "").strip()
+    if not first_raw and not last_raw and profile.full_name:
+        parts = profile.full_name.strip().split(None, 1)
+        first_raw = parts[0] if parts else ""
+        last_raw = parts[1] if len(parts) > 1 else ""
+
+    first = slugify(first_raw) or "user"
+    last = slugify(last_raw) or "user"
+
+    path = Path(filename)
+    ext = path.suffix.lower() or ".pdf"
+    stem = slugify(path.stem) or "certificate"
+
+    now = timezone.now()
+    return (
+        f"training_certificates/{first}-{last}-{profile.pk}/"
+        f"{now:%Y}/{now:%m}/{stem}{ext}"
+    )
+
+
+class TrainingEntry(models.Model):
+    """
+    Tracks individual training, courses, conferences, and certifications
+    completed by employees.
+    """
+
+    class TrainingType(models.TextChoices):
+        COURSE = "course", "Course"
+        CONFERENCE = "conference", "Conference"
+        WORKSHOP = "workshop", "Workshop"
+        WEBINAR = "webinar", "Webinar"
+        CERTIFICATION = "certification", "Certification"
+        OTHER = "other", "Other"
+
+    employee = models.ForeignKey(
+        UserProfile,
+        on_delete=models.CASCADE,
+        related_name="training_entries",
+        help_text="Employee who participated in training",
+    )
+    course_title = models.CharField(
+        max_length=255, help_text="Name or title of the training/course"
+    )
+    provider = models.CharField(
+        max_length=255, help_text="Training provider or organization"
+    )
+    training_date = models.DateField(help_text="Date when training occurred")
+    completed_at = models.DateTimeField(
+        null=True, blank=True, help_text="When employee completed the training"
+    )
+    training_type = models.CharField(
+        max_length=20,
+        choices=TrainingType.choices,
+        default=TrainingType.COURSE,
+        help_text="Type of training activity",
+    )
+    cost = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(Decimal("0.00"))],
+        help_text="Cost of training (for budget tracking)",
+    )
+    description = models.TextField(
+        blank=True, null=True, help_text="Additional notes or description"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Training Entry"
+        verbose_name_plural = "Training Entries"
+        ordering = ["-training_date"]
+        indexes = [
+            models.Index(fields=["employee", "-training_date"]),
+            models.Index(fields=["training_type"]),
+        ]
+
+    def __str__(self):
+        return f"{self.employee.user.get_full_name()} - {self.course_title} ({self.training_date})"
+
+
+class Certificate(models.Model):
+    """
+    Stores certificates earned by employees through training or certification programs.
+    """
+
+    employee = models.ForeignKey(
+        UserProfile,
+        on_delete=models.CASCADE,
+        related_name="certificates",
+        help_text="Employee who earned the certificate",
+    )
+    title = models.CharField(max_length=255, help_text="Certificate title/name")
+    file = models.FileField(
+        upload_to=certificate_upload_to,
+        help_text="Certificate file (PDF, image, etc.)",
+    )
+    issued_date = models.DateField(help_text="Date when certificate was issued")
+    expiration_date = models.DateField(
+        null=True, blank=True, help_text="Certificate expiration date (if applicable)"
+    )
+    issuer = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text="Organization or body that issued the certificate",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Certificate"
+        verbose_name_plural = "Certificates"
+        ordering = ["-issued_date"]
+        indexes = [
+            models.Index(fields=["employee", "-issued_date"]),
+            models.Index(fields=["expiration_date"]),
+        ]
+
+    def __str__(self):
+        return f"{self.employee.user.get_full_name()} - {self.title}"
+
+    @property
+    def is_expired(self):
+        """Check if certificate has expired."""
+        if not self.expiration_date:
+            return False
+        return self.expiration_date < timezone.now().date()
+
+
+class PeerSession(models.Model):
+    """
+    Records peer-to-peer learning sessions between employees.
+    Tracks knowledge sharing activities and optional links to incentive programs.
+    """
+
+    employee = models.ForeignKey(
+        UserProfile,
+        on_delete=models.CASCADE,
+        related_name="peer_sessions",
+        help_text="Employee who participated in the peer session",
+    )
+    topic = models.CharField(
+        max_length=255, help_text="Topic or skill shared in the session"
+    )
+    session_date = models.DateField(help_text="Date when the peer session occurred")
+    incentive_id = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Reference to associated incentive (FK when model exists)",
+    )
+    duration_minutes = models.PositiveIntegerField(
+        null=True, blank=True, help_text="Duration of the session in minutes"
+    )
+    description = models.TextField(
+        blank=True, null=True, help_text="Additional details about the session"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Peer Session"
+        verbose_name_plural = "Peer Sessions"
+        ordering = ["-session_date"]
+        indexes = [
+            models.Index(fields=["employee", "-session_date"]),
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.employee.user.get_full_name()} - {self.topic} ({self.session_date})"
+        )
+
+
+class TrainingBudget(models.Model):
+    """
+    Manages training budget allocation and spending per employee per fiscal year.
+    """
+
+    employee = models.ForeignKey(
+        UserProfile,
+        on_delete=models.CASCADE,
+        related_name="training_budgets",
+        help_text="Employee assigned the budget",
+    )
+    fiscal_year = models.PositiveIntegerField(
+        help_text="Fiscal year for which budget is allocated"
+    )
+    allocated_budget = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.00"))],
+        help_text="Total budget allocated for training this fiscal year",
+    )
+    used_budget = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        validators=[MinValueValidator(Decimal("0.00"))],
+        help_text="Budget amount spent on training so far",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Training Budget"
+        verbose_name_plural = "Training Budgets"
+        unique_together = ("employee", "fiscal_year")
+        ordering = ["-fiscal_year", "employee"]
+        indexes = [
+            models.Index(fields=["employee", "-fiscal_year"]),
+        ]
+
+    def __str__(self):
+        remaining = self.allocated_budget - self.used_budget
+        return f"{self.employee.user.get_full_name()} - {self.fiscal_year} (${remaining:.2f} remaining)"
+
+    @property
+    def remaining_budget(self):
+        """Calculate remaining budget."""
+        return max(Decimal("0.00"), self.allocated_budget - self.used_budget)
+
+    @property
+    def budget_percentage_used(self):
+        """Calculate percentage of budget used."""
+        if self.allocated_budget == 0:
+            return 0
+        return (self.used_budget / self.allocated_budget) * 100
+
+    def add_usage(self, amount):
+        """Safely add budget usage."""
+        if amount < 0:
+            raise ValueError("Budget usage amount cannot be negative")
+        self.used_budget += amount
+        self.save(update_fields=["used_budget"])

@@ -486,6 +486,55 @@ View the complete Performance Reviews API documentation:
 
 ---
 
+## Training & Development Module
+
+Comprehensive training and development management for employee skill growth and certificate tracking.
+
+### Features
+
+- **Training Entries**: Log courses, conferences, workshops, webinars, and certifications with cost tracking for budget management
+- **Certificates**: Store and manage earned certificates with issue and expiration dates
+- **Peer Sessions**: Record peer-to-peer learning sessions with optional duration and incentive linking
+- **Training Budget**: Manage annual training budget allocation and spending per employee per fiscal year
+- **Cost Tracking**: Automatically track budget consumption through training entries
+- **Audit Trail**: Complete created_at/updated_at timestamps on all training records
+
+### Models
+
+#### TrainingEntry
+- Employee reference
+- Course title and provider
+- Training type (course, conference, workshop, webinar, certification, other)
+- Training date (required) and optional completion timestamp
+- Optional cost for budget tracking
+- Description field for notes
+
+#### Certificate
+- Employee reference
+- Certificate title and issuer
+- Uploaded certificate file (stored in R2/Cloudflare)
+- Issue date and optional expiration date
+- Expiration status property for compliance tracking
+
+#### PeerSession
+- Employee reference
+- Session topic and date
+- Optional duration in minutes
+- Placeholder for future incentive program linking
+- Description field
+
+#### TrainingBudget
+- Employee and fiscal year (unique constraint)
+- Allocated budget amount
+- Used budget amount (updated through TrainingEntry costs)
+- Calculated properties: remaining_budget, budget_percentage_used
+
+### Database Schema
+
+All models follow BloomHub conventions with proper indexes, metadata fields, and cascade deletion. Migration: `core/0028_certificate_peersession_trainingbudget_trainingentry.py`
+
+---
+
 ## PR labels (GitStream)
 
 Labels are applied automatically by [gitStream](https://gitstream.cm) based on the PR contents:
