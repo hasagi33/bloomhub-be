@@ -9,6 +9,7 @@ from .views import (
     AssignmentListView,
     AssignmentReturnView,
     AvatarUploadView,
+    ChecklistTaskViewSet,
     ChecklistTemplateViewSet,
     CPFLevelListView,
     DepartmentListView,
@@ -44,6 +45,7 @@ router.register(r"employees", EmployeeProfileViewSet, basename="employee")
 router.register(
     r"onboarding/templates", ChecklistTemplateViewSet, basename="checklist-template"
 )
+router.register(r"onboarding/tasks", ChecklistTaskViewSet, basename="checklist-task")
 router.register(r"leave-policies", LeavePolicyViewSet, basename="leave-policy")
 router.register(r"leave-balances", LeaveBalanceViewSet, basename="leave-balance")
 router.register(r"leave-requests", LeaveRequestViewSet, basename="leave-request")

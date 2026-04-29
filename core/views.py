@@ -34,6 +34,7 @@ from .constants import (
 from .models import (
     Asset,
     Assignment,
+    ChecklistTask,
     ChecklistTemplate,
     CPFLevel,
     Department,
@@ -79,6 +80,7 @@ from .serializers import (
     AssignmentReturnSerializer,
     AssignmentSerializer,
     AvatarUploadSerializer,
+    ChecklistTaskSerializer,
     ChecklistTemplateSerializer,
     EmployeeCVSerializer,
     EmployeeProfileChangeHistorySerializer,
@@ -2208,6 +2210,85 @@ class ChecklistTemplateViewSet(viewsets.ModelViewSet):
             )
         serializer = self.get_serializer(cloned)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+@extend_schema(tags=["Onboarding / Offboarding"])
+class ChecklistTaskViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = ChecklistTaskSerializer
+    permission_classes = [IsAuthenticated]
+    queryset = ChecklistTask.objects.select_related(
+        "checklist_instance",
+        "task_template",
+        "assigned_to__user",
+    ).all()
+
+    def list(self, request, *args, **kwargs):
+        return self.my_tasks(request)
+
+    @extend_schema(
+        summary="Get tasks assigned to the authenticated user",
+        responses={200: ChecklistTaskSerializer(many=True)},
+    )
+    @action(detail=False, methods=["get"], url_path="my-tasks")
+    def my_tasks(self, request):
+        try:
+            profile = request.user.profile
+        except (AttributeError, UserProfile.DoesNotExist):
+            return Response(
+                {"detail": "Authenticated user profile not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        tasks = self.queryset.filter(assigned_to=profile)
+        serializer = self.get_serializer(tasks, many=True)
+        return Response(serializer.data)
+
+    @extend_schema(
+        summary="Get onboarding tasks for a specific employee",
+        description=(
+            "HR users and managers can retrieve checklist tasks for a specific employee. "
+            "Managers may only see tasks for employees they manage."
+        ),
+        responses={200: ChecklistTaskSerializer(many=True)},
+    )
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path=r"employee/(?P<employee_id>[^/.]+)",
+    )
+    def employee_tasks(self, request, employee_id=None):
+        try:
+            profile = request.user.profile
+        except (AttributeError, UserProfile.DoesNotExist):
+            return Response(
+                {"detail": "Authenticated user profile not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        try:
+            employee_profile = UserProfile.objects.get(pk=employee_id)
+        except UserProfile.DoesNotExist:
+            return Response(
+                {"detail": "Employee not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        can_view = (
+            request.user.is_staff
+            or request.user.is_superuser
+            or (profile.role and profile.role.name.lower() == "hr")
+            or employee_profile.managers.filter(pk=profile.pk).exists()
+        )
+
+        if not can_view:
+            return Response(
+                {"detail": "You do not have permission to view this employee's tasks."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        tasks = self.queryset.filter(checklist_instance__employee=employee_profile)
+        serializer = self.get_serializer(tasks, many=True)
+        return Response(serializer.data)
 
 
 # ──────────────────────────────────────────

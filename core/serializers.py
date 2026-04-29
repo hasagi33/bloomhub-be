@@ -13,6 +13,7 @@ from core.constants import (
 from core.models import (
     Asset,
     Assignment,
+    ChecklistTask,
     ChecklistTemplate,
     EmployeeDocument,
     EmployeeProfileChangeHistory,
@@ -1637,3 +1638,27 @@ class ChecklistTemplateSerializer(serializers.ModelSerializer):
                 TaskTemplate.objects.create(checklist_template=instance, **task_data)
 
         return instance
+
+
+class ChecklistTaskSerializer(serializers.ModelSerializer):
+    assigned_to = UserProfileSerializer(read_only=True)
+    task_template = TaskTemplateSerializer(read_only=True)
+
+    class Meta:
+        model = ChecklistTask
+        fields = [
+            "id",
+            "checklist_instance",
+            "task_template",
+            "title",
+            "status",
+            "assigned_to",
+            "due_date",
+            "completed_at",
+        ]
+        read_only_fields = [
+            "checklist_instance",
+            "task_template",
+            "assigned_to",
+            "completed_at",
+        ]
