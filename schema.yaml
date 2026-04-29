@@ -1904,6 +1904,85 @@ paths:
                     status:
                       type: string
           description: ''
+  /api/onboarding/tasks/:
+    get:
+      operationId: onboarding_tasks_list
+      tags:
+      - Onboarding / Offboarding
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ChecklistTask'
+          description: ''
+  /api/onboarding/tasks/{id}/:
+    get:
+      operationId: onboarding_tasks_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Checklist Task.
+        required: true
+      tags:
+      - Onboarding / Offboarding
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChecklistTask'
+          description: ''
+  /api/onboarding/tasks/employee/{employee_id}/:
+    get:
+      operationId: onboarding_tasks_employee_list
+      description: HR users and managers can retrieve checklist tasks for a specific
+        employee. Managers may only see tasks for employees they manage.
+      summary: Get onboarding tasks for a specific employee
+      parameters:
+      - in: path
+        name: employee_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - Onboarding / Offboarding
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ChecklistTask'
+          description: ''
+  /api/onboarding/tasks/my-tasks/:
+    get:
+      operationId: onboarding_tasks_my_tasks_list
+      summary: Get tasks assigned to the authenticated user
+      tags:
+      - Onboarding / Offboarding
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ChecklistTask'
+          description: ''
   /api/onboarding/templates/:
     get:
       operationId: onboarding_templates_list
@@ -3850,6 +3929,54 @@ components:
       required:
       - cpf_levels
       - user_role
+    ChecklistTask:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        checklist_instance:
+          type: integer
+          readOnly: true
+        task_template:
+          allOf:
+          - $ref: '#/components/schemas/TaskTemplate'
+          readOnly: true
+        title:
+          type: string
+          maxLength: 200
+        status:
+          $ref: '#/components/schemas/ChecklistTaskStatusEnum'
+        assigned_to:
+          allOf:
+          - $ref: '#/components/schemas/UserProfile'
+          readOnly: true
+        due_date:
+          type: string
+          format: date
+          nullable: true
+        completed_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - assigned_to
+      - checklist_instance
+      - completed_at
+      - id
+      - task_template
+      - title
+    ChecklistTaskStatusEnum:
+      enum:
+      - todo
+      - in_progress
+      - done
+      type: string
+      description: |-
+        * `todo` - To Do
+        * `in_progress` - In Progress
+        * `done` - Done
     ChecklistTemplate:
       type: object
       properties:

@@ -1558,6 +1558,33 @@ class ChecklistInstance(models.Model):
     def __str__(self):
         return f"{self.employee} - {self.template.name} ({self.status})"
 
+    def get_assignee_for_role(self, role_responsible: str):
+        """Return the appropriate assignee for a task role."""
+        if role_responsible == TaskTemplate.Role.MANAGER:
+            return self.employee.managers.first()
+
+        if role_responsible in {TaskTemplate.Role.HR, TaskTemplate.Role.IT}:
+            return (
+                UserProfile.objects.filter(
+                    role__name__iexact=role_responsible,
+                    is_active=True,
+                )
+                .order_by("created_at", "id")
+                .first()
+            )
+
+        return None
+
+    def create_tasks_from_template(self):
+        """Create checklist tasks from the associated checklist template."""
+        for task_template in self.template.task_templates.all():
+            ChecklistTask.objects.create(
+                checklist_instance=self,
+                task_template=task_template,
+                title=task_template.title,
+                assigned_to=self.get_assignee_for_role(task_template.role_responsible),
+            )
+
     class Meta:
         verbose_name = "Checklist Instance"
         verbose_name_plural = "Checklist Instances"
@@ -1854,3 +1881,9 @@ class TrainingBudget(models.Model):
             raise ValueError("Budget usage amount cannot be negative")
         self.used_budget += amount
         self.save(update_fields=["used_budget"])
+
+
+@receiver(post_save, sender=ChecklistInstance)
+def create_tasks_for_checklist_instance(sender, instance, created, **kwargs):
+    if created:
+        instance.create_tasks_from_template()
