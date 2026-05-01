@@ -13,22 +13,22 @@ repos:
     hooks:
       - id: gitstream-cm-validate
         name: gitStream .cm validate
-        entry: bash -c 'if [ -d .venv ]; then . .venv/bin/activate; fi; python3 scripts/validate_gitstream_cm.py "$@"'
+        entry: python scripts/run_local_hook.py gitstream-cm-validate
         language: system
         files: '\.cm$'
       - id: spectacular-schema
         name: drf-spectacular schema.yaml
-        entry: bash -c 'if [ -d .venv ]; then . .venv/bin/activate; fi; python3 manage.py spectacular --file schema.yaml'
+        entry: python scripts/run_local_hook.py spectacular-schema
         language: system
         pass_filenames: false
       - id: pytest
         name: pytest
-        entry: bash -c 'if [ -d .venv ]; then . .venv/bin/activate; fi; python3 -m pytest'
+        entry: python scripts/run_local_hook.py pytest
         language: system
         pass_filenames: false
       - id: commit-message-bhb
         name: commit message [BHB-XX]
-        entry: bash -c 'head -1 "$0" | grep -qE "^\[BHB-[0-9]+\] " || { echo "Commit message must match [BHB-XX] description"; exit 1; }'
+        entry: python scripts/run_local_hook.py commit-message-bhb
         language: system
         stages: [commit-msg]
         pass_filenames: true

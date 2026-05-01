@@ -34,6 +34,7 @@ from .views import (
     RoleListView,
     SessionView,
     TokenRefreshViewCustom,
+    TrainingEntryViewSet,
     UploadRolePermissionsView,
     UserProfileListView,
     UserProfileView,
@@ -62,6 +63,7 @@ router.register(
     PerformanceReviewReminderViewSet,
     basename="performance-review-reminder",
 )
+router.register(r"training-entries", TrainingEntryViewSet, basename="training-entry")
 
 urlpatterns = [
     path("", APIRootView.as_view(), name="api_root"),

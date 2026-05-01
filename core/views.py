@@ -67,6 +67,7 @@ from .models import (
     ReplacementLog,
     Role,
     TaskTemplate,
+    TrainingEntry,
     UserProfile,
 )
 from .permissions import (
@@ -121,6 +122,9 @@ from .serializers import (
     ReplacementLogSerializer,
     RequestSignatureSerializer,
     TokenSerializer,
+    TrainingEntryCreateUpdateSerializer,
+    TrainingEntryDetailSerializer,
+    TrainingEntryListSerializer,
     UpdatePermissionsSerializer,
     UpdateRoleSerializer,
     UploadRolePermissionsResponseSerializer,
@@ -3850,3 +3854,113 @@ class DocumentViewSet(viewsets.GenericViewSet):
         accessible = filter_accessible_documents(request.user, queryset)
         export_url = export_documents_csv(accessible)
         return Response({"export_url": export_url}, status=status.HTTP_200_OK)
+
+
+# ──────────────────────────────────────────
+# Training & Development Views
+# ──────────────────────────────────────────
+
+
+@extend_schema(tags=["Training & Development"])
+class TrainingEntryViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing training entries.
+    Employees can manage their own entries, HR can manage all.
+    """
+
+    serializer_class = TrainingEntryCreateUpdateSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.SearchFilter,
+        filters.OrderingFilter,
+    ]
+    filterset_fields = ["training_type", "employee"]
+    search_fields = ["course_title", "provider", "description"]
+    ordering_fields = ["training_date", "created_at", "cost"]
+    ordering = ["-training_date"]
+
+    def get_queryset(self):
+        """Filter entries based on user permissions."""
+        user = self.request.user
+
+        # HR admins can see all entries
+        if user.is_staff or user.is_superuser:
+            return TrainingEntry.objects.all().select_related("employee__user")
+
+        # Regular employees see only their own
+        try:
+            return TrainingEntry.objects.filter(employee=user.profile).select_related(
+                "employee__user"
+            )
+        except Exception:
+            return TrainingEntry.objects.none()
+
+    def get_serializer_class(self):
+        """Use different serializers for different actions."""
+        if self.action == "list":
+            return TrainingEntryListSerializer
+        elif self.action == "retrieve":
+            return TrainingEntryDetailSerializer
+        return TrainingEntryCreateUpdateSerializer
+
+    def perform_create(self, serializer):
+        """Create entry for authenticated employee or specified employee (HR only)."""
+        user = self.request.user
+        employee = user.profile
+
+        # HR can specify a different employee via employee_id in request data
+        if user.is_staff or user.is_superuser:
+            employee_id = self.request.data.get("employee_id")
+            if employee_id:
+                try:
+                    employee = UserProfile.objects.get(id=employee_id)
+                except UserProfile.DoesNotExist:
+                    pass
+
+        serializer.save(employee=employee)
+
+    def perform_update(self, serializer):
+        """Update entry (employee: own only, HR: any)."""
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        """Delete entry (employee: own only, HR: any)."""
+        instance.delete()
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="year",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description="Filter by year of training_date (e.g., 2024)",
+                required=False,
+            ),
+        ],
+        responses={200: TrainingEntryListSerializer(many=True)},
+        description="List training entries with optional year filter",
+    )
+    def list(self, request, *args, **kwargs):
+        """List training entries with optional year filter."""
+        queryset = self.get_queryset()
+
+        # Filter by year if provided
+        year_filter = request.query_params.get("year")
+        if year_filter:
+            try:
+                year = int(year_filter)
+                queryset = queryset.filter(training_date__year=year)
+            except (ValueError, TypeError):
+                pass
+
+        # Apply other filters and ordering
+        queryset = self.filter_queryset(queryset)
+
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)

@@ -4126,6 +4126,205 @@ paths:
               schema:
                 $ref: '#/components/schemas/RoleListResponse'
           description: ''
+  /api/training-entries/:
+    get:
+      operationId: training_entries_list
+      description: List training entries with optional year filter
+      parameters:
+      - in: query
+        name: employee
+        schema:
+          type: integer
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      - in: query
+        name: training_type
+        schema:
+          type: string
+          enum:
+          - certification
+          - conference
+          - course
+          - other
+          - webinar
+          - workshop
+        description: |-
+          Type of training activity
+
+          * `course` - Course
+          * `conference` - Conference
+          * `workshop` - Workshop
+          * `webinar` - Webinar
+          * `certification` - Certification
+          * `other` - Other
+      - in: query
+        name: year
+        schema:
+          type: integer
+        description: Filter by year of training_date (e.g., 2024)
+      tags:
+      - Training & Development
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TrainingEntryList'
+          description: ''
+    post:
+      operationId: training_entries_create
+      description: |-
+        ViewSet for managing training entries.
+        Employees can manage their own entries, HR can manage all.
+      tags:
+      - Training & Development
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrainingEntryCreateUpdateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TrainingEntryCreateUpdateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TrainingEntryCreateUpdateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainingEntryCreateUpdate'
+          description: ''
+  /api/training-entries/{id}/:
+    get:
+      operationId: training_entries_retrieve
+      description: |-
+        ViewSet for managing training entries.
+        Employees can manage their own entries, HR can manage all.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Training Entry.
+        required: true
+      tags:
+      - Training & Development
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainingEntryDetail'
+          description: ''
+    put:
+      operationId: training_entries_update
+      description: |-
+        ViewSet for managing training entries.
+        Employees can manage their own entries, HR can manage all.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Training Entry.
+        required: true
+      tags:
+      - Training & Development
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrainingEntryCreateUpdateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TrainingEntryCreateUpdateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TrainingEntryCreateUpdateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainingEntryCreateUpdate'
+          description: ''
+    patch:
+      operationId: training_entries_partial_update
+      description: |-
+        ViewSet for managing training entries.
+        Employees can manage their own entries, HR can manage all.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Training Entry.
+        required: true
+      tags:
+      - Training & Development
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedTrainingEntryCreateUpdateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedTrainingEntryCreateUpdateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedTrainingEntryCreateUpdateRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainingEntryCreateUpdate'
+          description: ''
+    delete:
+      operationId: training_entries_destroy
+      description: |-
+        ViewSet for managing training entries.
+        Employees can manage their own entries, HR can manage all.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Training Entry.
+        required: true
+      tags:
+      - Training & Development
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
   /api/user-profiles/:
     get:
       operationId: user_profiles_list
@@ -5931,6 +6130,51 @@ components:
         content:
           type: string
           minLength: 1
+    PatchedTrainingEntryCreateUpdateRequest:
+      type: object
+      description: Serializer for creating and updating training entries with validation.
+      properties:
+        course_title:
+          type: string
+          minLength: 1
+          description: Name or title of the training/course
+          maxLength: 255
+        provider:
+          type: string
+          minLength: 1
+          description: Training provider or organization
+          maxLength: 255
+        training_date:
+          type: string
+          format: date
+          description: Date when training occurred
+        training_type:
+          allOf:
+          - $ref: '#/components/schemas/TrainingTypeEnum'
+          description: |-
+            Type of training activity
+
+            * `course` - Course
+            * `conference` - Conference
+            * `workshop` - Workshop
+            * `webinar` - Webinar
+            * `certification` - Certification
+            * `other` - Other
+        cost:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+          description: Cost of training (for budget tracking)
+        description:
+          type: string
+          nullable: true
+          description: Additional notes or description
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When employee completed the training
     PerformanceReviewActionPoint:
       type: object
       properties:
@@ -7071,6 +7315,267 @@ components:
       - access
       - refresh
       - user
+    TrainingEntryCreateUpdate:
+      type: object
+      description: Serializer for creating and updating training entries with validation.
+      properties:
+        employee_id:
+          type: integer
+          readOnly: true
+        course_title:
+          type: string
+          description: Name or title of the training/course
+          maxLength: 255
+        provider:
+          type: string
+          description: Training provider or organization
+          maxLength: 255
+        training_date:
+          type: string
+          format: date
+          description: Date when training occurred
+        training_type:
+          allOf:
+          - $ref: '#/components/schemas/TrainingTypeEnum'
+          description: |-
+            Type of training activity
+
+            * `course` - Course
+            * `conference` - Conference
+            * `workshop` - Workshop
+            * `webinar` - Webinar
+            * `certification` - Certification
+            * `other` - Other
+        cost:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+          description: Cost of training (for budget tracking)
+        description:
+          type: string
+          nullable: true
+          description: Additional notes or description
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When employee completed the training
+      required:
+      - course_title
+      - employee_id
+      - provider
+      - training_date
+    TrainingEntryCreateUpdateRequest:
+      type: object
+      description: Serializer for creating and updating training entries with validation.
+      properties:
+        course_title:
+          type: string
+          minLength: 1
+          description: Name or title of the training/course
+          maxLength: 255
+        provider:
+          type: string
+          minLength: 1
+          description: Training provider or organization
+          maxLength: 255
+        training_date:
+          type: string
+          format: date
+          description: Date when training occurred
+        training_type:
+          allOf:
+          - $ref: '#/components/schemas/TrainingTypeEnum'
+          description: |-
+            Type of training activity
+
+            * `course` - Course
+            * `conference` - Conference
+            * `workshop` - Workshop
+            * `webinar` - Webinar
+            * `certification` - Certification
+            * `other` - Other
+        cost:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+          description: Cost of training (for budget tracking)
+        description:
+          type: string
+          nullable: true
+          description: Additional notes or description
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When employee completed the training
+      required:
+      - course_title
+      - provider
+      - training_date
+    TrainingEntryDetail:
+      type: object
+      description: Detailed serializer for single training entry view.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        employee_id:
+          type: integer
+          readOnly: true
+        employee_name:
+          type: string
+          readOnly: true
+        course_title:
+          type: string
+          description: Name or title of the training/course
+          maxLength: 255
+        provider:
+          type: string
+          description: Training provider or organization
+          maxLength: 255
+        training_date:
+          type: string
+          format: date
+          description: Date when training occurred
+        training_type:
+          allOf:
+          - $ref: '#/components/schemas/TrainingTypeEnum'
+          description: |-
+            Type of training activity
+
+            * `course` - Course
+            * `conference` - Conference
+            * `workshop` - Workshop
+            * `webinar` - Webinar
+            * `certification` - Certification
+            * `other` - Other
+        training_type_display:
+          type: string
+          readOnly: true
+        cost:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+          description: Cost of training (for budget tracking)
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When employee completed the training
+        status:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        description:
+          type: string
+          nullable: true
+          description: Additional notes or description
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - course_title
+      - created_at
+      - employee_id
+      - employee_name
+      - id
+      - provider
+      - status
+      - training_date
+      - training_type_display
+      - updated_at
+    TrainingEntryList:
+      type: object
+      description: Simplified serializer for training entry lists.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        employee_id:
+          type: integer
+          readOnly: true
+        employee_name:
+          type: string
+          readOnly: true
+        course_title:
+          type: string
+          description: Name or title of the training/course
+          maxLength: 255
+        provider:
+          type: string
+          description: Training provider or organization
+          maxLength: 255
+        training_date:
+          type: string
+          format: date
+          description: Date when training occurred
+        training_type:
+          allOf:
+          - $ref: '#/components/schemas/TrainingTypeEnum'
+          description: |-
+            Type of training activity
+
+            * `course` - Course
+            * `conference` - Conference
+            * `workshop` - Workshop
+            * `webinar` - Webinar
+            * `certification` - Certification
+            * `other` - Other
+        training_type_display:
+          type: string
+          readOnly: true
+        cost:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+          description: Cost of training (for budget tracking)
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When employee completed the training
+        status:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - course_title
+      - created_at
+      - employee_id
+      - employee_name
+      - id
+      - provider
+      - status
+      - training_date
+      - training_type_display
+    TrainingTypeEnum:
+      enum:
+      - course
+      - conference
+      - workshop
+      - webinar
+      - certification
+      - other
+      type: string
+      description: |-
+        * `course` - Course
+        * `conference` - Conference
+        * `workshop` - Workshop
+        * `webinar` - Webinar
+        * `certification` - Certification
+        * `other` - Other
     TypeEnum:
       enum:
       - onboarding

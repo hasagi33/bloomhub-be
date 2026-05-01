@@ -1,6 +1,8 @@
 from typing import Any
 
 from django.contrib.auth.models import User
+
+from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
@@ -14,6 +16,7 @@ from core.constants import (
 from core.models import (
     Asset,
     Assignment,
+    Certificate,
     ChecklistTask,
     ChecklistTemplate,
     Document,
@@ -26,6 +29,7 @@ from core.models import (
     LeaveBalance,
     LeavePolicy,
     LeaveRequest,
+    PeerSession,
     PerformanceReview,
     PerformanceReviewActionPoint,
     PerformanceReviewAttachment,
@@ -38,6 +42,8 @@ from core.models import (
     SalaryRecord,
     TaskTemplate,
     TechnologyTag,
+    TrainingBudget,
+    TrainingEntry,
     UserProfile,
 )
 from core.services.profile_change_history import (
@@ -1691,6 +1697,7 @@ class ChecklistTaskSerializer(serializers.ModelSerializer):
 
 
 # ──────────────────────────────────────────
+# ──────────────────────────────────────────
 # Document Serializers
 # ──────────────────────────────────────────
 
@@ -1809,3 +1816,291 @@ class RequestSignatureSerializer(serializers.Serializer):
         email = serializers.EmailField()
 
     signers = SignerInputSerializer(many=True, allow_empty=False)
+
+
+# ──────────────────────────────────────────
+# Training & Development Serializers
+# ──────────────────────────────────────────
+
+
+class TrainingEntryListSerializer(serializers.ModelSerializer):
+    """Simplified serializer for training entry lists."""
+
+    employee_id = serializers.IntegerField(source="employee.id", read_only=True)
+    employee_name = serializers.CharField(
+        source="employee.user.get_full_name", read_only=True
+    )
+    training_type_display = serializers.CharField(
+        source="get_training_type_display", read_only=True
+    )
+    status = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TrainingEntry
+        fields = [
+            "id",
+            "employee_id",
+            "employee_name",
+            "course_title",
+            "provider",
+            "training_date",
+            "training_type",
+            "training_type_display",
+            "cost",
+            "completed_at",
+            "status",
+            "created_at",
+        ]
+        read_only_fields = [
+            "id",
+            "employee_id",
+            "employee_name",
+            "training_type_display",
+            "status",
+            "created_at",
+        ]
+
+    def get_status(self, obj):
+        """Compute training status: completed, in-progress, or planned."""
+        if obj.completed_at:
+            return "completed"
+        if obj.training_date > timezone.now().date():
+            return "planned"
+        return "in-progress"
+
+
+class TrainingEntryCreateUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for creating and updating training entries with validation."""
+
+    employee_id = serializers.IntegerField(source="employee.id", read_only=True)
+
+    class Meta:
+        model = TrainingEntry
+        fields = [
+            "employee_id",
+            "course_title",
+            "provider",
+            "training_date",
+            "training_type",
+            "cost",
+            "description",
+            "completed_at",
+        ]
+        read_only_fields = ["employee_id"]
+
+    def validate_training_date(self, value):
+        """Ensure training date is not in the future."""
+        if value > timezone.now().date():
+            raise serializers.ValidationError("Training date cannot be in the future.")
+        return value
+
+    def validate_cost(self, value):
+        """Ensure cost is non-negative."""
+        if value is not None and value < 0:
+            raise serializers.ValidationError("Cost cannot be negative.")
+        return value
+
+    def validate_completed_at(self, value):
+        """Ensure completed_at is not in the future."""
+        if value and value > timezone.now():
+            raise serializers.ValidationError(
+                "Completion date cannot be in the future."
+            )
+        return value
+
+    def validate(self, data):
+        """Cross-field validation."""
+        training_date = data.get("training_date")
+        completed_at = data.get("completed_at")
+
+        # If both dates provided, ensure completed_at >= training_date
+        if training_date and completed_at:
+            if completed_at.date() < training_date:
+                raise serializers.ValidationError(
+                    {"completed_at": "Completion date cannot be before training date."}
+                )
+
+        return data
+
+
+class TrainingEntryDetailSerializer(TrainingEntryListSerializer):
+    """Detailed serializer for single training entry view."""
+
+    class Meta(TrainingEntryListSerializer.Meta):
+        fields = TrainingEntryListSerializer.Meta.fields + [
+            "description",
+            "updated_at",
+        ]
+        read_only_fields = TrainingEntryListSerializer.Meta.read_only_fields + [
+            "updated_at",
+        ]
+
+
+class CertificateListSerializer(serializers.ModelSerializer):
+    """Simplified serializer for certificate lists."""
+
+    employee_id = serializers.IntegerField(source="employee.id", read_only=True)
+    employee_name = serializers.CharField(
+        source="employee.user.get_full_name", read_only=True
+    )
+    is_expired = serializers.ReadOnlyField()
+
+    class Meta:
+        model = Certificate
+        fields = [
+            "id",
+            "employee_id",
+            "employee_name",
+            "title",
+            "issuer",
+            "issued_date",
+            "expiration_date",
+            "is_expired",
+            "created_at",
+        ]
+        read_only_fields = [
+            "id",
+            "employee_id",
+            "employee_name",
+            "is_expired",
+            "created_at",
+        ]
+
+
+class CertificateDetailSerializer(serializers.ModelSerializer):
+    """Detailed serializer for single certificate view."""
+
+    employee_id = serializers.IntegerField(source="employee.id", read_only=True)
+    employee_name = serializers.CharField(
+        source="employee.user.get_full_name", read_only=True
+    )
+    is_expired = serializers.ReadOnlyField()
+    file_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Certificate
+        fields = [
+            "id",
+            "employee_id",
+            "employee_name",
+            "title",
+            "issuer",
+            "issued_date",
+            "expiration_date",
+            "is_expired",
+            "file",
+            "file_url",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "employee_id",
+            "employee_name",
+            "is_expired",
+            "file_url",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_file_url(self, obj):
+        """Get certificate file URL."""
+        try:
+            if obj.file:
+                return obj.file.url
+        except Exception:
+            pass
+        return None
+
+
+class PeerSessionListSerializer(serializers.ModelSerializer):
+    """Simplified serializer for peer session lists."""
+
+    employee_id = serializers.IntegerField(source="employee.id", read_only=True)
+    employee_name = serializers.CharField(
+        source="employee.user.get_full_name", read_only=True
+    )
+
+    class Meta:
+        model = PeerSession
+        fields = [
+            "id",
+            "employee_id",
+            "employee_name",
+            "topic",
+            "session_date",
+            "duration_minutes",
+            "created_at",
+        ]
+        read_only_fields = [
+            "id",
+            "employee_id",
+            "employee_name",
+            "created_at",
+        ]
+
+
+class PeerSessionDetailSerializer(serializers.ModelSerializer):
+    """Detailed serializer for single peer session view."""
+
+    employee_id = serializers.IntegerField(source="employee.id", read_only=True)
+    employee_name = serializers.CharField(
+        source="employee.user.get_full_name", read_only=True
+    )
+
+    class Meta:
+        model = PeerSession
+        fields = [
+            "id",
+            "employee_id",
+            "employee_name",
+            "topic",
+            "session_date",
+            "duration_minutes",
+            "incentive_id",
+            "description",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "employee_id",
+            "employee_name",
+            "created_at",
+            "updated_at",
+        ]
+
+
+class TrainingBudgetSerializer(serializers.ModelSerializer):
+    """Serializer for training budget."""
+
+    employee_id = serializers.IntegerField(source="employee.id", read_only=True)
+    employee_name = serializers.CharField(
+        source="employee.user.get_full_name", read_only=True
+    )
+    remaining_budget = serializers.ReadOnlyField()
+    budget_percentage_used = serializers.ReadOnlyField()
+
+    class Meta:
+        model = TrainingBudget
+        fields = [
+            "id",
+            "employee_id",
+            "employee_name",
+            "fiscal_year",
+            "allocated_budget",
+            "used_budget",
+            "remaining_budget",
+            "budget_percentage_used",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "employee_id",
+            "employee_name",
+            "remaining_budget",
+            "budget_percentage_used",
+            "created_at",
+            "updated_at",
+        ]
