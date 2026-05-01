@@ -1,6 +1,7 @@
 from typing import Any
 
 from django.contrib.auth.models import User
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
@@ -57,6 +58,15 @@ from core.utils import (
     uploader_display_name,
     verify_google_id_token,
 )
+
+
+@extend_schema_field(OpenApiTypes.INT64)
+class NonNegativeInt64Field(serializers.IntegerField):
+    """Non-negative integers documented as OpenAPI int64 (stable across environments)."""
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault("min_value", 0)
+        super().__init__(**kwargs)
 
 
 class GoogleExchangeSerializer(serializers.Serializer):
@@ -820,6 +830,10 @@ class LeavePolicySerializer(serializers.ModelSerializer):
     leave_type_display = serializers.CharField(
         source="get_leave_type_display", read_only=True
     )
+    allocated_days_per_year = NonNegativeInt64Field()
+    carryover_days = NonNegativeInt64Field()
+    min_notice_in_days = NonNegativeInt64Field()
+    max_consecutive_days = NonNegativeInt64Field(allow_null=True, required=False)
 
     class Meta:
         model = LeavePolicy
@@ -850,6 +864,10 @@ class LeaveBalanceSerializer(serializers.ModelSerializer):
         source="get_leave_type_display", read_only=True
     )
     remaining = serializers.ReadOnlyField()
+    allocated = NonNegativeInt64Field()
+    used = NonNegativeInt64Field()
+    carryover = NonNegativeInt64Field()
+    year = NonNegativeInt64Field()
 
     class Meta:
         model = LeaveBalance
@@ -1168,6 +1186,8 @@ class LeaveAdjustmentSerializer(serializers.ModelSerializer):
     leave_type_display = serializers.CharField(
         source="get_leave_type_display", read_only=True
     )
+    old_allocated = NonNegativeInt64Field()
+    new_allocated = NonNegativeInt64Field()
     adjusted_by_id = serializers.IntegerField(
         source="adjusted_by.id", read_only=True, allow_null=True
     )
@@ -1611,6 +1631,8 @@ class PerformanceReviewCreateUpdateSerializer(serializers.ModelSerializer):
 
 
 class TaskTemplateSerializer(serializers.ModelSerializer):
+    order = NonNegativeInt64Field()
+
     class Meta:
         model = TaskTemplate
         fields = ["id", "title", "order", "role_responsible"]

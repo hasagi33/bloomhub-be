@@ -2,6 +2,9 @@
 # Uses SeparateDatabaseAndState so Django's model-state stays correct while
 # the SQL is fully safe to re-run against a partially-migrated database.
 #
+# PostgreSQL only for database_operations: SQLite (tests) cannot execute this SQL;
+# see SeparateDatabaseAndStatePostgresOnly below.
+#
 # Why idempotent?  A previous version of this migration was partially applied
 # (some Document columns already exist in the DB).  Every operation below uses
 # IF NOT EXISTS / conditional DO blocks so it is safe to run in any state.

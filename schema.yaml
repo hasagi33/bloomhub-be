@@ -798,7 +798,8 @@ paths:
       - in: path
         name: id
         schema:
-          type: string
+          type: integer
+        description: A unique integer value identifying this Document.
         required: true
       tags:
       - Documents
@@ -836,7 +837,8 @@ paths:
       - in: path
         name: id
         schema:
-          type: string
+          type: integer
+        description: A unique integer value identifying this Document.
         required: true
       tags:
       - Documents
@@ -871,10 +873,23 @@ paths:
       - in: path
         name: id
         schema:
-          type: string
+          type: integer
+        description: A unique integer value identifying this Document.
         required: true
       tags:
       - Documents
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DocumentListRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DocumentListRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DocumentListRequest'
+        required: true
       security:
       - jwtAuth: []
       responses:
@@ -910,7 +925,8 @@ paths:
       - in: path
         name: id
         schema:
-          type: string
+          type: integer
+        description: A unique integer value identifying this Document.
         required: true
       tags:
       - Documents
@@ -952,7 +968,8 @@ paths:
       - in: path
         name: id
         schema:
-          type: string
+          type: integer
+        description: A unique integer value identifying this Document.
         required: true
       tags:
       - Documents
@@ -994,7 +1011,8 @@ paths:
       - in: path
         name: id
         schema:
-          type: string
+          type: integer
+        description: A unique integer value identifying this Document.
         required: true
       tags:
       - Documents
@@ -1045,10 +1063,23 @@ paths:
       - in: path
         name: id
         schema:
-          type: string
+          type: integer
+        description: A unique integer value identifying this Document.
         required: true
       tags:
       - Documents
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DocumentListRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DocumentListRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DocumentListRequest'
+        required: true
       security:
       - jwtAuth: []
       responses:
@@ -1080,7 +1111,8 @@ paths:
       - in: path
         name: id
         schema:
-          type: string
+          type: integer
+        description: A unique integer value identifying this Document.
         required: true
       - name: page
         required: false
@@ -4796,6 +4828,41 @@ components:
       - uploaded_at
       - uploaded_by_name
       - version_count
+    DocumentListRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+        category:
+          $ref: '#/components/schemas/CategoryEnum'
+        file_size:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+        mime_type:
+          type: string
+          maxLength: 100
+        expiry_date:
+          type: string
+          format: date
+          nullable: true
+        signature_status:
+          $ref: '#/components/schemas/SignatureStatusEnum'
+        is_confidential:
+          type: boolean
+        tags: {}
+        allowed_roles: {}
+        current_version:
+          type: string
+          minLength: 1
+          maxLength: 20
+      required:
+      - name
     DocumentSigner:
       type: object
       properties:
@@ -4821,6 +4888,23 @@ components:
       - id
       - name
       - signed_at
+    DocumentSignerRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        email:
+          type: string
+          format: email
+          minLength: 1
+          maxLength: 254
+        status:
+          $ref: '#/components/schemas/DocumentSignerStatusEnum'
+      required:
+      - email
+      - name
     DocumentSignerStatusEnum:
       enum:
       - pending
@@ -5177,16 +5261,12 @@ components:
           readOnly: true
         old_allocated:
           type: integer
-          maximum: 9223372036854775807
-          minimum: 0
           format: int64
-          description: Previous allocated days
+          minimum: 0
         new_allocated:
           type: integer
-          maximum: 9223372036854775807
-          minimum: 0
           format: int64
-          description: New allocated days
+          minimum: 0
         reason:
           type: string
           description: Reason for adjustment
@@ -5234,36 +5314,30 @@ components:
           readOnly: true
         allocated:
           type: integer
-          maximum: 9223372036854775807
-          minimum: 0
           format: int64
-          description: Total days allocated for this period
+          minimum: 0
         used:
           type: integer
-          maximum: 9223372036854775807
-          minimum: 0
           format: int64
-          description: Days already used/approved
+          minimum: 0
         remaining:
           type: string
           readOnly: true
         carryover:
           type: integer
-          maximum: 9223372036854775807
-          minimum: 0
           format: int64
-          description: Days carried over from previous year
+          minimum: 0
         year:
           type: integer
-          maximum: 9223372036854775807
-          minimum: 0
           format: int64
-          description: Calendar year for this balance
+          minimum: 0
         last_updated:
           type: string
           format: date-time
           readOnly: true
       required:
+      - allocated
+      - carryover
       - employee_id
       - employee_name
       - id
@@ -5271,6 +5345,7 @@ components:
       - leave_type
       - leave_type_display
       - remaining
+      - used
       - year
     LeavePolicy:
       type: object
@@ -5286,16 +5361,12 @@ components:
           readOnly: true
         allocated_days_per_year:
           type: integer
-          maximum: 9223372036854775807
-          minimum: 0
           format: int64
-          description: Number of days allocated per year
+          minimum: 0
         carryover_days:
           type: integer
-          maximum: 9223372036854775807
-          minimum: 0
           format: int64
-          description: Maximum days that can be carried over to next year
+          minimum: 0
         requires_approval:
           type: boolean
           description: Whether this leave type requires manager approval
@@ -5304,17 +5375,13 @@ components:
           description: Whether a covering employee must be assigned
         min_notice_in_days:
           type: integer
-          maximum: 9223372036854775807
-          minimum: 0
           format: int64
-          description: Minimum days notice required before leave start date
+          minimum: 0
         max_consecutive_days:
           type: integer
-          maximum: 9223372036854775807
-          minimum: 0
           format: int64
           nullable: true
-          description: Maximum consecutive days allowed (optional)
+          minimum: 0
         created_at:
           type: string
           format: date-time
@@ -5324,10 +5391,13 @@ components:
           format: date-time
           readOnly: true
       required:
+      - allocated_days_per_year
+      - carryover_days
       - created_at
       - id
       - leave_type
       - leave_type_display
+      - min_notice_in_days
       - updated_at
     LeaveRequestApproveRequest:
       type: object
@@ -6945,13 +7015,13 @@ components:
           maxLength: 200
         order:
           type: integer
-          maximum: 9223372036854775807
-          minimum: 0
           format: int64
+          minimum: 0
         role_responsible:
           $ref: '#/components/schemas/RoleResponsibleEnum'
       required:
       - id
+      - order
       - title
     TaskTemplateRequest:
       type: object
@@ -6962,12 +7032,12 @@ components:
           maxLength: 200
         order:
           type: integer
-          maximum: 9223372036854775807
-          minimum: 0
           format: int64
+          minimum: 0
         role_responsible:
           $ref: '#/components/schemas/RoleResponsibleEnum'
       required:
+      - order
       - title
     TechLead:
       type: object

@@ -3330,6 +3330,9 @@ class DocumentViewSet(viewsets.GenericViewSet):
     permission_classes = [IsAuthenticated]
     pagination_class = DocumentPagination
 
+    serializer_class = DocumentListSerializer
+    queryset = Document.objects.none()
+
     # ── queryset helpers ──────────────────────────────────────────────
 
     def _base_queryset(self, request):
