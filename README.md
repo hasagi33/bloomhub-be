@@ -533,6 +533,35 @@ Comprehensive training and development management for employee skill growth and 
 
 All models follow BloomHub conventions with proper indexes, metadata fields, and cascade deletion. Migration: `core/0028_certificate_peersession_trainingbudget_trainingentry.py`
 
+### API Endpoints
+
+All endpoints require authentication (`Authorization: Bearer <token>`).
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/training-entries/` | GET, POST | List training entries (filtered by employee) or create new entry |
+| `/api/training-entries/{id}/` | GET, PUT, PATCH, DELETE | Retrieve, update, or delete a training entry |
+| `/api/certificates/` | GET, POST | List certificates or upload new certificate |
+| `/api/certificates/{id}/` | GET, PUT, PATCH, DELETE | Manage individual certificates |
+| `/api/peer-sessions/` | GET, POST | List peer sessions or create new session |
+| `/api/peer-sessions/{id}/` | GET, PUT, PATCH, DELETE | Manage individual peer sessions |
+| `/api/training-budgets/` | GET | List training budgets (filtered by employee) |
+| `/api/training-budgets/{id}/` | GET | Retrieve specific training budget with usage |
+
+### Filtering & Searching
+
+- **TrainingEntry**: Filter by `training_type`, `year` (from training_date). Search by `course_title`, `provider`, `description`
+- **Certificate**: Filter by `status` (active, expired). Search by `certificate_title`, `issuer`
+- **Pagination**: Default 20 items per page, configurable via `?page_size=`
+
+### Interactive API Documentation
+
+View the complete Training Module API documentation:
+
+- **Swagger UI:** http://localhost:8000/api/schema/swagger-ui/ (search for "Training")
+- **ReDoc:** http://localhost:8000/api/schema/redoc/ (Training section)
+- **Raw OpenAPI:** http://localhost:8000/api/schema/
+
 ---
 
 ## PR labels (GitStream)

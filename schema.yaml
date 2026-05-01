@@ -4187,9 +4187,7 @@ paths:
           description: ''
     post:
       operationId: training_entries_create
-      description: |-
-        ViewSet for managing training entries.
-        Employees can manage their own entries, HR can manage all.
+      description: Override create to return response with status field.
       tags:
       - Training & Development
       requestBody:

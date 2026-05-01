@@ -3918,7 +3918,18 @@ class TrainingEntryViewSet(viewsets.ModelViewSet):
                 except UserProfile.DoesNotExist:
                     pass
 
-        serializer.save(employee=employee)
+        instance = serializer.save(employee=employee)
+        # Store instance for use in create method
+        self.created_instance = instance
+
+    def create(self, request, *args, **kwargs):
+        """Override create to return response with status field."""
+        response = super().create(request, *args, **kwargs)
+        # Re-serialize the created instance with DetailSerializer to include status
+        if response.status_code == 201 and hasattr(self, "created_instance"):
+            detail_serializer = TrainingEntryDetailSerializer(self.created_instance)
+            response.data = detail_serializer.data
+        return response
 
     def perform_update(self, serializer):
         """Update entry (employee: own only, HR: any)."""
