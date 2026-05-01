@@ -18,7 +18,15 @@ from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
-from rest_framework import filters, parsers, permissions, serializers, status, viewsets
+from rest_framework import (
+    filters,
+    pagination,
+    parsers,
+    permissions,
+    serializers,
+    status,
+    viewsets,
+)
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -38,6 +46,8 @@ from .models import (
     ChecklistTemplate,
     CPFLevel,
     Department,
+    Document,
+    DocumentSigner,
     DocumentType,
     EmployeeDocument,
     EmployeeProfileChangeHistory,
@@ -80,8 +90,12 @@ from .serializers import (
     AssignmentReturnSerializer,
     AssignmentSerializer,
     AvatarUploadSerializer,
+    BulkIdsSerializer,
     ChecklistTaskSerializer,
     ChecklistTemplateSerializer,
+    DocumentCreateSerializer,
+    DocumentListSerializer,
+    DocumentVersionSerializer,
     EmployeeCVSerializer,
     EmployeeProfileChangeHistorySerializer,
     EmployeeProfileSerializer,
@@ -105,12 +119,25 @@ from .serializers import (
     PerformanceReviewReminderSerializer,
     RegisterSerializer,
     ReplacementLogSerializer,
+    RequestSignatureSerializer,
     TokenSerializer,
     UpdatePermissionsSerializer,
     UpdateRoleSerializer,
     UploadRolePermissionsResponseSerializer,
     UserProfileSerializer,
     UserSerializer,
+)
+from .services.document_service import (
+    archive_document,
+    bulk_archive,
+    bulk_hard_delete,
+    export_documents_csv,
+    filter_accessible_documents,
+    generate_presigned_url,
+    generate_zip_url,
+    hard_delete_document,
+    is_document_accessible,
+    is_hr_or_admin,
 )
 from .services.performance_review_service import (
     materialize_performance_review_reminders,
@@ -3254,3 +3281,569 @@ class PerformanceReviewReminderViewSet(viewsets.ReadOnlyModelViewSet):
 
         serializer = self.get_serializer(reminder)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+# ──────────────────────────────────────────
+# Documents
+# ──────────────────────────────────────────
+
+
+class DocumentPagination(pagination.PageNumberPagination):
+    page_size = 50
+    page_size_query_param = "page_size"
+    max_page_size = 200
+
+
+class IsDocumentHROrAdmin(permissions.BasePermission):
+    """Restrict write/delete/archive operations to HR and admin users."""
+
+    def has_permission(self, request, view):
+        return (
+            request.user
+            and request.user.is_authenticated
+            and is_hr_or_admin(request.user)
+        )
+
+
+@extend_schema(tags=["Documents"])
+class DocumentViewSet(viewsets.GenericViewSet):
+    """
+    Full document management viewset.
+
+    Endpoints:
+      GET    /api/documents/                    list
+      POST   /api/documents/                    create (upload)
+      GET    /api/documents/{id}/               retrieve
+      DELETE /api/documents/{id}/               destroy (HR/admin)
+      GET    /api/documents/{id}/download/      signed download URL
+      GET    /api/documents/{id}/preview/       signed preview URL
+      POST   /api/documents/{id}/archive/       soft-delete (HR/admin)
+      POST   /api/documents/{id}/request-signature/  start e-sig workflow (HR/admin)
+      POST   /api/documents/{id}/send-reminder/ resend signature emails
+      GET    /api/documents/{id}/versions/      version history
+      POST   /api/documents/bulk-delete/        bulk hard-delete (HR/admin)
+      POST   /api/documents/bulk-archive/       bulk soft-delete (HR/admin)
+      POST   /api/documents/bulk-download/      ZIP download URL
+      GET    /api/documents/export/             CSV export URL (HR/admin)
+    """
+
+    permission_classes = [IsAuthenticated]
+    pagination_class = DocumentPagination
+
+    # ── queryset helpers ──────────────────────────────────────────────
+
+    def _base_queryset(self, request):
+        show_archived = request.query_params.get("archived", "").lower() == "true"
+        qs = Document.objects.select_related(
+            "uploaded_by__user", "employee__user"
+        ).prefetch_related("signers", "versions")
+        if not show_archived:
+            qs = qs.filter(archived=False)
+        return qs
+
+    def _get_document_or_404(self, pk):
+        try:
+            return (
+                Document.objects.select_related("uploaded_by__user", "employee__user")
+                .prefetch_related("signers", "versions")
+                .get(pk=pk)
+            )
+        except Document.DoesNotExist:
+            return None
+
+    def _apply_filters(self, queryset, request):
+        params = request.query_params
+
+        category = params.get("category")
+        if category:
+            if category not in Document.Category.values:
+                return None, Response(
+                    {"detail": "Invalid category filter."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            queryset = queryset.filter(category=category)
+
+        sig_status = params.get("signature_status")
+        if sig_status:
+            if sig_status not in Document.SignatureStatus.values:
+                return None, Response(
+                    {"detail": "Invalid signature_status filter."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            queryset = queryset.filter(signature_status=sig_status)
+
+        expiry_filter = params.get("expiry_filter")
+        if expiry_filter:
+            today = timezone.localdate()
+            if expiry_filter == "expiring_soon":
+                queryset = queryset.filter(
+                    expiry_date__gte=today,
+                    expiry_date__lte=today + timedelta(days=30),
+                )
+            elif expiry_filter == "expired":
+                queryset = queryset.filter(expiry_date__lt=today)
+            else:
+                return None, Response(
+                    {"detail": "Invalid expiry_filter value."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        search = params.get("search", "").strip()
+        if search:
+            queryset = queryset.filter(
+                models.Q(name__icontains=search)
+                | models.Q(description__icontains=search)
+                | models.Q(tags__icontains=search)
+            )
+
+        ordering = params.get("ordering", "-updated_at")
+        allowed_orderings = {
+            "updated_at",
+            "-updated_at",
+            "expiry_date",
+            "-expiry_date",
+            "category",
+            "-category",
+            "name",
+            "-name",
+        }
+        if ordering in allowed_orderings:
+            queryset = queryset.order_by(ordering)
+
+        return queryset, None
+
+    # ── list ──────────────────────────────────────────────────────────
+
+    @extend_schema(
+        summary="List documents",
+        parameters=[
+            OpenApiParameter("category", str, description="Filter by category"),
+            OpenApiParameter("search", str, description="Search name/description/tags"),
+            OpenApiParameter(
+                "signature_status", str, description="Filter by signature status"
+            ),
+            OpenApiParameter(
+                "expiry_filter", str, description="expiring_soon or expired"
+            ),
+            OpenApiParameter("ordering", str, description="Field to sort by"),
+            OpenApiParameter(
+                "archived", str, description="Pass true to list archived docs"
+            ),
+            OpenApiParameter("page", int),
+            OpenApiParameter("page_size", int),
+        ],
+        responses={200: DocumentListSerializer(many=True)},
+    )
+    def list(self, request):
+        queryset = self._base_queryset(request)
+        queryset, err = self._apply_filters(queryset, request)
+        if err:
+            return err
+
+        accessible = filter_accessible_documents(request.user, queryset)
+
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(accessible, request)
+        serializer = DocumentListSerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
+
+    # ── create ────────────────────────────────────────────────────────
+
+    @extend_schema(
+        summary="Upload a document",
+        request=DocumentCreateSerializer,
+        responses={201: DocumentListSerializer},
+    )
+    def create(self, request):
+        # Build data dict manually to avoid deep-copying file objects from the QueryDict.
+        data = {
+            key: request.data[key]
+            for key in request.data
+            if key not in ("tags", "allowed_roles", "file")
+        }
+        data["tags"] = request.data.getlist("tags")
+        data["allowed_roles"] = request.data.getlist("allowed_roles")
+        if "file" in request.data:
+            data["file"] = request.data["file"]
+
+        serializer = DocumentCreateSerializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        v = serializer.validated_data
+
+        profile = getattr(request.user, "profile", None)
+        uploaded_file = v["file"]
+
+        stored_key = default_storage.save(
+            f"documents/{uploaded_file.name}", uploaded_file
+        )
+
+        document = Document.objects.create(
+            uploaded_by=profile,
+            category=v["category"],
+            file_key=stored_key,
+            name=v["name"],
+            description=v.get("description", ""),
+            original_filename=getattr(uploaded_file, "name", ""),
+            file_size=getattr(uploaded_file, "size", 0) or 0,
+            mime_type=getattr(uploaded_file, "content_type", "") or "",
+            expiry_date=v.get("expiry_date"),
+            is_confidential=v.get("is_confidential", False),
+            tags=v.get("tags", []),
+            allowed_roles=v.get("allowed_roles", []),
+            signature_status=Document.SignatureStatus.NOT_REQUIRED,
+            current_version="1.0",
+        )
+
+        return Response(
+            DocumentListSerializer(document).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    # ── retrieve ──────────────────────────────────────────────────────
+
+    @extend_schema(
+        summary="Get a single document", responses={200: DocumentListSerializer}
+    )
+    def retrieve(self, request, pk=None):
+        document = self._get_document_or_404(pk)
+        if not document:
+            return Response(
+                {"detail": "Document not found."}, status=status.HTTP_404_NOT_FOUND
+            )
+        if not is_document_accessible(request.user, document):
+            return Response(
+                {"detail": "You do not have permission to access this document."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return Response(
+            DocumentListSerializer(document).data, status=status.HTTP_200_OK
+        )
+
+    # ── destroy ───────────────────────────────────────────────────────
+
+    @extend_schema(summary="Delete a document (HR/admin only)", responses={204: None})
+    def destroy(self, request, pk=None):
+        if not is_hr_or_admin(request.user):
+            return Response(
+                {"detail": "Only HR or admin users can delete documents."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        document = self._get_document_or_404(pk)
+        if not document:
+            return Response(
+                {"detail": "Document not found."}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        hard_delete_document(document)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    # ── download ──────────────────────────────────────────────────────
+
+    @extend_schema(
+        summary="Get a signed download URL",
+        responses={
+            200: {"type": "object", "properties": {"signed_url": {"type": "string"}}}
+        },
+    )
+    @action(detail=True, methods=["get"], url_path="download")
+    def download(self, request, pk=None):
+        document = self._get_document_or_404(pk)
+        if not document:
+            return Response(
+                {"detail": "Document not found."}, status=status.HTTP_404_NOT_FOUND
+            )
+        if not is_document_accessible(request.user, document):
+            return Response(
+                {"detail": "You do not have permission to access this document."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        signed_url = generate_presigned_url(document.file_key, expiry_seconds=600)
+        return Response({"signed_url": signed_url}, status=status.HTTP_200_OK)
+
+    # ── preview ───────────────────────────────────────────────────────
+
+    @extend_schema(
+        summary="Get a signed preview URL",
+        responses={
+            200: {"type": "object", "properties": {"preview_url": {"type": "string"}}}
+        },
+    )
+    @action(detail=True, methods=["get"], url_path="preview")
+    def preview(self, request, pk=None):
+        document = self._get_document_or_404(pk)
+        if not document:
+            return Response(
+                {"detail": "Document not found."}, status=status.HTTP_404_NOT_FOUND
+            )
+        if not is_document_accessible(request.user, document):
+            return Response(
+                {"detail": "You do not have permission to access this document."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        viewable_types = {"application/pdf", "image/png", "image/jpeg"}
+        if document.mime_type not in viewable_types:
+            return Response(
+                {"detail": "Preview not available for this file type."},
+                status=status.HTTP_501_NOT_IMPLEMENTED,
+            )
+
+        preview_url = generate_presigned_url(
+            document.file_key, expiry_seconds=300, inline=True
+        )
+        return Response({"preview_url": preview_url}, status=status.HTTP_200_OK)
+
+    # ── archive ───────────────────────────────────────────────────────
+
+    @extend_schema(
+        summary="Archive a document (HR/admin only)",
+        responses={200: DocumentListSerializer},
+    )
+    @action(detail=True, methods=["post"], url_path="archive")
+    def archive(self, request, pk=None):
+        if not is_hr_or_admin(request.user):
+            return Response(
+                {"detail": "Only HR or admin users can archive documents."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        document = self._get_document_or_404(pk)
+        if not document:
+            return Response(
+                {"detail": "Document not found."}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        document = archive_document(document)
+        return Response(
+            DocumentListSerializer(document).data, status=status.HTTP_200_OK
+        )
+
+    # ── request-signature ─────────────────────────────────────────────
+
+    @extend_schema(
+        summary="Initiate e-signature workflow (HR/admin only)",
+        request=RequestSignatureSerializer,
+        responses={200: DocumentListSerializer},
+    )
+    @action(detail=True, methods=["post"], url_path="request-signature")
+    def request_signature(self, request, pk=None):
+        if not is_hr_or_admin(request.user):
+            return Response(
+                {"detail": "Only HR or admin users can request signatures."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        document = self._get_document_or_404(pk)
+        if not document:
+            return Response(
+                {"detail": "Document not found."}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        if document.signature_status == Document.SignatureStatus.PENDING:
+            return Response(
+                {"detail": "A signature workflow is already active for this document."},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        serializer = RequestSignatureSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        signer_data = serializer.validated_data["signers"]
+
+        DocumentSigner.objects.filter(document=document).delete()
+        for entry in signer_data:
+            DocumentSigner.objects.create(
+                document=document,
+                name=entry["name"],
+                email=entry["email"],
+                status=DocumentSigner.Status.PENDING,
+            )
+
+        document.signature_status = Document.SignatureStatus.PENDING
+        document.save(update_fields=["signature_status"])
+
+        return Response(
+            DocumentListSerializer(
+                Document.objects.prefetch_related("signers", "versions")
+                .select_related("uploaded_by__user")
+                .get(pk=document.pk)
+            ).data,
+            status=status.HTTP_200_OK,
+        )
+
+    # ── send-reminder ─────────────────────────────────────────────────
+
+    @extend_schema(summary="Re-send signature reminder emails", responses={204: None})
+    @action(detail=True, methods=["post"], url_path="send-reminder")
+    def send_reminder(self, request, pk=None):
+        document = self._get_document_or_404(pk)
+        if not document:
+            return Response(
+                {"detail": "Document not found."}, status=status.HTTP_404_NOT_FOUND
+            )
+        if not is_document_accessible(request.user, document):
+            return Response(
+                {"detail": "You do not have permission to access this document."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        pending_signers = document.signers.filter(status=DocumentSigner.Status.PENDING)
+        if not pending_signers.exists():
+            return Response(
+                {"detail": "No pending signers to remind."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Placeholder: email sending would be implemented with the email backend
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    # ── versions ──────────────────────────────────────────────────────
+
+    @extend_schema(
+        summary="List version history for a document",
+        responses={200: DocumentVersionSerializer(many=True)},
+    )
+    @action(detail=True, methods=["get"], url_path="versions")
+    def versions(self, request, pk=None):
+        document = self._get_document_or_404(pk)
+        if not document:
+            return Response(
+                {"detail": "Document not found."}, status=status.HTTP_404_NOT_FOUND
+            )
+        if not is_document_accessible(request.user, document):
+            return Response(
+                {"detail": "You do not have permission to access this document."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        version_qs = document.versions.select_related("uploaded_by__user").order_by(
+            "version"
+        )
+        count = version_qs.count()
+        serializer = DocumentVersionSerializer(version_qs, many=True)
+        return Response(
+            {"count": count, "results": serializer.data}, status=status.HTTP_200_OK
+        )
+
+    # ── bulk-delete ───────────────────────────────────────────────────
+
+    @extend_schema(
+        summary="Bulk hard-delete documents (HR/admin only)",
+        request=BulkIdsSerializer,
+        responses={204: None},
+    )
+    @action(detail=False, methods=["post"], url_path="bulk-delete")
+    def bulk_delete(self, request):
+        if not is_hr_or_admin(request.user):
+            return Response(
+                {"detail": "Only HR or admin users can bulk delete documents."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        serializer = BulkIdsSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        ids = serializer.validated_data["ids"]
+
+        found = list(Document.objects.filter(pk__in=ids).prefetch_related("versions"))
+        found_ids = {doc.pk for doc in found}
+        missing = [i for i in ids if i not in found_ids]
+        if missing:
+            return Response({"not_found": missing}, status=status.HTTP_404_NOT_FOUND)
+
+        bulk_hard_delete(found)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    # ── bulk-archive ──────────────────────────────────────────────────
+
+    @extend_schema(
+        summary="Bulk archive documents (HR/admin only)",
+        request=BulkIdsSerializer,
+        responses={204: None},
+    )
+    @action(detail=False, methods=["post"], url_path="bulk-archive")
+    def bulk_archive(self, request):
+        if not is_hr_or_admin(request.user):
+            return Response(
+                {"detail": "Only HR or admin users can bulk archive documents."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        serializer = BulkIdsSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        ids = serializer.validated_data["ids"]
+
+        documents = list(Document.objects.filter(pk__in=ids))
+        found_ids = {doc.pk for doc in documents}
+        missing = [i for i in ids if i not in found_ids]
+        if missing:
+            return Response({"not_found": missing}, status=status.HTTP_404_NOT_FOUND)
+
+        bulk_archive(documents)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    # ── bulk-download ─────────────────────────────────────────────────
+
+    @extend_schema(
+        summary="Bulk download documents as a ZIP",
+        request=BulkIdsSerializer,
+        responses={
+            200: {"type": "object", "properties": {"download_url": {"type": "string"}}}
+        },
+    )
+    @action(detail=False, methods=["post"], url_path="bulk-download")
+    def bulk_download(self, request):
+        serializer = BulkIdsSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        ids = serializer.validated_data["ids"]
+
+        if len(ids) > 50:
+            return Response(
+                {"detail": "Maximum 50 documents per bulk download."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        documents = list(Document.objects.filter(pk__in=ids))
+        accessible = [d for d in documents if is_document_accessible(request.user, d)]
+
+        if not accessible:
+            return Response(
+                {"detail": "You do not have access to any of the requested documents."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        download_url = generate_zip_url(accessible, request.user)
+        return Response({"download_url": download_url}, status=status.HTTP_200_OK)
+
+    # ── export ────────────────────────────────────────────────────────
+
+    @extend_schema(
+        summary="Export document list as CSV (HR/admin only)",
+        parameters=[
+            OpenApiParameter("category", str, description="Optional category filter")
+        ],
+        responses={
+            200: {"type": "object", "properties": {"export_url": {"type": "string"}}}
+        },
+    )
+    @action(detail=False, methods=["get"], url_path="export")
+    def export(self, request):
+        if not is_hr_or_admin(request.user):
+            return Response(
+                {"detail": "Only HR or admin users can export documents."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        queryset = self._base_queryset(request).filter(archived=False)
+        category = request.query_params.get("category")
+        if category:
+            if category not in Document.Category.values:
+                return Response(
+                    {"detail": "Invalid category filter."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            queryset = queryset.filter(category=category)
+
+        accessible = filter_accessible_documents(request.user, queryset)
+        export_url = export_documents_csv(accessible)
+        return Response({"export_url": export_url}, status=status.HTTP_200_OK)

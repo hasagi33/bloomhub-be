@@ -656,6 +656,627 @@ paths:
               schema:
                 $ref: '#/components/schemas/DepartmentListResponse'
           description: ''
+  /api/documents/:
+    get:
+      operationId: documents_list
+      description: |-
+        Full document management viewset.
+
+        Endpoints:
+          GET    /api/documents/                    list
+          POST   /api/documents/                    create (upload)
+          GET    /api/documents/{id}/               retrieve
+          DELETE /api/documents/{id}/               destroy (HR/admin)
+          GET    /api/documents/{id}/download/      signed download URL
+          GET    /api/documents/{id}/preview/       signed preview URL
+          POST   /api/documents/{id}/archive/       soft-delete (HR/admin)
+          POST   /api/documents/{id}/request-signature/  start e-sig workflow (HR/admin)
+          POST   /api/documents/{id}/send-reminder/ resend signature emails
+          GET    /api/documents/{id}/versions/      version history
+          POST   /api/documents/bulk-delete/        bulk hard-delete (HR/admin)
+          POST   /api/documents/bulk-archive/       bulk soft-delete (HR/admin)
+          POST   /api/documents/bulk-download/      ZIP download URL
+          GET    /api/documents/export/             CSV export URL (HR/admin)
+      summary: List documents
+      parameters:
+      - in: query
+        name: archived
+        schema:
+          type: string
+        description: Pass true to list archived docs
+      - in: query
+        name: category
+        schema:
+          type: string
+        description: Filter by category
+      - in: query
+        name: expiry_filter
+        schema:
+          type: string
+        description: expiring_soon or expired
+      - in: query
+        name: ordering
+        schema:
+          type: string
+        description: Field to sort by
+      - in: query
+        name: page
+        schema:
+          type: integer
+      - in: query
+        name: page_size
+        schema:
+          type: integer
+      - in: query
+        name: search
+        schema:
+          type: string
+        description: Search name/description/tags
+      - in: query
+        name: signature_status
+        schema:
+          type: string
+        description: Filter by signature status
+      tags:
+      - Documents
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedDocumentListList'
+          description: ''
+    post:
+      operationId: documents_create
+      description: |-
+        Full document management viewset.
+
+        Endpoints:
+          GET    /api/documents/                    list
+          POST   /api/documents/                    create (upload)
+          GET    /api/documents/{id}/               retrieve
+          DELETE /api/documents/{id}/               destroy (HR/admin)
+          GET    /api/documents/{id}/download/      signed download URL
+          GET    /api/documents/{id}/preview/       signed preview URL
+          POST   /api/documents/{id}/archive/       soft-delete (HR/admin)
+          POST   /api/documents/{id}/request-signature/  start e-sig workflow (HR/admin)
+          POST   /api/documents/{id}/send-reminder/ resend signature emails
+          GET    /api/documents/{id}/versions/      version history
+          POST   /api/documents/bulk-delete/        bulk hard-delete (HR/admin)
+          POST   /api/documents/bulk-archive/       bulk soft-delete (HR/admin)
+          POST   /api/documents/bulk-download/      ZIP download URL
+          GET    /api/documents/export/             CSV export URL (HR/admin)
+      summary: Upload a document
+      tags:
+      - Documents
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DocumentCreateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DocumentCreateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DocumentCreateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentList'
+          description: ''
+  /api/documents/{id}/:
+    get:
+      operationId: documents_retrieve
+      description: |-
+        Full document management viewset.
+
+        Endpoints:
+          GET    /api/documents/                    list
+          POST   /api/documents/                    create (upload)
+          GET    /api/documents/{id}/               retrieve
+          DELETE /api/documents/{id}/               destroy (HR/admin)
+          GET    /api/documents/{id}/download/      signed download URL
+          GET    /api/documents/{id}/preview/       signed preview URL
+          POST   /api/documents/{id}/archive/       soft-delete (HR/admin)
+          POST   /api/documents/{id}/request-signature/  start e-sig workflow (HR/admin)
+          POST   /api/documents/{id}/send-reminder/ resend signature emails
+          GET    /api/documents/{id}/versions/      version history
+          POST   /api/documents/bulk-delete/        bulk hard-delete (HR/admin)
+          POST   /api/documents/bulk-archive/       bulk soft-delete (HR/admin)
+          POST   /api/documents/bulk-download/      ZIP download URL
+          GET    /api/documents/export/             CSV export URL (HR/admin)
+      summary: Get a single document
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - Documents
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentList'
+          description: ''
+    delete:
+      operationId: documents_destroy
+      description: |-
+        Full document management viewset.
+
+        Endpoints:
+          GET    /api/documents/                    list
+          POST   /api/documents/                    create (upload)
+          GET    /api/documents/{id}/               retrieve
+          DELETE /api/documents/{id}/               destroy (HR/admin)
+          GET    /api/documents/{id}/download/      signed download URL
+          GET    /api/documents/{id}/preview/       signed preview URL
+          POST   /api/documents/{id}/archive/       soft-delete (HR/admin)
+          POST   /api/documents/{id}/request-signature/  start e-sig workflow (HR/admin)
+          POST   /api/documents/{id}/send-reminder/ resend signature emails
+          GET    /api/documents/{id}/versions/      version history
+          POST   /api/documents/bulk-delete/        bulk hard-delete (HR/admin)
+          POST   /api/documents/bulk-archive/       bulk soft-delete (HR/admin)
+          POST   /api/documents/bulk-download/      ZIP download URL
+          GET    /api/documents/export/             CSV export URL (HR/admin)
+      summary: Delete a document (HR/admin only)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - Documents
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/documents/{id}/archive/:
+    post:
+      operationId: documents_archive_create
+      description: |-
+        Full document management viewset.
+
+        Endpoints:
+          GET    /api/documents/                    list
+          POST   /api/documents/                    create (upload)
+          GET    /api/documents/{id}/               retrieve
+          DELETE /api/documents/{id}/               destroy (HR/admin)
+          GET    /api/documents/{id}/download/      signed download URL
+          GET    /api/documents/{id}/preview/       signed preview URL
+          POST   /api/documents/{id}/archive/       soft-delete (HR/admin)
+          POST   /api/documents/{id}/request-signature/  start e-sig workflow (HR/admin)
+          POST   /api/documents/{id}/send-reminder/ resend signature emails
+          GET    /api/documents/{id}/versions/      version history
+          POST   /api/documents/bulk-delete/        bulk hard-delete (HR/admin)
+          POST   /api/documents/bulk-archive/       bulk soft-delete (HR/admin)
+          POST   /api/documents/bulk-download/      ZIP download URL
+          GET    /api/documents/export/             CSV export URL (HR/admin)
+      summary: Archive a document (HR/admin only)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - Documents
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentList'
+          description: ''
+  /api/documents/{id}/download/:
+    get:
+      operationId: documents_download_retrieve
+      description: |-
+        Full document management viewset.
+
+        Endpoints:
+          GET    /api/documents/                    list
+          POST   /api/documents/                    create (upload)
+          GET    /api/documents/{id}/               retrieve
+          DELETE /api/documents/{id}/               destroy (HR/admin)
+          GET    /api/documents/{id}/download/      signed download URL
+          GET    /api/documents/{id}/preview/       signed preview URL
+          POST   /api/documents/{id}/archive/       soft-delete (HR/admin)
+          POST   /api/documents/{id}/request-signature/  start e-sig workflow (HR/admin)
+          POST   /api/documents/{id}/send-reminder/ resend signature emails
+          GET    /api/documents/{id}/versions/      version history
+          POST   /api/documents/bulk-delete/        bulk hard-delete (HR/admin)
+          POST   /api/documents/bulk-archive/       bulk soft-delete (HR/admin)
+          POST   /api/documents/bulk-download/      ZIP download URL
+          GET    /api/documents/export/             CSV export URL (HR/admin)
+      summary: Get a signed download URL
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - Documents
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  signed_url:
+                    type: string
+          description: ''
+  /api/documents/{id}/preview/:
+    get:
+      operationId: documents_preview_retrieve
+      description: |-
+        Full document management viewset.
+
+        Endpoints:
+          GET    /api/documents/                    list
+          POST   /api/documents/                    create (upload)
+          GET    /api/documents/{id}/               retrieve
+          DELETE /api/documents/{id}/               destroy (HR/admin)
+          GET    /api/documents/{id}/download/      signed download URL
+          GET    /api/documents/{id}/preview/       signed preview URL
+          POST   /api/documents/{id}/archive/       soft-delete (HR/admin)
+          POST   /api/documents/{id}/request-signature/  start e-sig workflow (HR/admin)
+          POST   /api/documents/{id}/send-reminder/ resend signature emails
+          GET    /api/documents/{id}/versions/      version history
+          POST   /api/documents/bulk-delete/        bulk hard-delete (HR/admin)
+          POST   /api/documents/bulk-archive/       bulk soft-delete (HR/admin)
+          POST   /api/documents/bulk-download/      ZIP download URL
+          GET    /api/documents/export/             CSV export URL (HR/admin)
+      summary: Get a signed preview URL
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - Documents
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  preview_url:
+                    type: string
+          description: ''
+  /api/documents/{id}/request-signature/:
+    post:
+      operationId: documents_request_signature_create
+      description: |-
+        Full document management viewset.
+
+        Endpoints:
+          GET    /api/documents/                    list
+          POST   /api/documents/                    create (upload)
+          GET    /api/documents/{id}/               retrieve
+          DELETE /api/documents/{id}/               destroy (HR/admin)
+          GET    /api/documents/{id}/download/      signed download URL
+          GET    /api/documents/{id}/preview/       signed preview URL
+          POST   /api/documents/{id}/archive/       soft-delete (HR/admin)
+          POST   /api/documents/{id}/request-signature/  start e-sig workflow (HR/admin)
+          POST   /api/documents/{id}/send-reminder/ resend signature emails
+          GET    /api/documents/{id}/versions/      version history
+          POST   /api/documents/bulk-delete/        bulk hard-delete (HR/admin)
+          POST   /api/documents/bulk-archive/       bulk soft-delete (HR/admin)
+          POST   /api/documents/bulk-download/      ZIP download URL
+          GET    /api/documents/export/             CSV export URL (HR/admin)
+      summary: Initiate e-signature workflow (HR/admin only)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - Documents
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequestSignatureRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RequestSignatureRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RequestSignatureRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentList'
+          description: ''
+  /api/documents/{id}/send-reminder/:
+    post:
+      operationId: documents_send_reminder_create
+      description: |-
+        Full document management viewset.
+
+        Endpoints:
+          GET    /api/documents/                    list
+          POST   /api/documents/                    create (upload)
+          GET    /api/documents/{id}/               retrieve
+          DELETE /api/documents/{id}/               destroy (HR/admin)
+          GET    /api/documents/{id}/download/      signed download URL
+          GET    /api/documents/{id}/preview/       signed preview URL
+          POST   /api/documents/{id}/archive/       soft-delete (HR/admin)
+          POST   /api/documents/{id}/request-signature/  start e-sig workflow (HR/admin)
+          POST   /api/documents/{id}/send-reminder/ resend signature emails
+          GET    /api/documents/{id}/versions/      version history
+          POST   /api/documents/bulk-delete/        bulk hard-delete (HR/admin)
+          POST   /api/documents/bulk-archive/       bulk soft-delete (HR/admin)
+          POST   /api/documents/bulk-download/      ZIP download URL
+          GET    /api/documents/export/             CSV export URL (HR/admin)
+      summary: Re-send signature reminder emails
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - Documents
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/documents/{id}/versions/:
+    get:
+      operationId: documents_versions_list
+      description: |-
+        Full document management viewset.
+
+        Endpoints:
+          GET    /api/documents/                    list
+          POST   /api/documents/                    create (upload)
+          GET    /api/documents/{id}/               retrieve
+          DELETE /api/documents/{id}/               destroy (HR/admin)
+          GET    /api/documents/{id}/download/      signed download URL
+          GET    /api/documents/{id}/preview/       signed preview URL
+          POST   /api/documents/{id}/archive/       soft-delete (HR/admin)
+          POST   /api/documents/{id}/request-signature/  start e-sig workflow (HR/admin)
+          POST   /api/documents/{id}/send-reminder/ resend signature emails
+          GET    /api/documents/{id}/versions/      version history
+          POST   /api/documents/bulk-delete/        bulk hard-delete (HR/admin)
+          POST   /api/documents/bulk-archive/       bulk soft-delete (HR/admin)
+          POST   /api/documents/bulk-download/      ZIP download URL
+          GET    /api/documents/export/             CSV export URL (HR/admin)
+      summary: List version history for a document
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      tags:
+      - Documents
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedDocumentVersionList'
+          description: ''
+  /api/documents/bulk-archive/:
+    post:
+      operationId: documents_bulk_archive_create
+      description: |-
+        Full document management viewset.
+
+        Endpoints:
+          GET    /api/documents/                    list
+          POST   /api/documents/                    create (upload)
+          GET    /api/documents/{id}/               retrieve
+          DELETE /api/documents/{id}/               destroy (HR/admin)
+          GET    /api/documents/{id}/download/      signed download URL
+          GET    /api/documents/{id}/preview/       signed preview URL
+          POST   /api/documents/{id}/archive/       soft-delete (HR/admin)
+          POST   /api/documents/{id}/request-signature/  start e-sig workflow (HR/admin)
+          POST   /api/documents/{id}/send-reminder/ resend signature emails
+          GET    /api/documents/{id}/versions/      version history
+          POST   /api/documents/bulk-delete/        bulk hard-delete (HR/admin)
+          POST   /api/documents/bulk-archive/       bulk soft-delete (HR/admin)
+          POST   /api/documents/bulk-download/      ZIP download URL
+          GET    /api/documents/export/             CSV export URL (HR/admin)
+      summary: Bulk archive documents (HR/admin only)
+      tags:
+      - Documents
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkIdsRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BulkIdsRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BulkIdsRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/documents/bulk-delete/:
+    post:
+      operationId: documents_bulk_delete_create
+      description: |-
+        Full document management viewset.
+
+        Endpoints:
+          GET    /api/documents/                    list
+          POST   /api/documents/                    create (upload)
+          GET    /api/documents/{id}/               retrieve
+          DELETE /api/documents/{id}/               destroy (HR/admin)
+          GET    /api/documents/{id}/download/      signed download URL
+          GET    /api/documents/{id}/preview/       signed preview URL
+          POST   /api/documents/{id}/archive/       soft-delete (HR/admin)
+          POST   /api/documents/{id}/request-signature/  start e-sig workflow (HR/admin)
+          POST   /api/documents/{id}/send-reminder/ resend signature emails
+          GET    /api/documents/{id}/versions/      version history
+          POST   /api/documents/bulk-delete/        bulk hard-delete (HR/admin)
+          POST   /api/documents/bulk-archive/       bulk soft-delete (HR/admin)
+          POST   /api/documents/bulk-download/      ZIP download URL
+          GET    /api/documents/export/             CSV export URL (HR/admin)
+      summary: Bulk hard-delete documents (HR/admin only)
+      tags:
+      - Documents
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkIdsRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BulkIdsRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BulkIdsRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/documents/bulk-download/:
+    post:
+      operationId: documents_bulk_download_create
+      description: |-
+        Full document management viewset.
+
+        Endpoints:
+          GET    /api/documents/                    list
+          POST   /api/documents/                    create (upload)
+          GET    /api/documents/{id}/               retrieve
+          DELETE /api/documents/{id}/               destroy (HR/admin)
+          GET    /api/documents/{id}/download/      signed download URL
+          GET    /api/documents/{id}/preview/       signed preview URL
+          POST   /api/documents/{id}/archive/       soft-delete (HR/admin)
+          POST   /api/documents/{id}/request-signature/  start e-sig workflow (HR/admin)
+          POST   /api/documents/{id}/send-reminder/ resend signature emails
+          GET    /api/documents/{id}/versions/      version history
+          POST   /api/documents/bulk-delete/        bulk hard-delete (HR/admin)
+          POST   /api/documents/bulk-archive/       bulk soft-delete (HR/admin)
+          POST   /api/documents/bulk-download/      ZIP download URL
+          GET    /api/documents/export/             CSV export URL (HR/admin)
+      summary: Bulk download documents as a ZIP
+      tags:
+      - Documents
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkIdsRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BulkIdsRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BulkIdsRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  download_url:
+                    type: string
+          description: ''
+  /api/documents/export/:
+    get:
+      operationId: documents_export_retrieve
+      description: |-
+        Full document management viewset.
+
+        Endpoints:
+          GET    /api/documents/                    list
+          POST   /api/documents/                    create (upload)
+          GET    /api/documents/{id}/               retrieve
+          DELETE /api/documents/{id}/               destroy (HR/admin)
+          GET    /api/documents/{id}/download/      signed download URL
+          GET    /api/documents/{id}/preview/       signed preview URL
+          POST   /api/documents/{id}/archive/       soft-delete (HR/admin)
+          POST   /api/documents/{id}/request-signature/  start e-sig workflow (HR/admin)
+          POST   /api/documents/{id}/send-reminder/ resend signature emails
+          GET    /api/documents/{id}/versions/      version history
+          POST   /api/documents/bulk-delete/        bulk hard-delete (HR/admin)
+          POST   /api/documents/bulk-archive/       bulk soft-delete (HR/admin)
+          POST   /api/documents/bulk-download/      ZIP download URL
+          GET    /api/documents/export/             CSV export URL (HR/admin)
+      summary: Export document list as CSV (HR/admin only)
+      parameters:
+      - in: query
+        name: category
+        schema:
+          type: string
+        description: Optional category filter
+      tags:
+      - Documents
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  export_url:
+                    type: string
+          description: ''
   /api/employees/:
     get:
       operationId: employees_list
@@ -3503,6 +4124,16 @@ components:
       required:
       - endpoints
       - message
+    AllowedRolesEnum:
+      enum:
+      - employee
+      - hr
+      - admin
+      type: string
+      description: |-
+        * `employee` - Employee
+        * `hr` - HR
+        * `admin` - Admin
     Asset:
       type: object
       description: Serializer for Asset model
@@ -3912,6 +4543,16 @@ components:
     BlankEnum:
       enum:
       - ''
+    BulkIdsRequest:
+      type: object
+      properties:
+        ids:
+          type: array
+          items:
+            type: integer
+            minimum: 1
+      required:
+      - ids
     CPFLevelListResponse:
       type: object
       properties:
@@ -3929,6 +4570,26 @@ components:
       required:
       - cpf_levels
       - user_role
+    CategoryEnum:
+      enum:
+      - contracts
+      - policies
+      - agreements
+      - compliance
+      - onboarding
+      - training
+      - benefits
+      - other
+      type: string
+      description: |-
+        * `contracts` - Contracts
+        * `policies` - Policies
+        * `agreements` - Agreements
+        * `compliance` - Compliance
+        * `onboarding` - Onboarding
+        * `training` - Training
+        * `benefits` - Benefits
+        * `other` - Other
     ChecklistTask:
       type: object
       properties:
@@ -4035,6 +4696,169 @@ components:
             type: string
       required:
       - departments
+    DocumentCreateRequest:
+      type: object
+      properties:
+        file:
+          type: string
+          format: binary
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        category:
+          $ref: '#/components/schemas/CategoryEnum'
+        description:
+          type: string
+          default: ''
+        expiry_date:
+          type: string
+          format: date
+          nullable: true
+        is_confidential:
+          type: boolean
+          default: false
+        tags:
+          type: array
+          items:
+            type: string
+            minLength: 1
+        allowed_roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/AllowedRolesEnum'
+      required:
+      - category
+      - file
+      - name
+    DocumentList:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+        category:
+          $ref: '#/components/schemas/CategoryEnum'
+        file_name:
+          type: string
+          readOnly: true
+        file_size:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+        mime_type:
+          type: string
+          maxLength: 100
+        uploaded_by_name:
+          type: string
+          readOnly: true
+        uploaded_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        expiry_date:
+          type: string
+          format: date
+          nullable: true
+        signature_status:
+          $ref: '#/components/schemas/SignatureStatusEnum'
+        is_confidential:
+          type: boolean
+        tags: {}
+        allowed_roles: {}
+        current_version:
+          type: string
+          maxLength: 20
+        version_count:
+          type: integer
+          readOnly: true
+        signers:
+          type: array
+          items:
+            $ref: '#/components/schemas/DocumentSigner'
+          readOnly: true
+      required:
+      - file_name
+      - id
+      - name
+      - signers
+      - updated_at
+      - uploaded_at
+      - uploaded_by_name
+      - version_count
+    DocumentSigner:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          maxLength: 255
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        status:
+          $ref: '#/components/schemas/DocumentSignerStatusEnum'
+        signed_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - email
+      - id
+      - name
+      - signed_at
+    DocumentSignerStatusEnum:
+      enum:
+      - pending
+      - signed
+      - notsent
+      type: string
+      description: |-
+        * `pending` - Pending
+        * `signed` - Signed
+        * `notsent` - Not Sent
+    DocumentVersion:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        version:
+          type: string
+          maxLength: 20
+        uploaded_at:
+          type: string
+          format: date-time
+          readOnly: true
+        uploaded_by_name:
+          type: string
+          readOnly: true
+        file_size:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+        notes:
+          type: string
+      required:
+      - id
+      - uploaded_at
+      - uploaded_by_name
+      - version
     EmployeeProfile:
       type: object
       properties:
@@ -4779,6 +5603,52 @@ components:
         * `partially_meets` - Partially Meets Expectations
         * `needs_improvement` - Needs Improvement
         * `unsatisfactory` - Unsatisfactory
+    PaginatedDocumentListList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/DocumentList'
+    PaginatedDocumentVersionList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/DocumentVersion'
     PatchedChecklistTemplateRequest:
       type: object
       properties:
@@ -5948,6 +6818,15 @@ components:
       required:
       - asset
       - reason
+    RequestSignatureRequest:
+      type: object
+      properties:
+        signers:
+          type: array
+          items:
+            $ref: '#/components/schemas/SignerInputRequest'
+      required:
+      - signers
     ReviewTypeEnum:
       enum:
       - quarterly
@@ -5990,6 +6869,34 @@ components:
           type: string
       required:
       - id
+      - name
+    SignatureStatusEnum:
+      enum:
+      - pending
+      - signed
+      - rejected
+      - expired
+      - not_required
+      type: string
+      description: |-
+        * `pending` - Pending
+        * `signed` - Signed
+        * `rejected` - Rejected
+        * `expired` - Expired
+        * `not_required` - Not Required
+    SignerInputRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        email:
+          type: string
+          format: email
+          minLength: 1
+      required:
+      - email
       - name
     StatusB39Enum:
       enum:
