@@ -1,5 +1,6 @@
 from rest_framework import permissions
 
+from .enums import ReviewNoteVisibility
 from .models import Permission
 
 
@@ -269,7 +270,7 @@ def can_edit_review_note(user, note):
     is_reviewer = getattr(review, "reviewer_id", None) == profile.id
     is_employee = getattr(review, "employee_id", None) == profile.id
 
-    if note.visibility == "private":
+    if note.visibility == ReviewNoteVisibility.PRIVATE:
         return is_reviewer and has_review_permission(user, "add_private_feedback")
 
     return (is_reviewer and has_review_permission(user, "add_shared_feedback")) or (

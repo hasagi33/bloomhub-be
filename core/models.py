@@ -13,6 +13,36 @@ from django.utils import timezone
 from django.utils.text import slugify
 
 from .avatar_utils import generate_initials_avatar_png, get_initials
+from .enums import (
+    ActionPointStatus,
+    AssetCondition,
+    AssetStatus,
+    ChecklistInstanceStatus,
+    ChecklistTaskStatus,
+    ChecklistType,
+    DocumentAccessRole,
+    DocumentSignatureStatus,
+    DocumentSignerStatus,
+    EmployeeDocumentProviderType,
+    EmployeeDocumentSourceType,
+    EmployeeDocumentType,
+    EmploymentStatus,
+    LeaveRequestStatus,
+    LeaveType,
+    LeaveWorkflowStatus,
+    ProjectAssignmentStatus,
+    ReminderType,
+    ReviewEventType,
+    ReviewNoteVisibility,
+    ReviewOutcome,
+    ReviewStatus,
+    ReviewType,
+    TaskRole,
+    TrackedField,
+)
+from .enums import (
+    DocumentCategory as _DocumentCategory,
+)
 
 
 def employee_document_upload_to(instance: "EmployeeDocument", filename: str) -> str:
@@ -40,8 +70,7 @@ def employee_document_upload_to(instance: "EmployeeDocument", filename: str) -> 
 
     now = timezone.now()
     return (
-        f"employee_documents/{first}-{last}-{profile.pk}/"
-        f"{now:%Y}/{now:%m}/{stem}{ext}"
+        f"employee_documents/{first}-{last}-{profile.pk}/{now:%Y}/{now:%m}/{stem}{ext}"
     )
 
 
@@ -181,9 +210,8 @@ class Equipment(models.Model):
 
 
 class UserProfile(models.Model):
-    class EmploymentStatus(models.TextChoices):
-        ACTIVE = "active", "Active"
-        INACTIVE = "inactive", "Inactive"
+    # Enum alias — defined in core/enums.py; kept here for backward-compat access
+    EmploymentStatus = EmploymentStatus
 
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
     role = models.ForeignKey(Role, on_delete=models.SET_NULL, null=True, blank=True)
@@ -295,26 +323,22 @@ class UserProfile(models.Model):
         verbose_name_plural = "Employee Profiles"
 
 
-class DocumentType(models.TextChoices):
-    CV = "cv", "CV"
-    OTHER = "other", "Other"
+# Backward-compat alias: views import DocumentType from .models
+DocumentType = EmployeeDocumentType
 
 
 class EmployeeDocument(models.Model):
-    class SourceType(models.TextChoices):
-        FILE = "file", "File"
-        EXTERNAL_LINK = "external_link", "External Link"
-
-    class ProviderType(models.TextChoices):
-        INTERNAL = "internal", "Internal"
-        CANVA = "canva", "Canva"
-        OTHER = "other", "Other"
+    # Enum aliases — defined in core/enums.py; kept here for backward-compat access
+    SourceType = EmployeeDocumentSourceType
+    ProviderType = EmployeeDocumentProviderType
 
     user_profile = models.ForeignKey(
         UserProfile, on_delete=models.CASCADE, related_name="documents"
     )
     doc_type = models.CharField(
-        max_length=20, choices=DocumentType.choices, default=DocumentType.CV
+        max_length=20,
+        choices=EmployeeDocumentType.choices,
+        default=EmployeeDocumentType.CV,
     )
     file = models.FileField(
         upload_to=employee_document_upload_to, null=True, blank=True
@@ -323,10 +347,14 @@ class EmployeeDocument(models.Model):
     uploaded_at = models.DateTimeField(auto_now_add=True)
     is_current = models.BooleanField(default=False)
     source_type = models.CharField(
-        max_length=20, choices=SourceType.choices, default=SourceType.FILE
+        max_length=20,
+        choices=EmployeeDocumentSourceType.choices,
+        default=EmployeeDocumentSourceType.FILE,
     )
     provider = models.CharField(
-        max_length=20, choices=ProviderType.choices, default=ProviderType.INTERNAL
+        max_length=20,
+        choices=EmployeeDocumentProviderType.choices,
+        default=EmployeeDocumentProviderType.INTERNAL,
     )
     external_url = models.URLField(blank=True, null=True)
     file_name = models.CharField(max_length=255, blank=True, null=True)
@@ -357,29 +385,116 @@ class DocumentCategory(models.Model):
 
 
 class Document(models.Model):
+    Category = _DocumentCategory
+    SignatureStatus = DocumentSignatureStatus
+    AccessRole = DocumentAccessRole
     employee = models.ForeignKey(
-        UserProfile, on_delete=models.CASCADE, related_name="managed_documents"
+        UserProfile,
+        on_delete=models.CASCADE,
+        related_name="managed_documents",
+        null=True,
+        blank=True,
     )
-    category = models.ForeignKey(
-        DocumentCategory, on_delete=models.PROTECT, related_name="documents"
+    uploaded_by = models.ForeignKey(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="uploaded_documents",
+    )
+    category = models.CharField(
+        max_length=20,
+        choices=_DocumentCategory.choices,
+        default=_DocumentCategory.OTHER,
     )
     file_key = models.CharField(max_length=500)
     name = models.CharField(max_length=255)
+    description = models.TextField(blank=True, default="")
+    original_filename = models.CharField(max_length=255, blank=True, default="")
+    file_size = models.PositiveBigIntegerField(default=0)
+    mime_type = models.CharField(max_length=100, blank=True, default="")
     uploaded_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
     expiry_date = models.DateField(blank=True, null=True)
     signed_at = models.DateTimeField(blank=True, null=True)
+    signature_status = models.CharField(
+        max_length=20,
+        choices=DocumentSignatureStatus.choices,
+        default=DocumentSignatureStatus.NOT_REQUIRED,
+    )
+    is_confidential = models.BooleanField(default=False)
+    tags = models.JSONField(default=list, blank=True)
+    allowed_roles = models.JSONField(default=list, blank=True)
+    archived = models.BooleanField(default=False)
+    current_version = models.CharField(max_length=20, default="1.0")
 
     class Meta:
         verbose_name = "Document"
         verbose_name_plural = "Documents"
-        ordering = ["-uploaded_at"]
+        ordering = ["-updated_at"]
         indexes = [
-            models.Index(fields=["employee", "category"]),
+            models.Index(fields=["category"]),
+            models.Index(fields=["signature_status"]),
             models.Index(fields=["expiry_date"]),
+            models.Index(fields=["archived"]),
         ]
 
     def __str__(self):
-        return f"{self.name} ({self.employee.user.username})"
+        return self.name
+
+
+class DocumentSigner(models.Model):
+    Status = DocumentSignerStatus
+    document = models.ForeignKey(
+        Document, on_delete=models.CASCADE, related_name="signers"
+    )
+    name = models.CharField(max_length=255)
+    email = models.EmailField()
+    status = models.CharField(
+        max_length=20,
+        choices=DocumentSignerStatus.choices,
+        default=DocumentSignerStatus.NOT_SENT,
+    )
+    signed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Document Signer"
+        verbose_name_plural = "Document Signers"
+        ordering = ["created_at"]
+
+    def __str__(self):
+        return f"{self.name} ({self.email}) – {self.status}"
+
+
+class DocumentVersion(models.Model):
+    document = models.ForeignKey(
+        Document, on_delete=models.CASCADE, related_name="versions"
+    )
+    version = models.CharField(max_length=20)
+    file_key = models.CharField(max_length=500)
+    file_size = models.PositiveBigIntegerField(default=0)
+    uploaded_by = models.ForeignKey(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="document_versions",
+    )
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    notes = models.TextField(blank=True, default="")
+
+    class Meta:
+        unique_together = ("document", "version")
+
+        verbose_name = "Document Version"
+
+        verbose_name_plural = "Document Versions"
+
+        ordering = ["version"]
+
+    def __str__(self):
+        return f"{self.document.name} v{self.version}"
 
 
 class ProjectAssignment(models.Model):
@@ -394,12 +509,8 @@ class ProjectAssignment(models.Model):
     end_date = models.DateField(blank=True, null=True)
     status = models.CharField(
         max_length=20,
-        choices=[
-            ("active", "Active"),
-            ("completed", "Completed"),
-            ("on_hold", "On Hold"),
-        ],
-        default="active",
+        choices=ProjectAssignmentStatus.choices,
+        default=ProjectAssignmentStatus.ACTIVE,
     )
 
     class Meta:
@@ -473,15 +584,8 @@ class ChangeLog(models.Model):
 
 
 class EmployeeProfileChangeHistory(models.Model):
-    class TrackedField(models.TextChoices):
-        ROLE = "role", "Role"
-        SALARY = "salary", "Salary"
-        CPF_LEVEL = "cpf_level", "CPF Level"
-        DEPARTMENT = "department", "Department"
-        MANAGER_IDS = "manager_ids", "Manager IDs"
-        EMPLOYMENT_STATUS = "employment_status", "Employment Status"
-        CAREER_LEVEL = "career_level", "Career Level"
-        START_DATE = "start_date", "Start Date"
+    # Enum alias — defined in core/enums.py; kept here for backward-compat access
+    TrackedField = TrackedField
 
     employee = models.ForeignKey(
         UserProfile,
@@ -512,21 +616,6 @@ class EmployeeProfileChangeHistory(models.Model):
 
     def __str__(self):
         return f"{self.employee.user.username} - {self.field} @ {self.changed_at.isoformat()}"
-
-
-class AssetStatus(models.TextChoices):
-    ACTIVE = "active", "Active"
-    LOST = "lost", "Lost"
-    RETURNED = "returned", "Returned"
-    DAMAGED = "damaged", "Damaged"
-
-
-class AssetCondition(models.TextChoices):
-    EXCELLENT = "excellent", "Excellent"
-    GOOD = "good", "Good"
-    FAIR = "fair", "Fair"
-    POOR = "poor", "Poor"
-    DAMAGED = "damaged", "Damaged"
 
 
 class Asset(models.Model):
@@ -806,15 +895,8 @@ class LeavePolicy(models.Model):
     Defines organizational leave policies for different leave types.
     """
 
-    class LeaveType(models.TextChoices):
-        VACATION = "vacation", "Vacation"
-        SICK = "sick", "Sick Leave"
-        WFH = "wfh", "Work From Home"
-        PERSONAL = "personal", "Personal"
-        MATERNITY = "maternity", "Maternity"
-        PATERNITY = "paternity", "Paternity"
-        BEREAVEMENT = "bereavement", "Bereavement"
-        UNPAID = "unpaid", "Unpaid Leave"
+    # Enum alias — defined in core/enums.py; kept here for backward-compat access
+    LeaveType = LeaveType
 
     leave_type = models.CharField(max_length=20, choices=LeaveType.choices, unique=True)
     allocated_days_per_year = models.PositiveIntegerField(
@@ -857,7 +939,7 @@ class LeaveBalance(models.Model):
     employee = models.ForeignKey(
         UserProfile, on_delete=models.CASCADE, related_name="leave_balances"
     )
-    leave_type = models.CharField(max_length=20, choices=LeavePolicy.LeaveType.choices)
+    leave_type = models.CharField(max_length=20, choices=LeaveType.choices)
     allocated = models.PositiveIntegerField(
         default=0, help_text="Total days allocated for this period"
     )
@@ -890,21 +972,20 @@ class LeaveRequest(models.Model):
     Represents an employee's leave request.
     """
 
-    class Status(models.TextChoices):
-        PENDING = "pending", "Pending"
-        APPROVED = "approved", "Approved"
-        REJECTED = "rejected", "Rejected"
-        CANCELLED = "cancelled", "Cancelled"
+    # Enum alias — defined in core/enums.py; kept here for backward-compat access
+    Status = LeaveRequestStatus
 
     employee = models.ForeignKey(
         UserProfile, on_delete=models.CASCADE, related_name="leave_requests"
     )
-    leave_type = models.CharField(max_length=20, choices=LeavePolicy.LeaveType.choices)
+    leave_type = models.CharField(max_length=20, choices=LeaveType.choices)
     start_date = models.DateField()
     end_date = models.DateField()
     reason = models.TextField()
     status = models.CharField(
-        max_length=20, choices=Status.choices, default=Status.PENDING
+        max_length=20,
+        choices=LeaveRequestStatus.choices,
+        default=LeaveRequestStatus.PENDING,
     )
     covering_employee = models.ForeignKey(
         UserProfile,
@@ -973,11 +1054,8 @@ class LeaveApprovalWorkflow(models.Model):
     Manages multi-level approval workflow for leave requests.
     """
 
-    class WorkflowStatus(models.TextChoices):
-        PENDING = "pending", "Pending"
-        IN_REVIEW = "in_review", "In Review"
-        APPROVED = "approved", "Approved"
-        REJECTED = "rejected", "Rejected"
+    # Enum alias — defined in core/enums.py; kept here for backward-compat access
+    WorkflowStatus = LeaveWorkflowStatus
 
     leave_request = models.OneToOneField(
         LeaveRequest, on_delete=models.CASCADE, related_name="approval_workflow"
@@ -995,7 +1073,9 @@ class LeaveApprovalWorkflow(models.Model):
         related_name="pending_approvals",
     )
     status = models.CharField(
-        max_length=20, choices=WorkflowStatus.choices, default=WorkflowStatus.PENDING
+        max_length=20,
+        choices=LeaveWorkflowStatus.choices,
+        default=LeaveWorkflowStatus.PENDING,
     )
     comments = models.JSONField(
         default=list, help_text="List of comments from each approval step"
@@ -1063,7 +1143,7 @@ class LeaveAdjustment(models.Model):
     employee = models.ForeignKey(
         UserProfile, on_delete=models.CASCADE, related_name="leave_adjustments"
     )
-    leave_type = models.CharField(max_length=20, choices=LeavePolicy.LeaveType.choices)
+    leave_type = models.CharField(max_length=20, choices=LeaveType.choices)
     old_allocated = models.PositiveIntegerField(help_text="Previous allocated days")
     new_allocated = models.PositiveIntegerField(help_text="New allocated days")
     reason = models.TextField(help_text="Reason for adjustment")
@@ -1090,25 +1170,10 @@ class LeaveAdjustment(models.Model):
 
 
 class PerformanceReview(models.Model):
-    class ReviewType(models.TextChoices):
-        QUARTERLY = "quarterly", "Quarterly Review"
-        MID_YEAR = "mid_year", "Mid-Year Review"
-        ANNUAL = "annual", "Annual Review"
-        PROBATION = "probation", "Probation Review"
-        CUSTOM = "custom", "Custom Review"
-
-    class Status(models.TextChoices):
-        SCHEDULED = "scheduled", "Scheduled"
-        IN_PROGRESS = "in_progress", "In Progress"
-        COMPLETED = "completed", "Completed"
-        CANCELLED = "cancelled", "Cancelled"
-
-    class Outcome(models.TextChoices):
-        EXCEEDS_EXPECTATIONS = "exceeds_expectations", "Exceeds Expectations"
-        MEETS_EXPECTATIONS = "meets_expectations", "Meets Expectations"
-        PARTIALLY_MEETS = "partially_meets", "Partially Meets Expectations"
-        NEEDS_IMPROVEMENT = "needs_improvement", "Needs Improvement"
-        UNSATISFACTORY = "unsatisfactory", "Unsatisfactory"
+    # Enum aliases — defined in core/enums.py; kept here for backward-compat access
+    ReviewType = ReviewType
+    Status = ReviewStatus
+    Outcome = ReviewOutcome
 
     employee = models.ForeignKey(
         UserProfile,
@@ -1154,12 +1219,12 @@ class PerformanceReview(models.Model):
     )
     status = models.CharField(
         max_length=20,
-        choices=Status.choices,
-        default=Status.SCHEDULED,
+        choices=ReviewStatus.choices,
+        default=ReviewStatus.SCHEDULED,
     )
     outcome = models.CharField(
         max_length=30,
-        choices=Outcome.choices,
+        choices=ReviewOutcome.choices,
         blank=True,
         default="",
     )
@@ -1248,9 +1313,8 @@ class PerformanceReview(models.Model):
 
 
 class PerformanceReviewNote(models.Model):
-    class Visibility(models.TextChoices):
-        SHARED = "shared", "Shared"
-        PRIVATE = "private", "Private"
+    # Enum alias — defined in core/enums.py; kept here for backward-compat access
+    Visibility = ReviewNoteVisibility
 
     review = models.ForeignKey(
         PerformanceReview,
@@ -1265,8 +1329,8 @@ class PerformanceReviewNote(models.Model):
     )
     visibility = models.CharField(
         max_length=20,
-        choices=Visibility.choices,
-        default=Visibility.SHARED,
+        choices=ReviewNoteVisibility.choices,
+        default=ReviewNoteVisibility.SHARED,
     )
     content = models.TextField()
     edited_by = models.ForeignKey(
@@ -1293,11 +1357,8 @@ class PerformanceReviewNote(models.Model):
 
 
 class PerformanceReviewActionPoint(models.Model):
-    class Status(models.TextChoices):
-        PENDING = "pending", "Pending"
-        IN_PROGRESS = "in_progress", "In Progress"
-        COMPLETED = "completed", "Completed"
-        CANCELLED = "cancelled", "Cancelled"
+    # Enum alias — defined in core/enums.py; kept here for backward-compat access
+    Status = ActionPointStatus
 
     review = models.ForeignKey(
         PerformanceReview,
@@ -1323,8 +1384,8 @@ class PerformanceReviewActionPoint(models.Model):
     due_date = models.DateField(null=True, blank=True)
     status = models.CharField(
         max_length=20,
-        choices=Status.choices,
-        default=Status.PENDING,
+        choices=ActionPointStatus.choices,
+        default=ActionPointStatus.PENDING,
     )
     progress = models.PositiveSmallIntegerField(
         default=0,
@@ -1394,10 +1455,8 @@ class PerformanceReviewAttachment(models.Model):
 
 
 class PerformanceReviewReminder(models.Model):
-    class ReminderType(models.TextChoices):
-        UPCOMING = "upcoming", "Upcoming"
-        DUE_TODAY = "due_today", "Due Today"
-        OVERDUE = "overdue", "Overdue"
+    # Enum alias — defined in core/enums.py; kept here for backward-compat access
+    ReminderType = ReminderType
 
     review = models.ForeignKey(
         PerformanceReview,
@@ -1442,21 +1501,8 @@ class PerformanceReviewReminder(models.Model):
 
 
 class PerformanceReviewHistoryEvent(models.Model):
-    class EventType(models.TextChoices):
-        CREATED = "created", "Created"
-        UPDATED = "updated", "Updated"
-        SCHEDULED = "scheduled", "Scheduled"
-        RESCHEDULED = "rescheduled", "Rescheduled"
-        STATUS_CHANGED = "status_changed", "Status Changed"
-        OUTCOME_UPDATED = "outcome_updated", "Outcome Updated"
-        NOTE_ADDED = "note_added", "Note Added"
-        NOTE_UPDATED = "note_updated", "Note Updated"
-        ACTION_POINT_ADDED = "action_point_added", "Action Point Added"
-        ACTION_POINT_UPDATED = "action_point_updated", "Action Point Updated"
-        ATTACHMENT_ADDED = "attachment_added", "Attachment Added"
-        ATTACHMENT_REMOVED = "attachment_removed", "Attachment Removed"
-        REMINDER_GENERATED = "reminder_generated", "Reminder Generated"
-        REMINDER_READ = "reminder_read", "Reminder Read"
+    # Enum alias — defined in core/enums.py; kept here for backward-compat access
+    EventType = ReviewEventType
 
     review = models.ForeignKey(
         PerformanceReview,
@@ -1470,7 +1516,7 @@ class PerformanceReviewHistoryEvent(models.Model):
         blank=True,
         related_name="performance_review_history_events",
     )
-    event_type = models.CharField(max_length=30, choices=EventType.choices)
+    event_type = models.CharField(max_length=30, choices=ReviewEventType.choices)
     description = models.CharField(max_length=255, blank=True, default="")
     metadata = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -1494,12 +1540,11 @@ class PerformanceReviewHistoryEvent(models.Model):
 
 
 class ChecklistTemplate(models.Model):
-    class Type(models.TextChoices):
-        ONBOARDING = "onboarding", "Onboarding"
-        OFFBOARDING = "offboarding", "Offboarding"
+    # Enum alias — defined in core/enums.py; kept here for backward-compat access
+    Type = ChecklistType
 
     name = models.CharField(max_length=150)
-    type = models.CharField(max_length=20, choices=Type.choices)
+    type = models.CharField(max_length=20, choices=ChecklistType.choices)
 
     def __str__(self):
         return f"{self.name} ({self.type})"
@@ -1510,10 +1555,8 @@ class ChecklistTemplate(models.Model):
 
 
 class TaskTemplate(models.Model):
-    class Role(models.TextChoices):
-        HR = "HR", "HR"
-        IT = "IT", "IT"
-        MANAGER = "Manager", "Manager"
+    # Enum alias — defined in core/enums.py; kept here for backward-compat access
+    Role = TaskRole
 
     checklist_template = models.ForeignKey(
         ChecklistTemplate,
@@ -1523,7 +1566,7 @@ class TaskTemplate(models.Model):
     title = models.CharField(max_length=200)
     order = models.PositiveIntegerField(default=0)
     role_responsible = models.CharField(
-        max_length=20, choices=Role.choices, default=Role.HR
+        max_length=20, choices=TaskRole.choices, default=TaskRole.HR
     )
 
     def __str__(self):
@@ -1536,9 +1579,8 @@ class TaskTemplate(models.Model):
 
 
 class ChecklistInstance(models.Model):
-    class Status(models.TextChoices):
-        IN_PROGRESS = "in_progress", "In Progress"
-        DONE = "done", "Done"
+    # Enum alias — defined in core/enums.py; kept here for backward-compat access
+    Status = ChecklistInstanceStatus
 
     employee = models.ForeignKey(
         UserProfile,
@@ -1551,7 +1593,9 @@ class ChecklistInstance(models.Model):
         related_name="instances",
     )
     status = models.CharField(
-        max_length=20, choices=Status.choices, default=Status.IN_PROGRESS
+        max_length=20,
+        choices=ChecklistInstanceStatus.choices,
+        default=ChecklistInstanceStatus.IN_PROGRESS,
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -1591,10 +1635,8 @@ class ChecklistInstance(models.Model):
 
 
 class ChecklistTask(models.Model):
-    class Status(models.TextChoices):
-        TODO = "todo", "To Do"
-        IN_PROGRESS = "in_progress", "In Progress"
-        DONE = "done", "Done"
+    # Enum alias — defined in core/enums.py; kept here for backward-compat access
+    Status = ChecklistTaskStatus
 
     checklist_instance = models.ForeignKey(
         ChecklistInstance,
@@ -1610,7 +1652,9 @@ class ChecklistTask(models.Model):
     )
     title = models.CharField(max_length=200)
     status = models.CharField(
-        max_length=20, choices=Status.choices, default=Status.TODO
+        max_length=20,
+        choices=ChecklistTaskStatus.choices,
+        default=ChecklistTaskStatus.TODO,
     )
     assigned_to = models.ForeignKey(
         UserProfile,

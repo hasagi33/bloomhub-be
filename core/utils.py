@@ -3,9 +3,13 @@ import re
 import secrets
 import string
 import urllib.request
+from datetime import date, datetime
+from typing import Any
 
+from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
 from google.auth.transport import requests
 from google.oauth2 import id_token
 
@@ -76,6 +80,133 @@ def upgrade_google_picture_url(url: str, size: int = 400) -> str:
         # No suffix found – append one
         upgraded = url.rstrip("/") + f"=s{size}-c"
     return upgraded
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# String / value normalisation helpers
+# (used by profile_change_history and serializers)
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def normalize_trimmed_string(value: Any) -> str | None:
+    """Strip whitespace; return None for blank/None input."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def normalize_enum_like(value: Any) -> str | None:
+    """Normalise a string into lowercase enum-compatible form."""
+    normalized = normalize_trimmed_string(value)
+    return normalized.lower() if normalized else None
+
+
+def normalize_iso_date(value: Any) -> str | None:
+    """Convert a date / datetime / string to ISO-8601 date string (YYYY-MM-DD)."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    text = normalize_trimmed_string(value)
+    if not text:
+        return None
+    return text[:10]
+
+
+def _as_manager_user_id(value: Any) -> int | None:
+    """Coerce a manager reference (profile object, user_id int) to a positive user_id int."""
+    if value is None:
+        return None
+    user_id = getattr(value, "user_id", None)
+    if user_id is None:
+        try:
+            user_id = int(value)
+        except (TypeError, ValueError):
+            return None
+    if user_id <= 0:
+        return None
+    return user_id
+
+
+def normalize_manager_ids(values: Any) -> list[int]:
+    """Return a sorted, deduplicated list of positive user_ids from a mixed input."""
+    if values is None:
+        return []
+    normalized: set[int] = set()
+    for raw in values:
+        user_id = _as_manager_user_id(raw)
+        if user_id is not None:
+            normalized.add(user_id)
+    return sorted(normalized)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Profile display helper
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def uploader_display_name(profile) -> str:
+    """Return the best available display name for a UserProfile (or empty string)."""
+    if not profile:
+        return ""
+    return (
+        profile.full_name
+        or profile.user.get_full_name().strip()
+        or profile.user.username
+    )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Storage helpers
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def generate_presigned_url(
+    file_key: str,
+    expiry_seconds: int = 600,
+    *,
+    inline: bool = False,
+) -> str:
+    """Return a short-lived URL for a stored file.
+
+    Uses boto3 against Cloudflare R2 when R2 credentials are configured;
+    falls back to Django's default_storage URL for local development.
+    """
+    r2_account_id = getattr(settings, "R2_ACCOUNT_ID", None)
+    r2_access_key = getattr(settings, "R2_ACCESS_KEY_ID", None)
+    r2_secret_key = getattr(settings, "R2_SECRET_ACCESS_KEY", None)
+    r2_bucket = getattr(settings, "R2_BUCKET_NAME", None)
+
+    if all([r2_account_id, r2_access_key, r2_secret_key, r2_bucket]):
+        try:
+            import boto3
+            from botocore.config import Config
+
+            client = boto3.client(
+                "s3",
+                endpoint_url=f"https://{r2_account_id}.r2.cloudflarestorage.com",
+                aws_access_key_id=r2_access_key,
+                aws_secret_access_key=r2_secret_key,
+                config=Config(signature_version="s3v4"),
+                region_name="auto",
+            )
+            disposition = "inline" if inline else "attachment"
+            return client.generate_presigned_url(
+                "get_object",
+                Params={
+                    "Bucket": r2_bucket,
+                    "Key": file_key,
+                    "ResponseContentDisposition": disposition,
+                },
+                ExpiresIn=expiry_seconds,
+            )
+        except Exception:
+            pass
+
+    return default_storage.url(file_key)
 
 
 def download_and_save_avatar(profile, url: str) -> bool:

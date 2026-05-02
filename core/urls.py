@@ -13,6 +13,7 @@ from .views import (
     ChecklistTemplateViewSet,
     CPFLevelListView,
     DepartmentListView,
+    DocumentViewSet,
     EmployeeProfileChangeHistoryView,
     EmployeeProfileViewSet,
     EmployeeTechLeadsView,
@@ -41,6 +42,7 @@ from .views import (
 app_name = "core"
 
 router = DefaultRouter()
+router.register(r"documents", DocumentViewSet, basename="document")
 router.register(r"employees", EmployeeProfileViewSet, basename="employee")
 router.register(
     r"onboarding/templates", ChecklistTemplateViewSet, basename="checklist-template"

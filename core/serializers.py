@@ -1,6 +1,7 @@
 from typing import Any
 
 from django.contrib.auth.models import User
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
@@ -15,6 +16,9 @@ from core.models import (
     Assignment,
     ChecklistTask,
     ChecklistTemplate,
+    Document,
+    DocumentSigner,
+    DocumentVersion,
     EmployeeDocument,
     EmployeeProfileChangeHistory,
     LeaveAdjustment,
@@ -51,8 +55,18 @@ from core.utils import (
     generate_secure_password,
     generate_unique_username,
     get_role_permissions_bitmap,
+    uploader_display_name,
     verify_google_id_token,
 )
+
+
+@extend_schema_field(OpenApiTypes.INT64)
+class NonNegativeInt64Field(serializers.IntegerField):
+    """Non-negative integers documented as OpenAPI int64 (stable across environments)."""
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault("min_value", 0)
+        super().__init__(**kwargs)
 
 
 class GoogleExchangeSerializer(serializers.Serializer):
@@ -816,6 +830,10 @@ class LeavePolicySerializer(serializers.ModelSerializer):
     leave_type_display = serializers.CharField(
         source="get_leave_type_display", read_only=True
     )
+    allocated_days_per_year = NonNegativeInt64Field()
+    carryover_days = NonNegativeInt64Field()
+    min_notice_in_days = NonNegativeInt64Field()
+    max_consecutive_days = NonNegativeInt64Field(allow_null=True, required=False)
 
     class Meta:
         model = LeavePolicy
@@ -846,6 +864,10 @@ class LeaveBalanceSerializer(serializers.ModelSerializer):
         source="get_leave_type_display", read_only=True
     )
     remaining = serializers.ReadOnlyField()
+    allocated = NonNegativeInt64Field()
+    used = NonNegativeInt64Field()
+    carryover = NonNegativeInt64Field()
+    year = NonNegativeInt64Field()
 
     class Meta:
         model = LeaveBalance
@@ -1164,6 +1186,8 @@ class LeaveAdjustmentSerializer(serializers.ModelSerializer):
     leave_type_display = serializers.CharField(
         source="get_leave_type_display", read_only=True
     )
+    old_allocated = NonNegativeInt64Field()
+    new_allocated = NonNegativeInt64Field()
     adjusted_by_id = serializers.IntegerField(
         source="adjusted_by.id", read_only=True, allow_null=True
     )
@@ -1607,6 +1631,8 @@ class PerformanceReviewCreateUpdateSerializer(serializers.ModelSerializer):
 
 
 class TaskTemplateSerializer(serializers.ModelSerializer):
+    order = NonNegativeInt64Field()
+
     class Meta:
         model = TaskTemplate
         fields = ["id", "title", "order", "role_responsible"]
@@ -1662,3 +1688,124 @@ class ChecklistTaskSerializer(serializers.ModelSerializer):
             "assigned_to",
             "completed_at",
         ]
+
+
+# ──────────────────────────────────────────
+# Document Serializers
+# ──────────────────────────────────────────
+
+
+class DocumentSignerSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DocumentSigner
+        fields = ["id", "name", "email", "status", "signed_at"]
+        read_only_fields = ["id", "signed_at"]
+
+
+class DocumentVersionSerializer(serializers.ModelSerializer):
+    uploaded_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DocumentVersion
+        fields = [
+            "id",
+            "version",
+            "uploaded_at",
+            "uploaded_by_name",
+            "file_size",
+            "notes",
+        ]
+
+    @extend_schema_field(serializers.CharField())
+    def get_uploaded_by_name(self, obj) -> str:
+        return uploader_display_name(obj.uploaded_by)
+
+
+class DocumentListSerializer(serializers.ModelSerializer):
+    file_name = serializers.CharField(source="original_filename", read_only=True)
+    uploaded_by_name = serializers.SerializerMethodField()
+    version_count = serializers.SerializerMethodField()
+    signers = DocumentSignerSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Document
+        fields = [
+            "id",
+            "name",
+            "description",
+            "category",
+            "file_name",
+            "file_size",
+            "mime_type",
+            "uploaded_by_name",
+            "uploaded_at",
+            "updated_at",
+            "expiry_date",
+            "signature_status",
+            "is_confidential",
+            "tags",
+            "allowed_roles",
+            "current_version",
+            "version_count",
+            "signers",
+        ]
+
+    @extend_schema_field(serializers.CharField())
+    def get_uploaded_by_name(self, obj) -> str:
+        return uploader_display_name(obj.uploaded_by)
+
+    @extend_schema_field(serializers.IntegerField())
+    def get_version_count(self, obj) -> int:
+        count = obj.versions.count()
+        return count if count > 0 else 1
+
+
+class DocumentCreateSerializer(serializers.Serializer):
+    file = serializers.FileField()
+    name = serializers.CharField(max_length=255)
+    category = serializers.ChoiceField(choices=Document.Category.choices)
+    description = serializers.CharField(required=False, default="", allow_blank=True)
+    expiry_date = serializers.DateField(required=False, allow_null=True, default=None)
+    is_confidential = serializers.BooleanField(required=False, default=False)
+    tags = serializers.ListField(
+        child=serializers.CharField(),
+        required=False,
+        default=list,
+    )
+    allowed_roles = serializers.ListField(
+        child=serializers.ChoiceField(choices=Document.AccessRole.choices),
+        required=False,
+        default=list,
+    )
+
+    def validate_file(self, value):
+        max_bytes = 25 * 1024 * 1024  # 25 MB
+        allowed_types = {
+            "application/pdf",
+            "application/msword",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "image/png",
+            "image/jpeg",
+        }
+        if value.size > max_bytes:
+            raise serializers.ValidationError("File size must not exceed 25 MB.")
+        if value.content_type not in allowed_types:
+            raise serializers.ValidationError(
+                "Unsupported file type. Allowed: pdf, doc, docx, png, jpg."
+            )
+        return value
+
+
+class BulkIdsSerializer(serializers.Serializer):
+    ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        allow_empty=False,
+    )
+
+
+class RequestSignatureSerializer(serializers.Serializer):
+    class SignerInputSerializer(serializers.Serializer):
+        name = serializers.CharField(max_length=255)
+        email = serializers.EmailField()
+
+    signers = SignerInputSerializer(many=True, allow_empty=False)

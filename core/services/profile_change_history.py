@@ -1,11 +1,18 @@
 from __future__ import annotations
 
-from datetime import date, datetime
 from typing import Any
 
 from django.contrib.auth.models import User
 
 from core.models import EmployeeProfileChangeHistory, UserProfile
+
+# Pure helpers now live in core.utils — import them here for backward compat.
+from core.utils import (  # noqa: F401  (re-exported for existing callers)
+    normalize_enum_like,
+    normalize_iso_date,
+    normalize_manager_ids,
+    normalize_trimmed_string,
+)
 
 
 def _role_payload(role) -> dict[str, Any] | None:
@@ -41,32 +48,8 @@ def role_value(role) -> dict[str, Any] | None:
     return _role_payload(role)
 
 
-def normalize_trimmed_string(value: Any) -> str | None:
-    if value is None:
-        return None
-    text = str(value).strip()
-    return text or None
-
-
-def normalize_enum_like(value: Any) -> str | None:
-    normalized = normalize_trimmed_string(value)
-    return normalized.lower() if normalized else None
-
-
-def normalize_iso_date(value: Any) -> str | None:
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        return value.date().isoformat()
-    if isinstance(value, date):
-        return value.isoformat()
-    text = normalize_trimmed_string(value)
-    if not text:
-        return None
-    return text[:10]
-
-
 def _as_manager_user_id(value: Any) -> int | None:
+    """Coerce a manager reference to a positive user_id int."""
     if value is None:
         return None
     user_id = getattr(value, "user_id", None)
@@ -78,17 +61,6 @@ def _as_manager_user_id(value: Any) -> int | None:
     if user_id <= 0:
         return None
     return user_id
-
-
-def normalize_manager_ids(values: Any) -> list[int]:
-    if values is None:
-        return []
-    normalized: set[int] = set()
-    for raw in values:
-        user_id = _as_manager_user_id(raw)
-        if user_id is not None:
-            normalized.add(user_id)
-    return sorted(normalized)
 
 
 def manager_payload_from_ids(manager_user_ids: list[int]) -> dict[str, Any]:
