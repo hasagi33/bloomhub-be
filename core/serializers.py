@@ -1,7 +1,6 @@
 from typing import Any
 
 from django.contrib.auth.models import User
-
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
