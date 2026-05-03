@@ -343,6 +343,69 @@ class DocumentsAPITestCase(APITestCase):
         ids = {row["id"] for row in response.data["results"]}
         self.assertIn(self.hr_doc.id, ids)
 
+    def test_unarchive_by_hr_succeeds(self):
+        self.client.force_authenticate(user=self.hr_user)
+        self.client.post(f"/api/documents/{self.hr_doc.id}/archive/")
+        response = self.client.post(f"/api/documents/{self.hr_doc.id}/unarchive/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.hr_doc.refresh_from_db()
+        self.assertFalse(self.hr_doc.archived)
+        list_response = self.client.get("/api/documents/")
+        ids = {row["id"] for row in list_response.data["results"]}
+        self.assertIn(self.hr_doc.id, ids)
+
+    def test_unarchive_idempotent_when_not_archived(self):
+        self.client.force_authenticate(user=self.hr_user)
+        response = self.client.post(f"/api/documents/{self.hr_doc.id}/unarchive/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.hr_doc.refresh_from_db()
+        self.assertFalse(self.hr_doc.archived)
+
+    def test_unarchive_by_employee_denied(self):
+        self.client.force_authenticate(user=self.hr_user)
+        self.client.post(f"/api/documents/{self.hr_doc.id}/archive/")
+        self.client.force_authenticate(user=self.employee_user)
+        response = self.client.post(f"/api/documents/{self.hr_doc.id}/unarchive/")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_preview_pdf_with_empty_mime_succeeds(self):
+        doc = Document.objects.create(
+            uploaded_by=self.hr_profile,
+            category=Document.Category.OTHER,
+            file_key="documents/blank.pdf",
+            name="Blank",
+            original_filename="blank.pdf",
+            file_size=10,
+            mime_type="",
+            signature_status=Document.SignatureStatus.NOT_REQUIRED,
+            is_confidential=False,
+            tags=[],
+            allowed_roles=[Document.AccessRole.HR],
+        )
+        self.client.force_authenticate(user=self.hr_user)
+        response = self.client.get(f"/api/documents/{doc.id}/preview/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("preview_url", response.data)
+        self.assertTrue(response.data["preview_url"])
+
+    def test_preview_blocked_for_executable_extension(self):
+        doc = Document.objects.create(
+            uploaded_by=self.hr_profile,
+            category=Document.Category.OTHER,
+            file_key="documents/setup.exe",
+            name="setup",
+            original_filename="setup.exe",
+            file_size=10,
+            mime_type="application/octet-stream",
+            signature_status=Document.SignatureStatus.NOT_REQUIRED,
+            is_confidential=False,
+            tags=[],
+            allowed_roles=[Document.AccessRole.HR],
+        )
+        self.client.force_authenticate(user=self.hr_user)
+        response = self.client.get(f"/api/documents/{doc.id}/preview/")
+        self.assertEqual(response.status_code, status.HTTP_501_NOT_IMPLEMENTED)
+
     # ── request-signature ─────────────────────────────────────────────
 
     def test_request_signature_creates_signers(self):

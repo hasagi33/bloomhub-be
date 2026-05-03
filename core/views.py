@@ -48,6 +48,7 @@ from .models import (
     Department,
     Document,
     DocumentSigner,
+    DocumentTemplate,
     DocumentType,
     EmployeeDocument,
     EmployeeProfileChangeHistory,
@@ -67,6 +68,8 @@ from .models import (
     ReplacementLog,
     Role,
     TaskTemplate,
+    TemplateField,
+    TemplateGeneratedDocument,
     TrainingEntry,
     UserProfile,
 )
@@ -96,6 +99,10 @@ from .serializers import (
     ChecklistTemplateSerializer,
     DocumentCreateSerializer,
     DocumentListSerializer,
+    DocumentTemplateCreateUpdateSerializer,
+    DocumentTemplateDetailSerializer,
+    DocumentTemplateListSerializer,
+    DocumentTemplatePartialUpdateSerializer,
     DocumentVersionSerializer,
     EmployeeCVSerializer,
     EmployeeProfileChangeHistorySerializer,
@@ -121,6 +128,8 @@ from .serializers import (
     RegisterSerializer,
     ReplacementLogSerializer,
     RequestSignatureSerializer,
+    TemplateGeneratedDocumentSerializer,
+    TemplateUseSerializer,
     TokenSerializer,
     TrainingEntryCreateUpdateSerializer,
     TrainingEntryDetailSerializer,
@@ -133,6 +142,7 @@ from .serializers import (
 )
 from .services.document_service import (
     archive_document,
+    build_document_inline_preview_url,
     bulk_archive,
     bulk_hard_delete,
     export_documents_csv,
@@ -142,6 +152,7 @@ from .services.document_service import (
     hard_delete_document,
     is_document_accessible,
     is_hr_or_admin,
+    unarchive_document,
 )
 from .services.performance_review_service import (
     materialize_performance_review_reminders,
@@ -150,10 +161,14 @@ from .services.performance_review_service import (
 from .services.profile_change_history import log_employee_profile_change, role_value
 from .shared.employee_utils import soft_delete_employee_profile
 from .utils import (
+    clone_template,
     generate_secure_password,
     generate_unique_username,
     get_role_permissions_bitmap,
+    get_template_or_404,
+    resolve_template_content,
     upgrade_google_picture_url,
+    validate_template_fields,
 )
 
 
@@ -3322,6 +3337,7 @@ class DocumentViewSet(viewsets.GenericViewSet):
       GET    /api/documents/{id}/download/      signed download URL
       GET    /api/documents/{id}/preview/       signed preview URL
       POST   /api/documents/{id}/archive/       soft-delete (HR/admin)
+      POST   /api/documents/{id}/unarchive/     restore archived doc (HR/admin)
       POST   /api/documents/{id}/request-signature/  start e-sig workflow (HR/admin)
       POST   /api/documents/{id}/send-reminder/ resend signature emails
       GET    /api/documents/{id}/versions/      version history
@@ -3590,16 +3606,12 @@ class DocumentViewSet(viewsets.GenericViewSet):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        viewable_types = {"application/pdf", "image/png", "image/jpeg"}
-        if document.mime_type not in viewable_types:
+        preview_url, preview_err = build_document_inline_preview_url(document)
+        if preview_err or not preview_url:
             return Response(
-                {"detail": "Preview not available for this file type."},
+                {"detail": preview_err or "Preview not available for this file type."},
                 status=status.HTTP_501_NOT_IMPLEMENTED,
             )
-
-        preview_url = generate_presigned_url(
-            document.file_key, expiry_seconds=300, inline=True
-        )
         return Response({"preview_url": preview_url}, status=status.HTTP_200_OK)
 
     # ── archive ───────────────────────────────────────────────────────
@@ -3623,6 +3635,29 @@ class DocumentViewSet(viewsets.GenericViewSet):
             )
 
         document = archive_document(document)
+        return Response(
+            DocumentListSerializer(document).data, status=status.HTTP_200_OK
+        )
+
+    @extend_schema(
+        summary="Restore an archived document (HR/admin only)",
+        responses={200: DocumentListSerializer},
+    )
+    @action(detail=True, methods=["post"], url_path="unarchive")
+    def unarchive(self, request, pk=None):
+        if not is_hr_or_admin(request.user):
+            return Response(
+                {"detail": "Only HR or admin users can restore archived documents."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        document = self._get_document_or_404(pk)
+        if not document:
+            return Response(
+                {"detail": "Document not found."}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        document = unarchive_document(document)
         return Response(
             DocumentListSerializer(document).data, status=status.HTTP_200_OK
         )
@@ -3975,3 +4010,603 @@ class TrainingEntryViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Document Templates
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class DocumentTemplatePagination(pagination.PageNumberPagination):
+    page_size = 20
+    max_page_size = 100
+    page_size_query_param = "page_size"
+
+
+class DocumentTemplateViewSet(viewsets.GenericViewSet):
+    """
+    Full document template management viewset.
+
+    Endpoints:
+      GET    /api/documents/templates/                    list
+      POST   /api/documents/templates/                    create
+      GET    /api/documents/templates/{id}/               retrieve
+      PUT    /api/documents/templates/{id}/               full update
+      PATCH  /api/documents/templates/{id}/               partial update
+      DELETE /api/documents/templates/{id}/               soft delete
+      POST   /api/documents/templates/{id}/duplicate/     clone template
+      POST   /api/documents/templates/{id}/use/           generate document
+      GET    /api/documents/templates/categories/         enum values
+    """
+
+    permission_classes = [IsAuthenticated]
+    pagination_class = DocumentTemplatePagination
+    serializer_class = DocumentTemplateListSerializer
+    queryset = DocumentTemplate.objects.none()
+
+    # ── permission helpers ────────────────────────────────────────────────────
+
+    def _get_profile(self, request):
+        """Return the UserProfile for the authenticated user, or None."""
+        try:
+            return request.user.profile
+        except Exception:
+            return None
+
+    def _is_admin(self, request) -> bool:
+        """True when the user is staff, superuser, or has an HR/admin role."""
+        if request.user.is_staff or request.user.is_superuser:
+            return True
+        try:
+            from .services.document_service import is_hr_or_admin
+
+            return is_hr_or_admin(request.user)
+        except Exception:
+            return False
+
+    def _can_edit(self, request, template) -> bool:
+        """True when the user is the template creator or an admin."""
+        profile = self._get_profile(request)
+        if profile and template.created_by_id == profile.pk:
+            return True
+        return self._is_admin(request)
+
+    def _build_error(self, code: str, message: str, details: dict | None = None):
+        return {"code": code, "message": message, "details": details or {}}
+
+    # ── queryset helpers ──────────────────────────────────────────────────────
+
+    def _base_queryset(self, request):
+        """
+        Return the queryset scoped to what the requesting user may see.
+
+        - SHARED templates are visible to all authenticated users.
+        - PRIVATE templates are only visible to their creator.
+        - Inactive (soft-deleted) templates are always excluded.
+        """
+        from django.db.models import Q
+
+        from .enums import TemplateVisibility
+
+        profile = self._get_profile(request)
+        qs = (
+            DocumentTemplate.objects.filter(is_active=True)
+            .select_related("created_by__user")
+            .prefetch_related("fields")
+        )
+        if self._is_admin(request):
+            return qs
+        if profile:
+            return qs.filter(
+                Q(visibility=TemplateVisibility.SHARED) | Q(created_by=profile)
+            )
+        # Unauthenticated users see only SHARED (should not reach here due to IsAuthenticated)
+        return qs.filter(visibility=TemplateVisibility.SHARED)
+
+    # ── CRUD actions ──────────────────────────────────────────────────────────
+
+    @extend_schema(
+        tags=["Document Templates"],
+        summary="List document templates",
+        description=(
+            "Return all active templates visible to the requesting user. "
+            "PRIVATE templates are only shown to their creator. "
+            "Supports filtering by category, visibility, created_by, and is_system_template."
+        ),
+        parameters=[
+            OpenApiParameter(
+                "category", str, description="Filter by TemplateCategory value"
+            ),
+            OpenApiParameter(
+                "visibility", str, description="Filter by TemplateVisibility value"
+            ),
+            OpenApiParameter(
+                "created_by", int, description="Filter by creator profile ID"
+            ),
+            OpenApiParameter(
+                "is_system_template",
+                bool,
+                description="Filter system vs user templates",
+            ),
+            OpenApiParameter(
+                "search", str, description="Search by name or description"
+            ),
+        ],
+        responses={200: DocumentTemplateListSerializer(many=True)},
+    )
+    def list(self, request):
+        """
+        List all active templates visible to the requesting user.
+
+        Filters: category, visibility, created_by, is_system_template, search.
+        """
+        from .enums import TemplateCategory, TemplateVisibility
+
+        qs = self._base_queryset(request)
+        params = request.query_params
+
+        category = params.get("category")
+        if category:
+            if category not in TemplateCategory.values:
+                return Response(
+                    self._build_error("VALIDATION_ERROR", "Invalid category filter."),
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            qs = qs.filter(category=category)
+
+        visibility = params.get("visibility")
+        if visibility:
+            if visibility not in TemplateVisibility.values:
+                return Response(
+                    self._build_error("VALIDATION_ERROR", "Invalid visibility filter."),
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            qs = qs.filter(visibility=visibility)
+
+        created_by = params.get("created_by")
+        if created_by:
+            qs = qs.filter(created_by__pk=created_by)
+
+        is_system = params.get("is_system_template")
+        if is_system is not None:
+            qs = qs.filter(is_system_template=is_system.lower() == "true")
+
+        search = params.get("search", "").strip()
+        if search:
+            from django.db.models import Q
+
+            qs = qs.filter(Q(name__icontains=search) | Q(description__icontains=search))
+
+        qs = qs.order_by("-updated_at")
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            serializer = DocumentTemplateListSerializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        serializer = DocumentTemplateListSerializer(qs, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        tags=["Document Templates"],
+        summary="Retrieve a template",
+        description="Fetch a single template with its full content and all field definitions.",
+        responses={
+            200: DocumentTemplateDetailSerializer,
+            404: None,
+        },
+    )
+    def retrieve(self, request, pk=None):
+        """
+        Fetch a single template with full content and all fields.
+
+        Returns 404 when the template does not exist or has been soft-deleted.
+        Returns 403 when a PRIVATE template is requested by a non-owner.
+        """
+        from .enums import ErrorCode, TemplateVisibility
+
+        template = get_template_or_404(pk)
+
+        # Visibility gate — PRIVATE templates are owner-only
+        if template.visibility == TemplateVisibility.PRIVATE:
+            profile = self._get_profile(request)
+            if not self._is_admin(request) and (
+                not profile or template.created_by_id != profile.pk
+            ):
+                return Response(
+                    self._build_error(
+                        ErrorCode.FORBIDDEN,
+                        "You do not have permission to view this template.",
+                    ),
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
+        serializer = DocumentTemplateDetailSerializer(template)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        tags=["Document Templates"],
+        summary="Create a template",
+        description="Create a new document template with metadata, content, and field definitions.",
+        request=DocumentTemplateCreateUpdateSerializer,
+        responses={
+            201: DocumentTemplateDetailSerializer,
+            400: None,
+            409: None,
+        },
+    )
+    def create(self, request):
+        """
+        Create a new document template.
+
+        Accepts a nested ``fields`` array to define the template's dynamic fields.
+        Returns 409 when a template with the same name already exists.
+        """
+        profile = self._get_profile(request)
+        serializer = DocumentTemplateCreateUpdateSerializer(
+            data=request.data, context={"instance": None}
+        )
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        data = serializer.validated_data
+        fields_data = data.pop("fields", [])
+
+        template = DocumentTemplate.objects.create(
+            name=data["name"],
+            description=data.get("description", ""),
+            category=data.get("category", "other"),
+            content=data.get("content", ""),
+            visibility=data.get("visibility", "private"),
+            status=data.get("status", "draft"),
+            is_system_template=False,
+            is_active=True,
+            created_by=profile,
+        )
+
+        for field_data in fields_data:
+            TemplateField.objects.create(template=template, **field_data)
+
+        result = (
+            DocumentTemplate.objects.prefetch_related("fields")
+            .select_related("created_by__user")
+            .get(pk=template.pk)
+        )
+        return Response(
+            DocumentTemplateDetailSerializer(result).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @extend_schema(
+        tags=["Document Templates"],
+        summary="Full update a template",
+        description=(
+            "Replace all fields of an existing template. "
+            "System templates and templates not owned by the user return 403."
+        ),
+        request=DocumentTemplateCreateUpdateSerializer,
+        responses={
+            200: DocumentTemplateDetailSerializer,
+            400: None,
+            403: None,
+            404: None,
+            409: None,
+        },
+    )
+    def update(self, request, pk=None):
+        """
+        Full update — replaces name, description, category, content, visibility,
+        status, and all field definitions.
+
+        Returns 403 for system templates or when the user lacks edit rights.
+        """
+        from .enums import ErrorCode
+
+        template = get_template_or_404(pk)
+
+        if template.is_system_template:
+            return Response(
+                self._build_error(
+                    ErrorCode.SYSTEM_TEMPLATE_IMMUTABLE,
+                    "System templates cannot be modified.",
+                ),
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if not self._can_edit(request, template):
+            return Response(
+                self._build_error(
+                    ErrorCode.FORBIDDEN,
+                    "You do not have permission to edit this template.",
+                ),
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        serializer = DocumentTemplateCreateUpdateSerializer(
+            data=request.data, context={"instance": template}
+        )
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        data = serializer.validated_data
+        fields_data = data.pop("fields", [])
+
+        for attr, value in data.items():
+            setattr(template, attr, value)
+        template.save()
+
+        # Replace fields in full
+        template.fields.all().delete()
+        for field_data in fields_data:
+            TemplateField.objects.create(template=template, **field_data)
+
+        result = (
+            DocumentTemplate.objects.prefetch_related("fields")
+            .select_related("created_by__user")
+            .get(pk=template.pk)
+        )
+        return Response(
+            DocumentTemplateDetailSerializer(result).data, status=status.HTTP_200_OK
+        )
+
+    @extend_schema(
+        tags=["Document Templates"],
+        summary="Partial update a template",
+        description=(
+            "Update one or more fields of an existing template without replacing the rest. "
+            "Providing ``fields`` replaces all field definitions."
+        ),
+        request=DocumentTemplatePartialUpdateSerializer,
+        responses={
+            200: DocumentTemplateDetailSerializer,
+            400: None,
+            403: None,
+            404: None,
+        },
+    )
+    def partial_update(self, request, pk=None):
+        """
+        Partial update — only the provided keys are modified.
+
+        Providing ``fields`` in the payload replaces all field definitions.
+        Returns 403 for system templates or insufficient permissions.
+        """
+        from .enums import ErrorCode
+
+        template = get_template_or_404(pk)
+
+        if template.is_system_template:
+            return Response(
+                self._build_error(
+                    ErrorCode.SYSTEM_TEMPLATE_IMMUTABLE,
+                    "System templates cannot be modified.",
+                ),
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if not self._can_edit(request, template):
+            return Response(
+                self._build_error(
+                    ErrorCode.FORBIDDEN,
+                    "You do not have permission to edit this template.",
+                ),
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        serializer = DocumentTemplatePartialUpdateSerializer(
+            data=request.data, context={"instance": template}
+        )
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        data = serializer.validated_data
+        fields_data = data.pop("fields", None)
+
+        for attr, value in data.items():
+            setattr(template, attr, value)
+        template.save()
+
+        if fields_data is not None:
+            template.fields.all().delete()
+            for field_data in fields_data:
+                TemplateField.objects.create(template=template, **field_data)
+
+        result = (
+            DocumentTemplate.objects.prefetch_related("fields")
+            .select_related("created_by__user")
+            .get(pk=template.pk)
+        )
+        return Response(
+            DocumentTemplateDetailSerializer(result).data, status=status.HTTP_200_OK
+        )
+
+    @extend_schema(
+        tags=["Document Templates"],
+        summary="Soft delete a template",
+        description=(
+            "Deactivate a template by setting is_active=False. "
+            "The record is never hard-deleted."
+        ),
+        responses={
+            204: None,
+            403: None,
+            404: None,
+        },
+    )
+    def destroy(self, request, pk=None):
+        """
+        Soft delete — sets is_active=False, never hard-deletes.
+
+        Returns 403 for system templates or when the user lacks delete rights.
+        """
+        from .enums import ErrorCode
+
+        template = get_template_or_404(pk)
+
+        if template.is_system_template:
+            return Response(
+                self._build_error(
+                    ErrorCode.SYSTEM_TEMPLATE_IMMUTABLE,
+                    "System templates cannot be deleted.",
+                ),
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if not self._can_edit(request, template):
+            return Response(
+                self._build_error(
+                    ErrorCode.FORBIDDEN,
+                    "You do not have permission to delete this template.",
+                ),
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        template.is_active = False
+        template.save(update_fields=["is_active", "updated_at"])
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    # ── extra actions ─────────────────────────────────────────────────────────
+
+    @extend_schema(
+        tags=["Document Templates"],
+        summary="Duplicate a template",
+        description=(
+            "Clone an existing template (including all its field definitions) as a new "
+            "PRIVATE copy owned by the requesting user. Works regardless of the source "
+            "template's visibility or ownership."
+        ),
+        responses={
+            201: DocumentTemplateDetailSerializer,
+            404: None,
+        },
+    )
+    @action(detail=True, methods=["post"])
+    def duplicate(self, request, pk=None):
+        """
+        Clone a template as a new PRIVATE user-owned copy.
+
+        The clone always gets visibility=PRIVATE, is_system_template=False, and
+        a 'Copy of …' name prefix regardless of the source template's settings.
+        """
+        template = get_template_or_404(pk)
+        profile = self._get_profile(request)
+        new_template = clone_template(template, profile)
+        return Response(
+            DocumentTemplateDetailSerializer(new_template).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @extend_schema(
+        tags=["Document Templates"],
+        summary="Generate document from template",
+        description=(
+            "Instantiate a template by supplying values for its dynamic fields. "
+            "All required fields must be provided. Placeholders in the template content "
+            "are replaced and the resulting document is persisted."
+        ),
+        request=TemplateUseSerializer,
+        responses={
+            201: TemplateGeneratedDocumentSerializer,
+            404: None,
+            422: None,
+        },
+    )
+    @action(detail=True, methods=["post"])
+    def use(self, request, pk=None):
+        """
+        Create a new document from a template with user-supplied field values.
+
+        Request body:
+            document_name  — name for the generated document
+            field_values   — dict mapping field_key → value
+
+        Returns 422 with field-level errors when required fields are missing.
+        Returns 404 when the template does not exist or is inactive.
+        """
+        from .enums import ErrorCode
+
+        template = get_template_or_404(pk)
+
+        serializer = TemplateUseSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        field_values = serializer.validated_data.get("fieldValues", {})
+        output_format = serializer.validated_data.get("format", "pdf")
+        document_name = (
+            serializer.validated_data.get("document_name")
+            or f"{template.name} — {output_format.upper()}"
+        )
+
+        missing = validate_template_fields(template.fields.all(), field_values)
+        if missing:
+            return Response(
+                self._build_error(
+                    ErrorCode.VALIDATION_ERROR,
+                    "Required fields are missing.",
+                    details={"missing_fields": missing},
+                ),
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
+
+        resolved_content = resolve_template_content(template.content, field_values)
+
+        profile = self._get_profile(request)
+        generated_doc = TemplateGeneratedDocument.objects.create(
+            name=document_name,
+            source_template=template,
+            resolved_content=resolved_content,
+            field_values=field_values,
+            created_by=profile,
+        )
+
+        return Response(
+            TemplateGeneratedDocumentSerializer(generated_doc).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @extend_schema(
+        tags=["Document Templates"],
+        summary="List template categories",
+        description="Return all available TemplateCategory enum values with labels.",
+        responses={200: None},
+    )
+    @action(detail=False, methods=["get"])
+    def categories(self, request):
+        """
+        Return all TemplateCategory enum values with labels for the frontend dropdown.
+
+        Response shape:
+            [{"value": "HR", "label": "HR"}, ...]
+        """
+        from .enums import TemplateCategory
+
+        data = [
+            {"value": value, "label": label}
+            for value, label in TemplateCategory.choices
+        ]
+        return Response(data, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        tags=["Document Templates"],
+        summary="List generated documents",
+        description="Return all TemplateGeneratedDocument records visible to the requesting user.",
+        responses={200: TemplateGeneratedDocumentSerializer(many=True)},
+    )
+    @action(detail=False, methods=["get"])
+    def generated(self, request):
+        """Return generated documents created by this user (admins see all)."""
+        profile = self._get_profile(request)
+        if self._is_admin(request):
+            qs = TemplateGeneratedDocument.objects.all()
+        elif profile:
+            qs = TemplateGeneratedDocument.objects.filter(created_by=profile)
+        else:
+            qs = TemplateGeneratedDocument.objects.none()
+
+        qs = qs.select_related("source_template", "created_by__user").order_by(
+            "-created_at"
+        )
+
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            serializer = TemplateGeneratedDocumentSerializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = TemplateGeneratedDocumentSerializer(qs, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)

@@ -38,6 +38,10 @@ from .enums import (
     ReviewStatus,
     ReviewType,
     TaskRole,
+    TemplateCategory,
+    TemplateFieldType,
+    TemplateStatus,
+    TemplateVisibility,
     TrackedField,
 )
 from .enums import (
@@ -1931,3 +1935,136 @@ class TrainingBudget(models.Model):
 def create_tasks_for_checklist_instance(sender, instance, created, **kwargs):
     if created:
         instance.create_tasks_from_template()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Document Templates
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class DocumentTemplate(models.Model):
+    """
+    Reusable document template with dynamic field definitions.
+
+    System templates (is_system_template=True) are read-only for all users.
+    PRIVATE templates are only visible to their creator.
+    SHARED templates are visible to the whole organisation but editable only
+    by the creator or an admin.
+    """
+
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True, default="")
+    category = models.CharField(
+        max_length=20,
+        choices=TemplateCategory.choices,
+        default=TemplateCategory.OTHER,
+    )
+    content = models.TextField(blank=True, default="")
+    visibility = models.CharField(
+        max_length=10,
+        choices=TemplateVisibility.choices,
+        default=TemplateVisibility.PRIVATE,
+    )
+    status = models.CharField(
+        max_length=10,
+        choices=TemplateStatus.choices,
+        default=TemplateStatus.DRAFT,
+    )
+    is_system_template = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        "UserProfile",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_templates",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Document Template"
+        verbose_name_plural = "Document Templates"
+        ordering = ["-updated_at"]
+        indexes = [
+            models.Index(fields=["category"]),
+            models.Index(fields=["visibility"]),
+            models.Index(fields=["is_active"]),
+            models.Index(fields=["is_system_template"]),
+            models.Index(fields=["created_by"]),
+        ]
+
+    def __str__(self):
+        return self.name
+
+
+class TemplateField(models.Model):
+    """
+    Dynamic field definition attached to a DocumentTemplate.
+
+    Each field_key corresponds to a {{field_key}} placeholder in the template
+    content that will be replaced at document generation time.
+    """
+
+    template = models.ForeignKey(
+        DocumentTemplate,
+        on_delete=models.CASCADE,
+        related_name="fields",
+    )
+    label = models.CharField(max_length=255)
+    field_key = models.CharField(max_length=100)
+    field_type = models.CharField(
+        max_length=15,
+        choices=TemplateFieldType.choices,
+        default=TemplateFieldType.TEXT,
+    )
+    placeholder = models.CharField(max_length=255, blank=True, default="")
+    default_value = models.CharField(max_length=500, blank=True, default="")
+    is_required = models.BooleanField(default=False)
+    options = models.TextField(blank=True, default="")
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        verbose_name = "Template Field"
+        verbose_name_plural = "Template Fields"
+        ordering = ["order", "id"]
+        unique_together = ("template", "field_key")
+
+    def __str__(self):
+        return f"{self.template.name} — {self.label}"
+
+
+class TemplateGeneratedDocument(models.Model):
+    """
+    Document produced by instantiating a DocumentTemplate with user-supplied
+    field values.  The resolved_content stores the fully substituted JSON
+    content; field_values keeps the raw inputs for auditing.
+    """
+
+    name = models.CharField(max_length=255)
+    source_template = models.ForeignKey(
+        DocumentTemplate,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="generated_documents",
+    )
+    resolved_content = models.TextField(blank=True, default="")
+    field_values = models.JSONField(default=dict)
+    created_by = models.ForeignKey(
+        "UserProfile",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="generated_documents",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Generated Document"
+        verbose_name_plural = "Generated Documents"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.name

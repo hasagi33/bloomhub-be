@@ -1,10 +1,14 @@
+import copy
 import os
 import re
 import secrets
 import string
 import urllib.request
 from datetime import date, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from core.models import DocumentTemplate, TemplateField
 
 from django.conf import settings
 from django.contrib.auth.models import User
@@ -169,6 +173,7 @@ def generate_presigned_url(
     expiry_seconds: int = 600,
     *,
     inline: bool = False,
+    response_content_type: str | None = None,
 ) -> str:
     """Return a short-lived URL for a stored file.
 
@@ -194,19 +199,152 @@ def generate_presigned_url(
                 region_name="auto",
             )
             disposition = "inline" if inline else "attachment"
+            params: dict[str, str] = {
+                "Bucket": r2_bucket,
+                "Key": file_key,
+                "ResponseContentDisposition": disposition,
+            }
+            if response_content_type:
+                params["ResponseContentType"] = response_content_type
             return client.generate_presigned_url(
                 "get_object",
-                Params={
-                    "Bucket": r2_bucket,
-                    "Key": file_key,
-                    "ResponseContentDisposition": disposition,
-                },
+                Params=params,
                 ExpiresIn=expiry_seconds,
             )
         except Exception:
             pass
 
     return default_storage.url(file_key)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Document Template helpers
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def resolve_template_content(content: str, field_values: dict) -> str:
+    """
+    Replace all {{field_key}} placeholders in the HTML content string with
+    the user-supplied values.
+
+    Unknown placeholders are left intact so callers can detect un-filled fields.
+
+    Args:
+        content: The template's raw HTML content string.
+        field_values: Mapping of field_key → replacement value.
+
+    Returns:
+        A new HTML string with all matching placeholders replaced.
+    """
+    result = content or ""
+    for key, value in field_values.items():
+        placeholder = "{{" + key + "}}"
+        result = result.replace(placeholder, str(value) if value is not None else "")
+    return result
+
+
+def validate_template_fields(
+    fields: list["TemplateField"], field_values: dict
+) -> list[str]:
+    """
+    Validate that all required fields are present and non-empty in field_values.
+
+    Args:
+        fields: QuerySet or list of TemplateField instances.
+        field_values: Mapping of field_key → supplied value from the request.
+
+    Returns:
+        List of human-readable labels for any missing required fields.
+        An empty list means validation passed.
+    """
+    missing: list[str] = []
+    for field in fields:
+        if field.is_required:
+            value = field_values.get(field.field_key)
+            if value is None or value == "":
+                missing.append(field.label)
+    return missing
+
+
+def clone_template(template: "DocumentTemplate", created_by) -> "DocumentTemplate":
+    """
+    Deep clone a DocumentTemplate as a new PRIVATE user-owned copy.
+
+    The clone gets a 'Copy of …' prefix on its name, is always PRIVATE,
+    is never a system template, and has all TemplateField rows duplicated.
+
+    Args:
+        template: The source DocumentTemplate to clone.
+        created_by: The UserProfile that will own the new copy.
+
+    Returns:
+        The newly saved DocumentTemplate instance (with fields pre-fetched).
+    """
+    from core.enums import TemplateVisibility
+    from core.models import DocumentTemplate, TemplateField
+
+    new_template = DocumentTemplate(
+        name=f"Copy of {template.name}",
+        description=template.description,
+        category=template.category,
+        content=copy.deepcopy(template.content),
+        visibility=TemplateVisibility.PRIVATE,
+        status=template.status,
+        is_system_template=False,
+        is_active=True,
+        created_by=created_by,
+    )
+    new_template.save()
+
+    for field in template.fields.order_by("order", "id"):
+        TemplateField.objects.create(
+            template=new_template,
+            label=field.label,
+            field_key=field.field_key,
+            field_type=field.field_type,
+            placeholder=field.placeholder,
+            default_value=field.default_value,
+            is_required=field.is_required,
+            options=copy.deepcopy(field.options) if field.options is not None else None,
+            order=field.order,
+        )
+
+    return DocumentTemplate.objects.prefetch_related("fields").get(pk=new_template.pk)
+
+
+def get_template_or_404(template_id) -> "DocumentTemplate":
+    """
+    Fetch an active DocumentTemplate by primary key or raise a structured 404.
+
+    Raises:
+        rest_framework.exceptions.NotFound with a structured error body when
+        the template does not exist or has been soft-deleted (is_active=False).
+
+    Args:
+        template_id: The primary key of the template to fetch.
+
+    Returns:
+        DocumentTemplate instance with its fields pre-fetched.
+    """
+    from rest_framework.exceptions import NotFound
+
+    from core.enums import ErrorCode
+    from core.models import DocumentTemplate
+
+    try:
+        return (
+            DocumentTemplate.objects.prefetch_related("fields")
+            .select_related("created_by__user")
+            .get(pk=template_id, is_active=True)
+        )
+    except (DocumentTemplate.DoesNotExist, ValueError, TypeError):
+        exc = NotFound()
+        exc.detail = {
+            "code": ErrorCode.NOT_FOUND,
+            "message": "Template not found.",
+            "details": {},
+        }
+        raise exc
 
 
 def download_and_save_avatar(profile, url: str) -> bool:

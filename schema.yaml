@@ -670,6 +670,7 @@ paths:
           GET    /api/documents/{id}/download/      signed download URL
           GET    /api/documents/{id}/preview/       signed preview URL
           POST   /api/documents/{id}/archive/       soft-delete (HR/admin)
+          POST   /api/documents/{id}/unarchive/     restore archived doc (HR/admin)
           POST   /api/documents/{id}/request-signature/  start e-sig workflow (HR/admin)
           POST   /api/documents/{id}/send-reminder/ resend signature emails
           GET    /api/documents/{id}/versions/      version history
@@ -741,6 +742,7 @@ paths:
           GET    /api/documents/{id}/download/      signed download URL
           GET    /api/documents/{id}/preview/       signed preview URL
           POST   /api/documents/{id}/archive/       soft-delete (HR/admin)
+          POST   /api/documents/{id}/unarchive/     restore archived doc (HR/admin)
           POST   /api/documents/{id}/request-signature/  start e-sig workflow (HR/admin)
           POST   /api/documents/{id}/send-reminder/ resend signature emails
           GET    /api/documents/{id}/versions/      version history
@@ -786,6 +788,7 @@ paths:
           GET    /api/documents/{id}/download/      signed download URL
           GET    /api/documents/{id}/preview/       signed preview URL
           POST   /api/documents/{id}/archive/       soft-delete (HR/admin)
+          POST   /api/documents/{id}/unarchive/     restore archived doc (HR/admin)
           POST   /api/documents/{id}/request-signature/  start e-sig workflow (HR/admin)
           POST   /api/documents/{id}/send-reminder/ resend signature emails
           GET    /api/documents/{id}/versions/      version history
@@ -825,6 +828,7 @@ paths:
           GET    /api/documents/{id}/download/      signed download URL
           GET    /api/documents/{id}/preview/       signed preview URL
           POST   /api/documents/{id}/archive/       soft-delete (HR/admin)
+          POST   /api/documents/{id}/unarchive/     restore archived doc (HR/admin)
           POST   /api/documents/{id}/request-signature/  start e-sig workflow (HR/admin)
           POST   /api/documents/{id}/send-reminder/ resend signature emails
           GET    /api/documents/{id}/versions/      version history
@@ -861,6 +865,7 @@ paths:
           GET    /api/documents/{id}/download/      signed download URL
           GET    /api/documents/{id}/preview/       signed preview URL
           POST   /api/documents/{id}/archive/       soft-delete (HR/admin)
+          POST   /api/documents/{id}/unarchive/     restore archived doc (HR/admin)
           POST   /api/documents/{id}/request-signature/  start e-sig workflow (HR/admin)
           POST   /api/documents/{id}/send-reminder/ resend signature emails
           GET    /api/documents/{id}/versions/      version history
@@ -913,6 +918,7 @@ paths:
           GET    /api/documents/{id}/download/      signed download URL
           GET    /api/documents/{id}/preview/       signed preview URL
           POST   /api/documents/{id}/archive/       soft-delete (HR/admin)
+          POST   /api/documents/{id}/unarchive/     restore archived doc (HR/admin)
           POST   /api/documents/{id}/request-signature/  start e-sig workflow (HR/admin)
           POST   /api/documents/{id}/send-reminder/ resend signature emails
           GET    /api/documents/{id}/versions/      version history
@@ -956,6 +962,7 @@ paths:
           GET    /api/documents/{id}/download/      signed download URL
           GET    /api/documents/{id}/preview/       signed preview URL
           POST   /api/documents/{id}/archive/       soft-delete (HR/admin)
+          POST   /api/documents/{id}/unarchive/     restore archived doc (HR/admin)
           POST   /api/documents/{id}/request-signature/  start e-sig workflow (HR/admin)
           POST   /api/documents/{id}/send-reminder/ resend signature emails
           GET    /api/documents/{id}/versions/      version history
@@ -999,6 +1006,7 @@ paths:
           GET    /api/documents/{id}/download/      signed download URL
           GET    /api/documents/{id}/preview/       signed preview URL
           POST   /api/documents/{id}/archive/       soft-delete (HR/admin)
+          POST   /api/documents/{id}/unarchive/     restore archived doc (HR/admin)
           POST   /api/documents/{id}/request-signature/  start e-sig workflow (HR/admin)
           POST   /api/documents/{id}/send-reminder/ resend signature emails
           GET    /api/documents/{id}/versions/      version history
@@ -1051,6 +1059,7 @@ paths:
           GET    /api/documents/{id}/download/      signed download URL
           GET    /api/documents/{id}/preview/       signed preview URL
           POST   /api/documents/{id}/archive/       soft-delete (HR/admin)
+          POST   /api/documents/{id}/unarchive/     restore archived doc (HR/admin)
           POST   /api/documents/{id}/request-signature/  start e-sig workflow (HR/admin)
           POST   /api/documents/{id}/send-reminder/ resend signature emails
           GET    /api/documents/{id}/versions/      version history
@@ -1085,6 +1094,59 @@ paths:
       responses:
         '204':
           description: No response body
+  /api/documents/{id}/unarchive/:
+    post:
+      operationId: documents_unarchive_create
+      description: |-
+        Full document management viewset.
+
+        Endpoints:
+          GET    /api/documents/                    list
+          POST   /api/documents/                    create (upload)
+          GET    /api/documents/{id}/               retrieve
+          DELETE /api/documents/{id}/               destroy (HR/admin)
+          GET    /api/documents/{id}/download/      signed download URL
+          GET    /api/documents/{id}/preview/       signed preview URL
+          POST   /api/documents/{id}/archive/       soft-delete (HR/admin)
+          POST   /api/documents/{id}/unarchive/     restore archived doc (HR/admin)
+          POST   /api/documents/{id}/request-signature/  start e-sig workflow (HR/admin)
+          POST   /api/documents/{id}/send-reminder/ resend signature emails
+          GET    /api/documents/{id}/versions/      version history
+          POST   /api/documents/bulk-delete/        bulk hard-delete (HR/admin)
+          POST   /api/documents/bulk-archive/       bulk soft-delete (HR/admin)
+          POST   /api/documents/bulk-download/      ZIP download URL
+          GET    /api/documents/export/             CSV export URL (HR/admin)
+      summary: Restore an archived document (HR/admin only)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Document.
+        required: true
+      tags:
+      - Documents
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DocumentListRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DocumentListRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DocumentListRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentList'
+          description: ''
   /api/documents/{id}/versions/:
     get:
       operationId: documents_versions_list
@@ -1099,6 +1161,7 @@ paths:
           GET    /api/documents/{id}/download/      signed download URL
           GET    /api/documents/{id}/preview/       signed preview URL
           POST   /api/documents/{id}/archive/       soft-delete (HR/admin)
+          POST   /api/documents/{id}/unarchive/     restore archived doc (HR/admin)
           POST   /api/documents/{id}/request-signature/  start e-sig workflow (HR/admin)
           POST   /api/documents/{id}/send-reminder/ resend signature emails
           GET    /api/documents/{id}/versions/      version history
@@ -1151,6 +1214,7 @@ paths:
           GET    /api/documents/{id}/download/      signed download URL
           GET    /api/documents/{id}/preview/       signed preview URL
           POST   /api/documents/{id}/archive/       soft-delete (HR/admin)
+          POST   /api/documents/{id}/unarchive/     restore archived doc (HR/admin)
           POST   /api/documents/{id}/request-signature/  start e-sig workflow (HR/admin)
           POST   /api/documents/{id}/send-reminder/ resend signature emails
           GET    /api/documents/{id}/versions/      version history
@@ -1192,6 +1256,7 @@ paths:
           GET    /api/documents/{id}/download/      signed download URL
           GET    /api/documents/{id}/preview/       signed preview URL
           POST   /api/documents/{id}/archive/       soft-delete (HR/admin)
+          POST   /api/documents/{id}/unarchive/     restore archived doc (HR/admin)
           POST   /api/documents/{id}/request-signature/  start e-sig workflow (HR/admin)
           POST   /api/documents/{id}/send-reminder/ resend signature emails
           GET    /api/documents/{id}/versions/      version history
@@ -1233,6 +1298,7 @@ paths:
           GET    /api/documents/{id}/download/      signed download URL
           GET    /api/documents/{id}/preview/       signed preview URL
           POST   /api/documents/{id}/archive/       soft-delete (HR/admin)
+          POST   /api/documents/{id}/unarchive/     restore archived doc (HR/admin)
           POST   /api/documents/{id}/request-signature/  start e-sig workflow (HR/admin)
           POST   /api/documents/{id}/send-reminder/ resend signature emails
           GET    /api/documents/{id}/versions/      version history
@@ -1281,6 +1347,7 @@ paths:
           GET    /api/documents/{id}/download/      signed download URL
           GET    /api/documents/{id}/preview/       signed preview URL
           POST   /api/documents/{id}/archive/       soft-delete (HR/admin)
+          POST   /api/documents/{id}/unarchive/     restore archived doc (HR/admin)
           POST   /api/documents/{id}/request-signature/  start e-sig workflow (HR/admin)
           POST   /api/documents/{id}/send-reminder/ resend signature emails
           GET    /api/documents/{id}/versions/      version history
@@ -1308,6 +1375,334 @@ paths:
                 properties:
                   export_url:
                     type: string
+          description: ''
+  /api/documents/templates/:
+    get:
+      operationId: documents_templates_list
+      description: Return all active templates visible to the requesting user. PRIVATE
+        templates are only shown to their creator. Supports filtering by category,
+        visibility, created_by, and is_system_template.
+      summary: List document templates
+      parameters:
+      - in: query
+        name: category
+        schema:
+          type: string
+        description: Filter by TemplateCategory value
+      - in: query
+        name: created_by
+        schema:
+          type: integer
+        description: Filter by creator profile ID
+      - in: query
+        name: is_system_template
+        schema:
+          type: boolean
+        description: Filter system vs user templates
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: search
+        schema:
+          type: string
+        description: Search by name or description
+      - in: query
+        name: visibility
+        schema:
+          type: string
+        description: Filter by TemplateVisibility value
+      tags:
+      - Document Templates
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedDocumentTemplateListList'
+          description: ''
+    post:
+      operationId: documents_templates_create
+      description: Create a new document template with metadata, content, and field
+        definitions.
+      summary: Create a template
+      tags:
+      - Document Templates
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DocumentTemplateCreateUpdateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DocumentTemplateCreateUpdateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DocumentTemplateCreateUpdateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentTemplateDetail'
+          description: ''
+        '400':
+          description: No response body
+        '409':
+          description: No response body
+  /api/documents/templates/{id}/:
+    get:
+      operationId: documents_templates_retrieve
+      description: Fetch a single template with its full content and all field definitions.
+      summary: Retrieve a template
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Document Template.
+        required: true
+      tags:
+      - Document Templates
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentTemplateDetail'
+          description: ''
+        '404':
+          description: No response body
+    put:
+      operationId: documents_templates_update
+      description: Replace all fields of an existing template. System templates and
+        templates not owned by the user return 403.
+      summary: Full update a template
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Document Template.
+        required: true
+      tags:
+      - Document Templates
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DocumentTemplateCreateUpdateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DocumentTemplateCreateUpdateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DocumentTemplateCreateUpdateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentTemplateDetail'
+          description: ''
+        '400':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+        '409':
+          description: No response body
+    patch:
+      operationId: documents_templates_partial_update
+      description: Update one or more fields of an existing template without replacing
+        the rest. Providing ``fields`` replaces all field definitions.
+      summary: Partial update a template
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Document Template.
+        required: true
+      tags:
+      - Document Templates
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedDocumentTemplatePartialUpdateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedDocumentTemplatePartialUpdateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedDocumentTemplatePartialUpdateRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentTemplateDetail'
+          description: ''
+        '400':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+    delete:
+      operationId: documents_templates_destroy
+      description: Deactivate a template by setting is_active=False. The record is
+        never hard-deleted.
+      summary: Soft delete a template
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Document Template.
+        required: true
+      tags:
+      - Document Templates
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+  /api/documents/templates/{id}/duplicate/:
+    post:
+      operationId: documents_templates_duplicate_create
+      description: Clone an existing template (including all its field definitions)
+        as a new PRIVATE copy owned by the requesting user. Works regardless of the
+        source template's visibility or ownership.
+      summary: Duplicate a template
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Document Template.
+        required: true
+      tags:
+      - Document Templates
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentTemplateDetail'
+          description: ''
+        '404':
+          description: No response body
+  /api/documents/templates/{id}/use/:
+    post:
+      operationId: documents_templates_use_create
+      description: Instantiate a template by supplying values for its dynamic fields.
+        All required fields must be provided. Placeholders in the template content
+        are replaced and the resulting document is persisted.
+      summary: Generate document from template
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Document Template.
+        required: true
+      tags:
+      - Document Templates
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TemplateUseRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TemplateUseRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TemplateUseRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateGeneratedDocument'
+          description: ''
+        '404':
+          description: No response body
+        '422':
+          description: No response body
+  /api/documents/templates/categories/:
+    get:
+      operationId: documents_templates_categories_retrieve
+      description: Return all available TemplateCategory enum values with labels.
+      summary: List template categories
+      tags:
+      - Document Templates
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/documents/templates/generated/:
+    get:
+      operationId: documents_templates_generated_list
+      description: Return all TemplateGeneratedDocument records visible to the requesting
+        user.
+      summary: List generated documents
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      tags:
+      - Document Templates
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedTemplateGeneratedDocumentList'
           description: ''
   /api/employees/:
     get:
@@ -4799,7 +5194,7 @@ components:
       required:
       - cpf_levels
       - user_role
-    CategoryEnum:
+    Category748Enum:
       enum:
       - contracts
       - policies
@@ -4816,6 +5211,26 @@ components:
         * `agreements` - Agreements
         * `compliance` - Compliance
         * `onboarding` - Onboarding
+        * `training` - Training
+        * `benefits` - Benefits
+        * `other` - Other
+    Category9ecEnum:
+      enum:
+      - contract
+      - policy
+      - agreement
+      - onboarding
+      - compliance
+      - training
+      - benefits
+      - other
+      type: string
+      description: |-
+        * `contract` - Contract
+        * `policy` - Policy
+        * `agreement` - Agreement
+        * `onboarding` - Onboarding
+        * `compliance` - Compliance
         * `training` - Training
         * `benefits` - Benefits
         * `other` - Other
@@ -4936,7 +5351,7 @@ components:
           minLength: 1
           maxLength: 255
         category:
-          $ref: '#/components/schemas/CategoryEnum'
+          $ref: '#/components/schemas/Category748Enum'
         description:
           type: string
           default: ''
@@ -4972,7 +5387,7 @@ components:
         description:
           type: string
         category:
-          $ref: '#/components/schemas/CategoryEnum'
+          $ref: '#/components/schemas/Category748Enum'
         file_name:
           type: string
           readOnly: true
@@ -5035,7 +5450,7 @@ components:
         description:
           type: string
         category:
-          $ref: '#/components/schemas/CategoryEnum'
+          $ref: '#/components/schemas/Category748Enum'
         file_size:
           type: integer
           maximum: 9223372036854775807
@@ -5112,6 +5527,184 @@ components:
         * `pending` - Pending
         * `signed` - Signed
         * `notsent` - Not Sent
+    DocumentTemplateCreateUpdateRequest:
+      type: object
+      description: |-
+        Write serialiser for creating or fully/partially updating a DocumentTemplate.
+
+        Accepts an optional nested list of field definitions.  On write the existing
+        TemplateField rows are replaced in full (for PUT) or left untouched unless
+        explicitly provided (for PATCH).
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          default: ''
+        category:
+          allOf:
+          - $ref: '#/components/schemas/Category9ecEnum'
+          default: other
+        content:
+          type: string
+          default: ''
+        visibility:
+          allOf:
+          - $ref: '#/components/schemas/VisibilityEnum'
+          default: private
+        status:
+          allOf:
+          - $ref: '#/components/schemas/Status58cEnum'
+          default: draft
+        fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/TemplateFieldRequest'
+      required:
+      - name
+    DocumentTemplateDetail:
+      type: object
+      description: Full serialiser for a single template — includes content and all
+        fields.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          readOnly: true
+        description:
+          type: string
+          readOnly: true
+        category:
+          allOf:
+          - $ref: '#/components/schemas/Category9ecEnum'
+          readOnly: true
+        content:
+          type: string
+          readOnly: true
+        fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/TemplateField'
+          readOnly: true
+        visibility:
+          allOf:
+          - $ref: '#/components/schemas/VisibilityEnum'
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/Status58cEnum'
+          readOnly: true
+        is_system_template:
+          type: boolean
+          readOnly: true
+        is_active:
+          type: boolean
+          readOnly: true
+        created_by:
+          type: integer
+          readOnly: true
+          nullable: true
+        created_by_name:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - category
+      - content
+      - created_at
+      - created_by
+      - created_by_name
+      - description
+      - fields
+      - id
+      - is_active
+      - is_system_template
+      - name
+      - status
+      - updated_at
+      - visibility
+    DocumentTemplateList:
+      type: object
+      description: |-
+        Full serialiser for the template list — includes content and fields so
+        the frontend can edit/use templates without a separate detail request.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          readOnly: true
+        description:
+          type: string
+          readOnly: true
+        category:
+          allOf:
+          - $ref: '#/components/schemas/Category9ecEnum'
+          readOnly: true
+        content:
+          type: string
+          readOnly: true
+        fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/TemplateField'
+          readOnly: true
+        visibility:
+          allOf:
+          - $ref: '#/components/schemas/VisibilityEnum'
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/Status58cEnum'
+          readOnly: true
+        is_system_template:
+          type: boolean
+          readOnly: true
+        is_active:
+          type: boolean
+          readOnly: true
+        created_by:
+          type: integer
+          readOnly: true
+          nullable: true
+        created_by_name:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - category
+      - content
+      - created_at
+      - created_by
+      - created_by_name
+      - description
+      - fields
+      - id
+      - is_active
+      - is_system_template
+      - name
+      - status
+      - updated_at
+      - visibility
     DocumentVersion:
       type: object
       properties:
@@ -5430,6 +6023,14 @@ components:
         * `employment_status` - Employment Status
         * `career_level` - Career Level
         * `start_date` - Start Date
+    FormatEnum:
+      enum:
+      - pdf
+      - docx
+      type: string
+      description: |-
+        * `pdf` - pdf
+        * `docx` - docx
     GoogleExchangeRequest:
       type: object
       properties:
@@ -5893,6 +6494,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/DocumentList'
+    PaginatedDocumentTemplateListList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/DocumentTemplateList'
     PaginatedDocumentVersionList:
       type: object
       required:
@@ -5916,6 +6540,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/DocumentVersion'
+    PaginatedTemplateGeneratedDocumentList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/TemplateGeneratedDocument'
     PatchedChecklistTemplateRequest:
       type: object
       properties:
@@ -5929,6 +6576,36 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/TaskTemplateRequest'
+    PatchedDocumentTemplatePartialUpdateRequest:
+      type: object
+      description: PATCH variant — all top-level fields are optional.
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          default: ''
+        category:
+          allOf:
+          - $ref: '#/components/schemas/Category9ecEnum'
+          default: other
+        content:
+          type: string
+          default: ''
+        visibility:
+          allOf:
+          - $ref: '#/components/schemas/VisibilityEnum'
+          default: private
+        status:
+          allOf:
+          - $ref: '#/components/schemas/Status58cEnum'
+          default: draft
+        fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/TemplateFieldRequest'
     PatchedEmployeeProfileRequest:
       type: object
       properties:
@@ -7210,6 +7887,16 @@ components:
       required:
       - email
       - name
+    Status58cEnum:
+      enum:
+      - draft
+      - published
+      - inactive
+      type: string
+      description: |-
+        * `draft` - Draft
+        * `published` - Published
+        * `inactive` - Inactive
     StatusB39Enum:
       enum:
       - pending
@@ -7300,6 +7987,171 @@ components:
       - display_name
       - id
       - name
+    TemplateField:
+      type: object
+      description: |-
+        Serialiser for TemplateField.
+
+        Uses camelCase / short aliases that match the frontend payload so that no
+        transformation is needed on the JS side:
+            key          ↔ field_key
+            type         ↔ field_type
+            required     ↔ is_required
+            defaultValue ↔ default_value
+
+        options is stored as a plain text string (newline-separated for dropdowns).
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        key:
+          type: string
+          maxLength: 100
+        label:
+          type: string
+          maxLength: 255
+        type:
+          type: string
+          maxLength: 15
+        placeholder:
+          type: string
+          maxLength: 255
+        required:
+          type: boolean
+          default: false
+        defaultValue:
+          type: string
+          default: ''
+        options:
+          type: string
+          default: ''
+        order:
+          type: integer
+          format: int64
+          default: 0
+          minimum: 0
+      required:
+      - id
+      - key
+      - label
+      - type
+    TemplateFieldRequest:
+      type: object
+      description: |-
+        Serialiser for TemplateField.
+
+        Uses camelCase / short aliases that match the frontend payload so that no
+        transformation is needed on the JS side:
+            key          ↔ field_key
+            type         ↔ field_type
+            required     ↔ is_required
+            defaultValue ↔ default_value
+
+        options is stored as a plain text string (newline-separated for dropdowns).
+      properties:
+        key:
+          type: string
+          minLength: 1
+          maxLength: 100
+        label:
+          type: string
+          minLength: 1
+          maxLength: 255
+        type:
+          type: string
+          minLength: 1
+          maxLength: 15
+        placeholder:
+          type: string
+          maxLength: 255
+        required:
+          type: boolean
+          default: false
+        defaultValue:
+          type: string
+          default: ''
+        options:
+          type: string
+          default: ''
+        order:
+          type: integer
+          format: int64
+          default: 0
+          minimum: 0
+      required:
+      - key
+      - label
+      - type
+    TemplateGeneratedDocument:
+      type: object
+      description: Response serialiser for a document produced from a template.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          readOnly: true
+        source_template:
+          type: integer
+          readOnly: true
+          nullable: true
+        source_template_name:
+          type: string
+          readOnly: true
+        resolved_content:
+          type: string
+          readOnly: true
+        field_values:
+          readOnly: true
+        created_by:
+          type: integer
+          readOnly: true
+          nullable: true
+        created_by_name:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - created_by
+      - created_by_name
+      - field_values
+      - id
+      - name
+      - resolved_content
+      - source_template
+      - source_template_name
+      - updated_at
+    TemplateUseRequest:
+      type: object
+      description: |-
+        Request body for POST /api/documents/templates/{id}/use.
+
+        Accepts the frontend's camelCase payload:
+            fieldValues  — dict mapping field_key → value (optional)
+            format       — output format: "pdf" | "docx"  (optional, default "pdf")
+            document_name — optional explicit name; auto-derived from template name if omitted
+      properties:
+        fieldValues:
+          type: object
+          additionalProperties: {}
+        format:
+          allOf:
+          - $ref: '#/components/schemas/FormatEnum'
+          default: pdf
+        document_name:
+          type: string
+          minLength: 1
+          default: ''
+          maxLength: 255
     Token:
       type: object
       properties:
@@ -7755,12 +8607,12 @@ components:
       - username
     VisibilityEnum:
       enum:
-      - shared
       - private
+      - shared
       type: string
       description: |-
-        * `shared` - Shared
         * `private` - Private
+        * `shared` - Shared
   securitySchemes:
     JWTAuth:
       type: http
