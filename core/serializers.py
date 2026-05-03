@@ -20,6 +20,7 @@ from core.models import (
     ChecklistTemplate,
     Document,
     DocumentSigner,
+    DocumentTemplate,
     DocumentVersion,
     EmployeeDocument,
     EmployeeProfileChangeHistory,
@@ -41,6 +42,8 @@ from core.models import (
     SalaryRecord,
     TaskTemplate,
     TechnologyTag,
+    TemplateField,
+    TemplateGeneratedDocument,
     TrainingBudget,
     TrainingEntry,
     UserProfile,
@@ -2068,6 +2071,250 @@ class PeerSessionDetailSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Document Templates
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class TemplateFieldSerializer(serializers.ModelSerializer):
+    """
+    Serialiser for TemplateField.
+
+    Uses camelCase / short aliases that match the frontend payload so that no
+    transformation is needed on the JS side:
+        key          ↔ field_key
+        type         ↔ field_type
+        required     ↔ is_required
+        defaultValue ↔ default_value
+
+    options is stored as a plain text string (newline-separated for dropdowns).
+    """
+
+    # ── field alias mappings (frontend name → model field name via source=) ──
+    key = serializers.CharField(source="field_key", max_length=100)
+    type = serializers.CharField(source="field_type", max_length=15)  # noqa: A003
+    required = serializers.BooleanField(source="is_required", default=False)
+    defaultValue = serializers.CharField(  # noqa: N815
+        source="default_value", allow_blank=True, required=False, default=""
+    )
+    options = serializers.CharField(allow_blank=True, required=False, default="")
+    order = NonNegativeInt64Field(required=False, default=0)
+
+    class Meta:
+        model = TemplateField
+        fields = [
+            "id",
+            "key",
+            "label",
+            "type",
+            "placeholder",
+            "required",
+            "defaultValue",
+            "options",
+            "order",
+        ]
+        read_only_fields = ["id"]
+
+    def validate(self, attrs):
+        from core.enums import TemplateFieldType
+
+        field_type = attrs.get("field_type") or (
+            self.instance.field_type if self.instance else None
+        )
+        options_val = attrs.get("options", "")
+        if field_type == TemplateFieldType.DROPDOWN and not options_val.strip():
+            raise serializers.ValidationError(
+                {"options": "options is required for dropdown fields."}
+            )
+        return attrs
+
+
+class DocumentTemplateListSerializer(serializers.ModelSerializer):
+    """Full serialiser for the template list — includes content and fields so
+    the frontend can edit/use templates without a separate detail request."""
+
+    fields = TemplateFieldSerializer(many=True, read_only=True)
+    created_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DocumentTemplate
+        fields = [
+            "id",
+            "name",
+            "description",
+            "category",
+            "content",
+            "fields",
+            "visibility",
+            "status",
+            "is_system_template",
+            "is_active",
+            "created_by",
+            "created_by_name",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
+
+    def get_created_by_name(self, obj) -> str:
+        if not obj.created_by:
+            return ""
+        return (
+            obj.created_by.full_name
+            or obj.created_by.user.get_full_name().strip()
+            or obj.created_by.user.username
+        )
+
+
+class DocumentTemplateDetailSerializer(serializers.ModelSerializer):
+    """Full serialiser for a single template — includes content and all fields."""
+
+    fields = TemplateFieldSerializer(many=True, read_only=True)
+    created_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DocumentTemplate
+        fields = [
+            "id",
+            "name",
+            "description",
+            "category",
+            "content",
+            "fields",
+            "visibility",
+            "status",
+            "is_system_template",
+            "is_active",
+            "created_by",
+            "created_by_name",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
+
+    def get_created_by_name(self, obj) -> str:
+        if not obj.created_by:
+            return ""
+        return (
+            obj.created_by.full_name
+            or obj.created_by.user.get_full_name().strip()
+            or obj.created_by.user.username
+        )
+
+
+class DocumentTemplateCreateUpdateSerializer(serializers.Serializer):
+    """
+    Write serialiser for creating or fully/partially updating a DocumentTemplate.
+
+    Accepts an optional nested list of field definitions.  On write the existing
+    TemplateField rows are replaced in full (for PUT) or left untouched unless
+    explicitly provided (for PATCH).
+    """
+
+    name = serializers.CharField(max_length=255)
+    description = serializers.CharField(required=False, allow_blank=True, default="")
+    category = serializers.ChoiceField(
+        choices=DocumentTemplate.category.field.choices,
+        required=False,
+        default="other",
+    )
+    content = serializers.CharField(required=False, allow_blank=True, default="")
+    visibility = serializers.ChoiceField(
+        choices=DocumentTemplate.visibility.field.choices,
+        required=False,
+        default="private",
+    )
+    status = serializers.ChoiceField(
+        choices=DocumentTemplate.status.field.choices,
+        required=False,
+        default="draft",
+    )
+    fields = TemplateFieldSerializer(many=True, required=False, default=list)
+
+    def validate_name(self, value):
+        from core.enums import ErrorCode
+
+        qs = DocumentTemplate.objects.filter(name__iexact=value.strip(), is_active=True)
+        # On update, exclude self
+        instance = self.context.get("instance")
+        if instance:
+            qs = qs.exclude(pk=instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(
+                {
+                    "code": ErrorCode.DUPLICATE_NAME,
+                    "message": f"A template named '{value}' already exists.",
+                    "details": {},
+                }
+            )
+        return value.strip()
+
+
+class DocumentTemplatePartialUpdateSerializer(DocumentTemplateCreateUpdateSerializer):
+    """PATCH variant — all top-level fields are optional."""
+
+    name = serializers.CharField(max_length=255, required=False)
+    fields = TemplateFieldSerializer(many=True, required=False)
+
+
+class TemplateUseSerializer(serializers.Serializer):
+    """
+    Request body for POST /api/documents/templates/{id}/use.
+
+    Accepts the frontend's camelCase payload:
+        fieldValues  — dict mapping field_key → value (optional)
+        format       — output format: "pdf" | "docx"  (optional, default "pdf")
+        document_name — optional explicit name; auto-derived from template name if omitted
+    """
+
+    fieldValues = serializers.DictField(  # noqa: N815
+        child=serializers.JSONField(),
+        required=False,
+        default=dict,
+    )
+    format = serializers.ChoiceField(  # noqa: A003
+        choices=["pdf", "docx"],
+        required=False,
+        default="pdf",
+    )
+    document_name = serializers.CharField(max_length=255, required=False, default="")
+
+
+class TemplateGeneratedDocumentSerializer(serializers.ModelSerializer):
+    """Response serialiser for a document produced from a template."""
+
+    source_template_name = serializers.SerializerMethodField()
+    created_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TemplateGeneratedDocument
+        fields = [
+            "id",
+            "name",
+            "source_template",
+            "source_template_name",
+            "resolved_content",
+            "field_values",
+            "created_by",
+            "created_by_name",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
+
+    def get_source_template_name(self, obj) -> str:
+        return obj.source_template.name if obj.source_template else ""
+
+    def get_created_by_name(self, obj) -> str:
+        if not obj.created_by:
+            return ""
+        return (
+            obj.created_by.full_name
+            or obj.created_by.user.get_full_name().strip()
+            or obj.created_by.user.username
+        )
 
 
 class TrainingBudgetSerializer(serializers.ModelSerializer):

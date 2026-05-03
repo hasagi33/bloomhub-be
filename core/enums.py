@@ -259,3 +259,52 @@ class ChecklistTaskStatus(models.TextChoices):
     TODO = "todo", "To Do"
     IN_PROGRESS = "in_progress", "In Progress"
     DONE = "done", "Done"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 10. Document Templates
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class TemplateCategory(models.TextChoices):
+    CONTRACT = "contract", "Contract"
+    POLICY = "policy", "Policy"
+    AGREEMENT = "agreement", "Agreement"
+    ONBOARDING = "onboarding", "Onboarding"
+    COMPLIANCE = "compliance", "Compliance"
+    TRAINING = "training", "Training"
+    BENEFITS = "benefits", "Benefits"
+    OTHER = "other", "Other"
+
+
+class TemplateFieldType(models.TextChoices):
+    TEXT = "text", "Text"
+    DATE = "date", "Date"
+    NUMBER = "number", "Number"
+    DROPDOWN = "dropdown", "Dropdown"
+    CHECKBOX = "checkbox", "Checkbox"
+    USER_SELECT = "user_select", "User Select"
+
+
+class TemplateVisibility(models.TextChoices):
+    PRIVATE = "private", "Private"
+    SHARED = "shared", "Shared"
+
+
+class TemplateStatus(models.TextChoices):
+    DRAFT = "draft", "Draft"
+    PUBLISHED = "published", "Published"
+    INACTIVE = "inactive", "Inactive"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 11. API Error Codes
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class ErrorCode(models.TextChoices):
+    NOT_FOUND = "NOT_FOUND", "Not Found"
+    FORBIDDEN = "FORBIDDEN", "Forbidden"
+    SYSTEM_TEMPLATE_IMMUTABLE = "SYSTEM_TEMPLATE_IMMUTABLE", "System Template Immutable"
+    VALIDATION_ERROR = "VALIDATION_ERROR", "Validation Error"
+    DUPLICATE_NAME = "DUPLICATE_NAME", "Duplicate Name"

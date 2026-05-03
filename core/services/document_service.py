@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import io
+import mimetypes
 import zipfile
 
 from django.core.files.base import ContentFile
@@ -130,6 +131,82 @@ def archive_document(document: Document) -> Document:
         document.archived = True
         document.save(update_fields=["archived"])
     return document
+
+
+def unarchive_document(document: Document) -> Document:
+    """Restore an archived document by setting archived=False."""
+    if document.archived:
+        document.archived = False
+        document.save(update_fields=["archived"])
+    return document
+
+
+_PREVIEW_BLOCKED_SUFFIXES = (
+    ".exe",
+    ".dll",
+    ".bat",
+    ".cmd",
+    ".msi",
+    ".sh",
+    ".ps1",
+)
+
+
+def _document_filename_candidates(document: Document) -> list[str]:
+    return [
+        n for n in (document.original_filename, document.name, document.file_key) if n
+    ]
+
+
+def effective_preview_mime(document: Document) -> str:
+    raw = (document.mime_type or "").strip().lower()
+    if raw:
+        return raw
+    for name in _document_filename_candidates(document):
+        guessed, _ = mimetypes.guess_type(name)
+        if guessed:
+            return guessed.lower()
+    return ""
+
+
+def document_preview_blocked(document: Document) -> bool:
+    for name in _document_filename_candidates(document):
+        lower = name.lower()
+        for suf in _PREVIEW_BLOCKED_SUFFIXES:
+            if lower.endswith(suf):
+                return True
+    return False
+
+
+def preview_response_content_type_override(document: Document) -> str | None:
+    mime = effective_preview_mime(document)
+    if mime == "application/pdf":
+        return None
+    if not any(
+        n.lower().endswith(".pdf") for n in _document_filename_candidates(document)
+    ):
+        return None
+    if mime in (
+        "",
+        "application/octet-stream",
+        "binary/octet-stream",
+        "application/x-download",
+    ):
+        return "application/pdf"
+    return None
+
+
+def build_document_inline_preview_url(document: Document) -> tuple[str, str | None]:
+    if document_preview_blocked(document):
+        return "", "Preview is not available for this file type."
+    override = preview_response_content_type_override(document)
+    url = generate_presigned_url(
+        document.file_key,
+        expiry_seconds=300,
+        inline=True,
+        response_content_type=override,
+    )
+    return url, None
 
 
 # ──────────────────────────────────────────
