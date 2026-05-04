@@ -20,4 +20,7 @@ htmlcov/
 .ruff_cache/
 media/
 .idea/
+.codex
+.pgdata/
+postgres.log
 .claude/

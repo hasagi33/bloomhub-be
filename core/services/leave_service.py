@@ -15,6 +15,7 @@ from core.models import (
     LeavePolicy,
     LeaveRequest,
     UserProfile,
+    initialize_leave_balances_for_profile,
 )
 
 
@@ -390,19 +391,4 @@ def initialize_leave_balances_for_employee(
         year: Year (defaults to current year)
     """
 
-    if year is None:
-        year = datetime.now().year
-
-    policies = LeavePolicy.objects.all()
-
-    for policy in policies:
-        LeaveBalance.objects.get_or_create(
-            employee=employee,
-            leave_type=policy.leave_type,
-            year=year,
-            defaults={
-                "allocated": policy.allocated_days_per_year,
-                "used": 0,
-                "carryover": 0,
-            },
-        )
+    initialize_leave_balances_for_profile(employee, year)

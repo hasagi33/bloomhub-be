@@ -7,107 +7,40 @@ Creates:
 """
 
 import os
-from datetime import datetime
 
 import django
 
-from core.models import LeaveBalance, LeavePolicy, UserProfile
-
-# Setup Django environment
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 django.setup()
 
 
+def get_leave_models():
+    from core.models import (
+        LeavePolicy,
+        UserProfile,
+        ensure_default_leave_policies,
+        initialize_leave_balances_for_profile,
+    )
+
+    return (
+        LeavePolicy,
+        UserProfile,
+        ensure_default_leave_policies,
+        initialize_leave_balances_for_profile,
+    )
+
+
 def create_leave_policies():
     """Create default leave policies for all leave types."""
+    LeavePolicy, _, ensure_default_leave_policies, _ = get_leave_models()
+
     print("Creating leave policies...")
+    before_count = LeavePolicy.objects.count()
+    created_count = ensure_default_leave_policies()
 
-    policies = [
-        {
-            "leave_type": "vacation",
-            "allocated_days_per_year": 25,
-            "carryover_days": 5,
-            "requires_approval": True,
-            "requires_covering_employee": False,
-            "min_notice_in_days": 7,
-            "max_consecutive_days": 20,
-        },
-        {
-            "leave_type": "sick",
-            "allocated_days_per_year": 10,
-            "carryover_days": 0,
-            "requires_approval": False,
-            "requires_covering_employee": False,
-            "min_notice_in_days": 0,
-            "max_consecutive_days": None,
-        },
-        {
-            "leave_type": "wfh",
-            "allocated_days_per_year": 52,  # ~1 day per week
-            "carryover_days": 0,
-            "requires_approval": True,
-            "requires_covering_employee": False,
-            "min_notice_in_days": 1,
-            "max_consecutive_days": 5,
-        },
-        {
-            "leave_type": "personal",
-            "allocated_days_per_year": 3,
-            "carryover_days": 0,
-            "requires_approval": True,
-            "requires_covering_employee": False,
-            "min_notice_in_days": 3,
-            "max_consecutive_days": 3,
-        },
-        {
-            "leave_type": "maternity",
-            "allocated_days_per_year": 120,  # ~4 months
-            "carryover_days": 0,
-            "requires_approval": True,
-            "requires_covering_employee": True,
-            "min_notice_in_days": 30,
-            "max_consecutive_days": None,
-        },
-        {
-            "leave_type": "paternity",
-            "allocated_days_per_year": 10,
-            "carryover_days": 0,
-            "requires_approval": True,
-            "requires_covering_employee": True,
-            "min_notice_in_days": 7,
-            "max_consecutive_days": None,
-        },
-        {
-            "leave_type": "bereavement",
-            "allocated_days_per_year": 5,
-            "carryover_days": 0,
-            "requires_approval": False,
-            "requires_covering_employee": False,
-            "min_notice_in_days": 0,
-            "max_consecutive_days": 5,
-        },
-        {
-            "leave_type": "unpaid",
-            "allocated_days_per_year": 365,  # Unlimited (capped at year)
-            "carryover_days": 0,
-            "requires_approval": True,
-            "requires_covering_employee": True,
-            "min_notice_in_days": 14,
-            "max_consecutive_days": None,
-        },
-    ]
-
-    created_count = 0
-    for policy_data in policies:
-        policy, created = LeavePolicy.objects.get_or_create(
-            leave_type=policy_data["leave_type"],
-            defaults=policy_data,
-        )
-        if created:
-            created_count += 1
-            print(f"  ✓ Created policy for {policy_data['leave_type']}")
-        else:
-            print(f"  - Policy for {policy_data['leave_type']} already exists")
+    for policy in LeavePolicy.objects.all():
+        status = "Created" if before_count == 0 else "Available"
+        print(f"  - {status}: {policy.get_leave_type_display()}")
 
     print(f"\nCreated {created_count} new policies")
     return created_count
@@ -115,9 +48,12 @@ def create_leave_policies():
 
 def create_leave_balances():
     """Create leave balances for all employees for current year."""
+    LeavePolicy, UserProfile, _, initialize_leave_balances_for_profile = (
+        get_leave_models()
+    )
+
     print("\nCreating leave balances for employees...")
 
-    current_year = datetime.now().year
     employees = UserProfile.objects.all()
     policies = LeavePolicy.objects.all()
 
@@ -135,25 +71,9 @@ def create_leave_balances():
             f"\n  Employee: {employee.user.get_full_name() or employee.user.username}"
         )
 
-        for policy in policies:
-            balance, created = LeaveBalance.objects.get_or_create(
-                employee=employee,
-                leave_type=policy.leave_type,
-                year=current_year,
-                defaults={
-                    "allocated": policy.allocated_days_per_year,
-                    "used": 0,
-                    "carryover": 0,
-                },
-            )
-
-            if created:
-                created_count += 1
-                print(
-                    f"    ✓ {policy.get_leave_type_display()}: {policy.allocated_days_per_year} days"
-                )
-            else:
-                print(f"    - {policy.get_leave_type_display()}: already exists")
+        employee_created_count = initialize_leave_balances_for_profile(employee)
+        created_count += employee_created_count
+        print(f"    Created {employee_created_count} balances")
 
     print(f"\nCreated {created_count} new balances")
     return created_count

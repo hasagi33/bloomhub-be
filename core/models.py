@@ -48,6 +48,81 @@ from .enums import (
     DocumentCategory as _DocumentCategory,
 )
 
+DEFAULT_LEAVE_POLICIES = [
+    {
+        "leave_type": LeaveType.VACATION,
+        "allocated_days_per_year": 25,
+        "carryover_days": 5,
+        "requires_approval": True,
+        "requires_covering_employee": False,
+        "min_notice_in_days": 7,
+        "max_consecutive_days": 20,
+    },
+    {
+        "leave_type": LeaveType.SICK,
+        "allocated_days_per_year": 10,
+        "carryover_days": 0,
+        "requires_approval": False,
+        "requires_covering_employee": False,
+        "min_notice_in_days": 0,
+        "max_consecutive_days": None,
+    },
+    {
+        "leave_type": LeaveType.WFH,
+        "allocated_days_per_year": 52,
+        "carryover_days": 0,
+        "requires_approval": True,
+        "requires_covering_employee": False,
+        "min_notice_in_days": 1,
+        "max_consecutive_days": 5,
+    },
+    {
+        "leave_type": LeaveType.PERSONAL,
+        "allocated_days_per_year": 3,
+        "carryover_days": 0,
+        "requires_approval": True,
+        "requires_covering_employee": False,
+        "min_notice_in_days": 3,
+        "max_consecutive_days": 3,
+    },
+    {
+        "leave_type": LeaveType.MATERNITY,
+        "allocated_days_per_year": 120,
+        "carryover_days": 0,
+        "requires_approval": True,
+        "requires_covering_employee": True,
+        "min_notice_in_days": 30,
+        "max_consecutive_days": None,
+    },
+    {
+        "leave_type": LeaveType.PATERNITY,
+        "allocated_days_per_year": 10,
+        "carryover_days": 0,
+        "requires_approval": True,
+        "requires_covering_employee": True,
+        "min_notice_in_days": 7,
+        "max_consecutive_days": None,
+    },
+    {
+        "leave_type": LeaveType.BEREAVEMENT,
+        "allocated_days_per_year": 5,
+        "carryover_days": 0,
+        "requires_approval": False,
+        "requires_covering_employee": False,
+        "min_notice_in_days": 0,
+        "max_consecutive_days": 5,
+    },
+    {
+        "leave_type": LeaveType.UNPAID,
+        "allocated_days_per_year": 365,
+        "carryover_days": 0,
+        "requires_approval": True,
+        "requires_covering_employee": True,
+        "min_notice_in_days": 14,
+        "max_consecutive_days": None,
+    },
+]
+
 
 def employee_document_upload_to(instance: "EmployeeDocument", filename: str) -> str:
     """
@@ -854,6 +929,7 @@ def create_user_profile(sender, instance, created, **kwargs):
                 profile.permissions = bin(all_permissions_int)[2:]
 
         profile.save(update_fields=["full_name", "email_address", "permissions"])
+        initialize_leave_balances_for_profile(profile)
 
         if not profile.avatar:
             try:
@@ -969,6 +1045,45 @@ class LeaveBalance(models.Model):
     def remaining(self):
         """Calculate remaining leave days."""
         return max(0, (self.allocated + self.carryover) - self.used)
+
+
+def ensure_default_leave_policies() -> int:
+    """Create the default leave policies if they are missing."""
+    created_count = 0
+    for policy_data in DEFAULT_LEAVE_POLICIES:
+        _, created = LeavePolicy.objects.get_or_create(
+            leave_type=policy_data["leave_type"],
+            defaults=policy_data,
+        )
+        if created:
+            created_count += 1
+    return created_count
+
+
+def initialize_leave_balances_for_profile(
+    employee: UserProfile, year: int | None = None
+) -> int:
+    """Create current-year leave balances for a user profile."""
+    if year is None:
+        year = timezone.now().year
+
+    ensure_default_leave_policies()
+
+    created_count = 0
+    for policy in LeavePolicy.objects.all():
+        _, created = LeaveBalance.objects.get_or_create(
+            employee=employee,
+            leave_type=policy.leave_type,
+            year=year,
+            defaults={
+                "allocated": policy.allocated_days_per_year,
+                "used": 0,
+                "carryover": 0,
+            },
+        )
+        if created:
+            created_count += 1
+    return created_count
 
 
 class LeaveRequest(models.Model):
