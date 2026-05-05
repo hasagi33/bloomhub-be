@@ -6850,6 +6850,12 @@ components:
           format: date-time
           nullable: true
           description: When employee completed the training
+        certificate_link:
+          type: string
+          format: uri
+          nullable: true
+          description: HTTPS URL link to the training certificate
+          maxLength: 200
     PerformanceReviewActionPoint:
       type: object
       properties:
@@ -8211,6 +8217,12 @@ components:
           format: date-time
           nullable: true
           description: When employee completed the training
+        certificate_link:
+          type: string
+          format: uri
+          nullable: true
+          description: HTTPS URL link to the training certificate
+          maxLength: 200
       required:
       - course_title
       - employee_id
@@ -8261,6 +8273,12 @@ components:
           format: date-time
           nullable: true
           description: When employee completed the training
+        certificate_link:
+          type: string
+          format: uri
+          nullable: true
+          description: HTTPS URL link to the training certificate
+          maxLength: 200
       required:
       - course_title
       - provider
@@ -8316,6 +8334,12 @@ components:
           format: date-time
           nullable: true
           description: When employee completed the training
+        certificate_link:
+          type: string
+          format: uri
+          nullable: true
+          description: HTTPS URL link to the training certificate
+          maxLength: 200
         status:
           type: string
           readOnly: true
@@ -8393,6 +8417,12 @@ components:
           format: date-time
           nullable: true
           description: When employee completed the training
+        certificate_link:
+          type: string
+          format: uri
+          nullable: true
+          description: HTTPS URL link to the training certificate
+          maxLength: 200
         status:
           type: string
           readOnly: true

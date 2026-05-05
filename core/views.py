@@ -3911,7 +3911,13 @@ class TrainingEntryViewSet(viewsets.ModelViewSet):
         filters.OrderingFilter,
     ]
     filterset_fields = ["training_type", "employee"]
-    search_fields = ["course_title", "provider", "description"]
+    search_fields = [
+        "course_title",
+        "provider",
+        "description",
+        "employee__user__first_name",
+        "employee__user__last_name",
+    ]
     ordering_fields = ["training_date", "created_at", "cost"]
     ordering = ["-training_date"]
 

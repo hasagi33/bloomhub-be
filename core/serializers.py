@@ -1850,6 +1850,7 @@ class TrainingEntryListSerializer(serializers.ModelSerializer):
             "training_type_display",
             "cost",
             "completed_at",
+            "certificate_link",
             "status",
             "created_at",
         ]
@@ -1887,6 +1888,7 @@ class TrainingEntryCreateUpdateSerializer(serializers.ModelSerializer):
             "cost",
             "description",
             "completed_at",
+            "certificate_link",
         ]
         read_only_fields = ["employee_id"]
 
@@ -1908,6 +1910,12 @@ class TrainingEntryCreateUpdateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Completion date cannot be in the future."
             )
+        return value
+
+    def validate_certificate_link(self, value):
+        """Ensure certificate link is HTTPS."""
+        if value and not value.startswith("https://"):
+            raise serializers.ValidationError("Certificate link must be an HTTPS URL.")
         return value
 
     def validate(self, data):
