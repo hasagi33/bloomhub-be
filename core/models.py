@@ -2290,6 +2290,27 @@ class TemplateField(models.Model):
         return f"{self.template.name} — {self.label}"
 
 
+class UserTemplateSnippet(models.Model):
+    user_profile = models.ForeignKey(
+        "UserProfile",
+        on_delete=models.CASCADE,
+        related_name="template_snippets",
+    )
+    label = models.CharField(max_length=255)
+    html = models.TextField()
+    sort_order = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "User Template Snippet"
+        verbose_name_plural = "User Template Snippets"
+        ordering = ["sort_order", "-updated_at"]
+
+    def __str__(self):
+        return f"{self.user_profile_id}: {self.label}"
+
+
 class TemplateGeneratedDocument(models.Model):
     """
     Document produced by instantiating a DocumentTemplate with user-supplied

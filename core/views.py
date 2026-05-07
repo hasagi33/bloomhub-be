@@ -29,6 +29,7 @@ from rest_framework import (
     viewsets,
 )
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -74,6 +75,7 @@ from .models import (
     TemplateGeneratedDocument,
     TrainingEntry,
     UserProfile,
+    UserTemplateSnippet,
 )
 from .permissions import (
     IsEmployeeOrHR,
@@ -151,6 +153,7 @@ from .serializers import (
     UploadRolePermissionsResponseSerializer,
     UserProfileSerializer,
     UserSerializer,
+    UserTemplateSnippetSerializer,
 )
 from .services.document_service import (
     archive_document,
@@ -5178,3 +5181,28 @@ class DocumentTemplateViewSet(viewsets.GenericViewSet):
 
         serializer = TemplateGeneratedDocumentSerializer(qs, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+@extend_schema(
+    tags=["Document Templates"],
+    summary="Personal template editor snippets",
+    description=(
+        "CRUD for reusable HTML fragments owned by the authenticated user's profile. "
+        "Used by the HR template builder snippets menu."
+    ),
+)
+class UserTemplateSnippetViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated]
+    serializer_class = UserTemplateSnippetSerializer
+
+    def get_queryset(self):
+        profile = getattr(self.request.user, "profile", None)
+        if profile is None:
+            return UserTemplateSnippet.objects.none()
+        return UserTemplateSnippet.objects.filter(user_profile=profile)
+
+    def perform_create(self, serializer):
+        profile = getattr(self.request.user, "profile", None)
+        if profile is None:
+            raise PermissionDenied(detail="User profile required.")
+        serializer.save(user_profile=profile)

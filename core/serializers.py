@@ -50,6 +50,7 @@ from core.models import (
     TrainingBudget,
     TrainingEntry,
     UserProfile,
+    UserTemplateSnippet,
 )
 from core.permissions import can_view_return_checklist, get_asset_object_capabilities
 from core.services.profile_change_history import (
@@ -2578,3 +2579,16 @@ class TrainingBudgetSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+
+
+class UserTemplateSnippetSerializer(serializers.ModelSerializer):
+    sort_order = serializers.IntegerField(
+        min_value=0,
+        max_value=2147483647,
+        required=False,
+    )
+
+    class Meta:
+        model = UserTemplateSnippet
+        fields = ["id", "label", "html", "sort_order", "created_at", "updated_at"]
+        read_only_fields = ["id", "created_at", "updated_at"]

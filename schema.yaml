@@ -1548,6 +1548,165 @@ paths:
                   export_url:
                     type: string
           description: ''
+  /api/documents/template-snippets/:
+    get:
+      operationId: documents_template_snippets_list
+      description: CRUD for reusable HTML fragments owned by the authenticated user's
+        profile. Used by the HR template builder snippets menu.
+      summary: Personal template editor snippets
+      tags:
+      - Document Templates
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserTemplateSnippet'
+          description: ''
+    post:
+      operationId: documents_template_snippets_create
+      description: CRUD for reusable HTML fragments owned by the authenticated user's
+        profile. Used by the HR template builder snippets menu.
+      summary: Personal template editor snippets
+      tags:
+      - Document Templates
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserTemplateSnippetRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/UserTemplateSnippetRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UserTemplateSnippetRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserTemplateSnippet'
+          description: ''
+  /api/documents/template-snippets/{id}/:
+    get:
+      operationId: documents_template_snippets_retrieve
+      description: CRUD for reusable HTML fragments owned by the authenticated user's
+        profile. Used by the HR template builder snippets menu.
+      summary: Personal template editor snippets
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this User Template Snippet.
+        required: true
+      tags:
+      - Document Templates
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserTemplateSnippet'
+          description: ''
+    put:
+      operationId: documents_template_snippets_update
+      description: CRUD for reusable HTML fragments owned by the authenticated user's
+        profile. Used by the HR template builder snippets menu.
+      summary: Personal template editor snippets
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this User Template Snippet.
+        required: true
+      tags:
+      - Document Templates
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserTemplateSnippetRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/UserTemplateSnippetRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UserTemplateSnippetRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserTemplateSnippet'
+          description: ''
+    patch:
+      operationId: documents_template_snippets_partial_update
+      description: CRUD for reusable HTML fragments owned by the authenticated user's
+        profile. Used by the HR template builder snippets menu.
+      summary: Personal template editor snippets
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this User Template Snippet.
+        required: true
+      tags:
+      - Document Templates
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedUserTemplateSnippetRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedUserTemplateSnippetRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedUserTemplateSnippetRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserTemplateSnippet'
+          description: ''
+    delete:
+      operationId: documents_template_snippets_destroy
+      description: CRUD for reusable HTML fragments owned by the authenticated user's
+        profile. Used by the HR template builder snippets menu.
+      summary: Personal template editor snippets
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this User Template Snippet.
+        required: true
+      tags:
+      - Document Templates
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
   /api/documents/templates/:
     get:
       operationId: documents_templates_list
@@ -7520,6 +7679,20 @@ components:
           nullable: true
           description: HTTPS URL link to the training certificate
           maxLength: 200
+    PatchedUserTemplateSnippetRequest:
+      type: object
+      properties:
+        label:
+          type: string
+          minLength: 1
+          maxLength: 255
+        html:
+          type: string
+          minLength: 1
+        sort_order:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
     PerformanceReviewActionPoint:
       type: object
       properties:
@@ -9366,6 +9539,52 @@ components:
             assigning them.
       required:
       - username
+    UserTemplateSnippet:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        label:
+          type: string
+          maxLength: 255
+        html:
+          type: string
+        sort_order:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - html
+      - id
+      - label
+      - updated_at
+    UserTemplateSnippetRequest:
+      type: object
+      properties:
+        label:
+          type: string
+          minLength: 1
+          maxLength: 255
+        html:
+          type: string
+          minLength: 1
+        sort_order:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+      required:
+      - html
+      - label
     VisibilityEnum:
       enum:
       - private

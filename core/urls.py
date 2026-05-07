@@ -44,6 +44,7 @@ from .views import (
     UploadRolePermissionsView,
     UserProfileListView,
     UserProfileView,
+    UserTemplateSnippetViewSet,
 )
 
 app_name = "core"
@@ -51,6 +52,11 @@ app_name = "core"
 router = DefaultRouter()
 router.register(
     r"documents/templates", DocumentTemplateViewSet, basename="document-template"
+)
+router.register(
+    r"documents/template-snippets",
+    UserTemplateSnippetViewSet,
+    basename="user-template-snippet",
 )
 router.register(r"documents", DocumentViewSet, basename="document")
 router.register(r"employees", EmployeeProfileViewSet, basename="employee")
