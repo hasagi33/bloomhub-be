@@ -2597,10 +2597,12 @@ paths:
           enum:
           - approved
           - cancelled
+          - lead_approved
           - pending
           - rejected
         description: |-
           * `pending` - Pending
+          * `lead_approved` - Lead Approved
           * `approved` - Approved
           * `rejected` - Rejected
           * `cancelled` - Cancelled
@@ -2758,7 +2760,9 @@ paths:
   /api/leave-requests/{id}/approve/:
     post:
       operationId: leave_requests_approve_create
-      description: Approve a leave request.
+      description: Tech Lead approves a pending request — moves it to 'Lead Approved'
+        and notifies HR.
+      summary: Tech Lead first-level approval (PENDING → LEAD_APPROVED)
       parameters:
       - in: path
         name: id
@@ -2822,10 +2826,47 @@ paths:
               schema:
                 $ref: '#/components/schemas/LeaveRequestDetail'
           description: ''
+  /api/leave-requests/{id}/hr-approve/:
+    post:
+      operationId: leave_requests_hr_approve_create
+      description: HR gives final approval — moves request to 'Approved', deducts
+        balance, notifies employee.
+      summary: HR final approval (LEAD_APPROVED → APPROVED)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Leave Request.
+        required: true
+      tags:
+      - Leave Management
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeaveRequestHRApproveRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/LeaveRequestHRApproveRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LeaveRequestHRApproveRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveRequestDetail'
+          description: ''
   /api/leave-requests/{id}/reject/:
     post:
       operationId: leave_requests_reject_create
-      description: Reject a leave request.
+      description: Reject a leave request — works at both PENDING (Tech Lead) and
+        LEAD_APPROVED (HR) stages.
+      summary: Reject at any approval stage
       parameters:
       - in: path
         name: id
@@ -2856,10 +2897,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/LeaveRequestDetail'
           description: ''
-  /api/leave-requests/pending/:
+  /api/leave-requests/hr-pending/:
     get:
-      operationId: leave_requests_pending_list
-      description: Get pending leave requests for manager approval.
+      operationId: leave_requests_hr_pending_list
+      description: Returns LEAD_APPROVED requests for HR to review.
+      summary: Lead-approved requests awaiting HR final decision
       parameters:
       - in: query
         name: employee
@@ -2900,10 +2942,81 @@ paths:
           enum:
           - approved
           - cancelled
+          - lead_approved
           - pending
           - rejected
         description: |-
           * `pending` - Pending
+          * `lead_approved` - Lead Approved
+          * `approved` - Approved
+          * `rejected` - Rejected
+          * `cancelled` - Cancelled
+      tags:
+      - Leave Management
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LeaveRequestList'
+          description: ''
+  /api/leave-requests/pending/:
+    get:
+      operationId: leave_requests_pending_list
+      description: |-
+        Returns PENDING requests for the current Tech Lead (their direct reports).
+        Staff/superusers see all PENDING requests.
+      summary: Pending requests for Tech Lead — requests awaiting first-level approval
+      parameters:
+      - in: query
+        name: employee
+        schema:
+          type: integer
+      - in: query
+        name: leave_type
+        schema:
+          type: string
+          enum:
+          - bereavement
+          - maternity
+          - paternity
+          - personal
+          - sick
+          - unpaid
+          - vacation
+          - wfh
+        description: |-
+          * `vacation` - Vacation
+          * `sick` - Sick Leave
+          * `wfh` - Work From Home
+          * `personal` - Personal
+          * `maternity` - Maternity
+          * `paternity` - Paternity
+          * `bereavement` - Bereavement
+          * `unpaid` - Unpaid Leave
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - in: query
+        name: status
+        schema:
+          type: string
+          enum:
+          - approved
+          - cancelled
+          - lead_approved
+          - pending
+          - rejected
+        description: |-
+          * `pending` - Pending
+          * `lead_approved` - Lead Approved
           * `approved` - Approved
           * `rejected` - Rejected
           * `cancelled` - Cancelled
@@ -6199,7 +6312,7 @@ components:
       - updated_at
     LeaveRequestApproveRequest:
       type: object
-      description: Serializer for approving leave requests.
+      description: Serializer for Tech Lead first-level approval (PENDING → LEAD_APPROVED).
       properties:
         comments:
           type: string
@@ -6281,7 +6394,7 @@ components:
         reason:
           type: string
         status:
-          $ref: '#/components/schemas/StatusB39Enum'
+          $ref: '#/components/schemas/Status5c0Enum'
         status_display:
           type: string
           readOnly: true
@@ -6297,6 +6410,21 @@ components:
           type: string
           format: date-time
           readOnly: true
+        lead_approver_id:
+          type: integer
+          readOnly: true
+          nullable: true
+        lead_approver_name:
+          type: string
+          readOnly: true
+          nullable: true
+        lead_approved_date:
+          type: string
+          format: date-time
+          nullable: true
+        lead_approval_comments:
+          type: string
+          description: Comments from Tech Lead
         approver_id:
           type: integer
           readOnly: true
@@ -6311,7 +6439,7 @@ components:
           nullable: true
         approval_comments:
           type: string
-          description: Comments from approver
+          description: Comments from HR approver
         rejection_reason:
           type: string
           description: Reason for rejection
@@ -6335,6 +6463,8 @@ components:
       - employee_name
       - end_date
       - id
+      - lead_approver_id
+      - lead_approver_name
       - leave_type
       - leave_type_display
       - reason
@@ -6342,6 +6472,12 @@ components:
       - status_display
       - submitted_date
       - updated_at
+    LeaveRequestHRApproveRequest:
+      type: object
+      description: Serializer for HR final approval (LEAD_APPROVED → APPROVED).
+      properties:
+        comments:
+          type: string
     LeaveRequestList:
       type: object
       description: Minimal serializer for listing leave requests.
@@ -6372,8 +6508,10 @@ components:
         days:
           type: string
           readOnly: true
+        reason:
+          type: string
         status:
-          $ref: '#/components/schemas/StatusB39Enum'
+          $ref: '#/components/schemas/Status5c0Enum'
         status_display:
           type: string
           readOnly: true
@@ -6390,6 +6528,7 @@ components:
       - id
       - leave_type
       - leave_type_display
+      - reason
       - start_date
       - status_display
       - submitted_date
@@ -6405,15 +6544,19 @@ components:
         end_date:
           type: string
           format: date
+        reason:
+          type: string
+          minLength: 1
         status:
-          $ref: '#/components/schemas/StatusB39Enum'
+          $ref: '#/components/schemas/Status5c0Enum'
       required:
       - end_date
       - leave_type
+      - reason
       - start_date
     LeaveRequestRejectRequest:
       type: object
-      description: Serializer for rejecting leave requests.
+      description: Serializer for rejecting a request at any approval stage.
       properties:
         reason:
           type: string
@@ -6695,8 +6838,11 @@ components:
         end_date:
           type: string
           format: date
+        reason:
+          type: string
+          minLength: 1
         status:
-          $ref: '#/components/schemas/StatusB39Enum'
+          $ref: '#/components/schemas/Status5c0Enum'
     PatchedPerformanceReviewActionPointRequest:
       type: object
       properties:
@@ -7903,15 +8049,17 @@ components:
         * `draft` - Draft
         * `published` - Published
         * `inactive` - Inactive
-    StatusB39Enum:
+    Status5c0Enum:
       enum:
       - pending
+      - lead_approved
       - approved
       - rejected
       - cancelled
       type: string
       description: |-
         * `pending` - Pending
+        * `lead_approved` - Lead Approved
         * `approved` - Approved
         * `rejected` - Rejected
         * `cancelled` - Cancelled

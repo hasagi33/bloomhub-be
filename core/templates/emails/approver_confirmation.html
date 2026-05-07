@@ -1,0 +1,44 @@
+{% extends "emails/base.html" %}
+{% block content %}
+<p>Hi {{ approver.user.first_name }},</p>
+
+<p>
+  This confirms that you have
+  <strong>{% if approved %}approved{% else %}rejected{% endif %}</strong>
+  the vacation request from <strong>{{ leave.employee.user.get_full_name }}</strong>.
+</p>
+
+<table class="card">
+  <tr><td class="label">Employee</td><td class="value">{{ leave.employee.user.get_full_name }}</td></tr>
+  <tr><td class="label">Leave Type</td><td class="value">{{ leave.get_leave_type_display }}</td></tr>
+  <tr><td class="label">Period</td><td class="value">{{ leave.start_date }} &rarr; {{ leave.end_date }}</td></tr>
+  <tr><td class="label">Working Days</td><td class="value">{{ leave.days }} day{{ leave.days|pluralize }}</td></tr>
+  <tr>
+    <td class="label">Your Decision</td>
+    <td class="value">
+      {% if approved %}
+        <span class="badge badge-approved">Approved</span>
+      {% else %}
+        <span class="badge badge-rejected">Rejected</span>
+      {% endif %}
+    </td>
+  </tr>
+  {% if stage == "lead" and approved and leave.lead_approval_comments %}
+  <tr><td class="label">Your Comments</td><td class="value">{{ leave.lead_approval_comments }}</td></tr>
+  {% endif %}
+  {% if stage == "hr" and approved and leave.approval_comments %}
+  <tr><td class="label">Your Comments</td><td class="value">{{ leave.approval_comments }}</td></tr>
+  {% endif %}
+  {% if not approved and leave.rejection_reason %}
+  <tr><td class="label">Rejection Reason</td><td class="value">{{ leave.rejection_reason }}</td></tr>
+  {% endif %}
+</table>
+
+{% if stage == "lead" and approved %}
+<p>The request has been forwarded to HR for final review. The employee has been notified of your decision.</p>
+{% elif stage == "hr" and approved %}
+<p>This is the final approval. The employee's leave balance has been updated and they have been notified.</p>
+{% else %}
+<p>The employee has been notified of your decision.</p>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,36 @@
+{% extends "emails/base.html" %}
+{% block content %}
+<p>Hi HR Team,</p>
+<p>
+  A vacation request from <strong>{{ leave.employee.user.get_full_name }}</strong> has been
+  <strong>approved by their Tech Lead</strong> and is now awaiting your final decision.
+</p>
+
+<table class="card">
+  <tr><td class="label">Employee</td><td class="value">{{ leave.employee.user.get_full_name }}</td></tr>
+  {% if leave.employee.department %}
+  <tr><td class="label">Department</td><td class="value">{{ leave.employee.department }}</td></tr>
+  {% endif %}
+  <tr><td class="label">Leave Type</td><td class="value">{{ leave.get_leave_type_display }}</td></tr>
+  <tr><td class="label">Start Date</td><td class="value">{{ leave.start_date }}</td></tr>
+  <tr><td class="label">End Date</td><td class="value">{{ leave.end_date }}</td></tr>
+  <tr><td class="label">Working Days</td><td class="value">{{ leave.days }} day{{ leave.days|pluralize }}</td></tr>
+  <tr><td class="label">Status</td><td class="value"><span class="badge badge-lead">Lead Approved</span></td></tr>
+  {% if leave.reason %}
+  <tr><td class="label">Reason</td><td class="value">{{ leave.reason }}</td></tr>
+  {% endif %}
+</table>
+
+<p>Approval chain so far:</p>
+<div class="chain">
+  <div class="chain-item approved">
+    <span class="chain-label">Tech Lead — {{ leave.lead_approver.user.get_full_name }}</span>
+    Approved on {{ leave.lead_approved_date|date:"N j, Y \a\t H:i" }} UTC{% if leave.lead_approval_comments %} &mdash; "{{ leave.lead_approval_comments }}"{% endif %}
+  </div>
+  <div class="chain-item pending">
+    <span class="chain-label">HR — Awaiting your decision</span>
+  </div>
+</div>
+
+<p>Please log in to BloomHub to give your final approval or rejection.</p>
+{% endblock %}

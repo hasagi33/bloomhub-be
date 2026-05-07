@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block subject %}BloomHub Notification{% endblock %}</title>
+  <style>
+    body, table, td { margin: 0; padding: 0; border: 0; }
+    body {
+      background: #f4f5f7;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      color: #374151;
+      -webkit-text-size-adjust: 100%;
+    }
+    a { color: #4f46e5; }
+    .wrapper {
+      max-width: 600px;
+      margin: 40px auto;
+      background: #ffffff;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+    }
+    .header { background: #1f2937; padding: 22px 36px; }
+    .header-logo { height: 44px; width: auto; vertical-align: middle; }
+    .header-brand { display: inline-block; vertical-align: middle; margin-left: 12px; }
+    .header-brand h1 { margin: 0; font-size: 20px; font-weight: 700; color: #ffffff; line-height: 1.2; }
+    .header-brand p { margin: 2px 0 0; font-size: 11px; color: #9ca3af; letter-spacing: 0.3px; }
+    .body-wrap { padding: 36px 40px 28px; }
+    .body-wrap p { margin: 0 0 16px; font-size: 15px; line-height: 1.65; color: #374151; }
+    .card { width: 100%; border-collapse: collapse; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; margin: 20px 0; font-size: 14px; overflow: hidden; }
+    .card td { padding: 11px 18px; border-bottom: 1px solid #e9ecef; vertical-align: top; }
+    .card tr:last-child td { border-bottom: none; }
+    .card .label { color: #6b7280; font-weight: 500; white-space: nowrap; width: 38%; }
+    .card .value { color: #111827; font-weight: 600; padding-left: 20px; }
+    .badge { display: inline-block; padding: 3px 11px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+    .badge-pending  { background: #fef3c7; color: #92400e; }
+    .badge-lead     { background: #ede9fe; color: #5b21b6; }
+    .badge-approved { background: #d1fae5; color: #065f46; }
+    .badge-rejected { background: #fee2e2; color: #991b1b; }
+    .chain { margin: 20px 0; }
+    .chain-item { padding: 12px 16px; border-left: 3px solid #e2e8f0; margin-bottom: 8px; font-size: 13px; color: #4b5563; background: #f9fafb; border-radius: 0 6px 6px 0; }
+    .chain-item.approved { border-left-color: #10b981; }
+    .chain-item.pending  { border-left-color: #f59e0b; }
+    .chain-item.rejected { border-left-color: #ef4444; }
+    .chain-label { font-weight: 600; color: #111827; display: block; margin-bottom: 3px; }
+    .footer { background: #f8fafc; padding: 18px 40px; text-align: center; border-top: 1px solid #e2e8f0; }
+    .footer p { margin: 0; font-size: 12px; color: #9ca3af; }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="header">
+      <img src="cid:bloomteq_logo" alt="BloomHub" class="header-logo" width="44" height="44" />
+      <div class="header-brand">
+        <h1>BloomHub</h1>
+        <p>Internal HR Platform</p>
+      </div>
+    </div>
+    <div class="body-wrap">
+      {% block content %}{% endblock %}
+    </div>
+    <div class="footer">
+      <p>BloomHub &mdash; Internal HR Platform &middot; This is an automated notification, please do not reply.</p>
+    </div>
+  </div>
+</body>
+</html>

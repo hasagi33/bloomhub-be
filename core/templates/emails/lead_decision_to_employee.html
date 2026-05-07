@@ -1,0 +1,57 @@
+{% extends "emails/base.html" %}
+{% block content %}
+<p>Hi {{ leave.employee.user.first_name }},</p>
+
+{% if approved %}
+<p>
+  Your vacation request has been <strong>approved by your Tech Lead</strong>
+  and has been forwarded to HR for final review.
+</p>
+{% else %}
+<p>
+  We regret to inform you that your vacation request has been
+  <strong>rejected by your Tech Lead</strong>.
+</p>
+{% endif %}
+
+<table class="card">
+  <tr><td class="label">Leave Type</td><td class="value">{{ leave.get_leave_type_display }}</td></tr>
+  <tr><td class="label">Start Date</td><td class="value">{{ leave.start_date }}</td></tr>
+  <tr><td class="label">End Date</td><td class="value">{{ leave.end_date }}</td></tr>
+  <tr><td class="label">Working Days</td><td class="value">{{ leave.days }} day{{ leave.days|pluralize }}</td></tr>
+  <tr>
+    <td class="label">Status</td>
+    <td class="value">
+      {% if approved %}
+        <span class="badge badge-lead">Lead Approved — Pending HR</span>
+      {% else %}
+        <span class="badge badge-rejected">Rejected</span>
+      {% endif %}
+    </td>
+  </tr>
+</table>
+
+<p>Approval chain:</p>
+<div class="chain">
+  {% if approved %}
+  <div class="chain-item approved">
+    <span class="chain-label">Tech Lead — {{ leave.lead_approver.user.get_full_name }}</span>
+    Approved on {{ leave.lead_approved_date|date:"N j, Y \a\t H:i" }} UTC{% if leave.lead_approval_comments %} &mdash; "{{ leave.lead_approval_comments }}"{% endif %}
+  </div>
+  <div class="chain-item pending">
+    <span class="chain-label">HR — Pending final review</span>
+  </div>
+  {% else %}
+  <div class="chain-item rejected">
+    <span class="chain-label">Tech Lead — {{ leave.approver.user.get_full_name }}</span>
+    Rejected on {{ leave.approved_date|date:"N j, Y \a\t H:i" }} UTC{% if leave.rejection_reason %} &mdash; "{{ leave.rejection_reason }}"{% endif %}
+  </div>
+  {% endif %}
+</div>
+
+{% if not approved and leave.rejection_reason %}
+<p><strong>Reason:</strong> {{ leave.rejection_reason }}</p>
+{% endif %}
+
+<p>If you have any questions, please reach out to your manager or HR team.</p>
+{% endblock %}

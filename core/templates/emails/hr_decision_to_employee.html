@@ -1,0 +1,61 @@
+{% extends "emails/base.html" %}
+{% block content %}
+<p>Hi {{ leave.employee.user.first_name }},</p>
+
+{% if approved %}
+<p>
+  Great news! Your vacation request has received <strong>final approval from HR</strong>.
+  Your leave has been confirmed and your balance has been updated.
+</p>
+{% else %}
+<p>
+  We regret to inform you that your vacation request has been
+  <strong>rejected by HR</strong> after review.
+</p>
+{% endif %}
+
+<table class="card">
+  <tr><td class="label">Leave Type</td><td class="value">{{ leave.get_leave_type_display }}</td></tr>
+  <tr><td class="label">Start Date</td><td class="value">{{ leave.start_date }}</td></tr>
+  <tr><td class="label">End Date</td><td class="value">{{ leave.end_date }}</td></tr>
+  <tr><td class="label">Working Days</td><td class="value">{{ leave.days }} day{{ leave.days|pluralize }}</td></tr>
+  <tr>
+    <td class="label">Final Status</td>
+    <td class="value">
+      {% if approved %}
+        <span class="badge badge-approved">Approved</span>
+      {% else %}
+        <span class="badge badge-rejected">Rejected</span>
+      {% endif %}
+    </td>
+  </tr>
+</table>
+
+<p>Full approval chain:</p>
+<div class="chain">
+  {% if leave.lead_approver %}
+  <div class="chain-item approved">
+    <span class="chain-label">Tech Lead — {{ leave.lead_approver.user.get_full_name }}</span>
+    Approved on {{ leave.lead_approved_date|date:"N j, Y \a\t H:i" }} UTC{% if leave.lead_approval_comments %} &mdash; "{{ leave.lead_approval_comments }}"{% endif %}
+  </div>
+  {% endif %}
+  <div class="chain-item {% if approved %}approved{% else %}rejected{% endif %}">
+    <span class="chain-label">HR — {{ leave.approver.user.get_full_name }}</span>
+    {% if approved %}
+      Approved on {{ leave.approved_date|date:"N j, Y \a\t H:i" }} UTC{% if leave.approval_comments %} &mdash; "{{ leave.approval_comments }}"{% endif %}
+    {% else %}
+      Rejected on {{ leave.approved_date|date:"N j, Y \a\t H:i" }} UTC{% if leave.rejection_reason %} &mdash; "{{ leave.rejection_reason }}"{% endif %}
+    {% endif %}
+  </div>
+</div>
+
+{% if not approved and leave.rejection_reason %}
+<p><strong>Reason:</strong> {{ leave.rejection_reason }}</p>
+{% endif %}
+
+{% if approved %}
+<p>Enjoy your time off! 🌴</p>
+{% else %}
+<p>If you have any questions, please reach out to your HR team directly.</p>
+{% endif %}
+{% endblock %}

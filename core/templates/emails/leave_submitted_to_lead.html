@@ -1,0 +1,26 @@
+{% extends "emails/base.html" %}
+{% block content %}
+<p>Hi there,</p>
+<p>
+  <strong>{{ leave.employee.user.get_full_name }}</strong> has submitted a vacation request
+  that requires your approval.
+</p>
+
+<table class="card">
+  <tr><td class="label">Employee</td><td class="value">{{ leave.employee.user.get_full_name }}</td></tr>
+  <tr><td class="label">Leave Type</td><td class="value">{{ leave.get_leave_type_display }}</td></tr>
+  <tr><td class="label">Start Date</td><td class="value">{{ leave.start_date }}</td></tr>
+  <tr><td class="label">End Date</td><td class="value">{{ leave.end_date }}</td></tr>
+  <tr><td class="label">Working Days</td><td class="value">{{ leave.days }} day{{ leave.days|pluralize }}</td></tr>
+  <tr><td class="label">Submitted</td><td class="value">{{ leave.submitted_date|date:"N j, Y" }}</td></tr>
+  <tr><td class="label">Status</td><td class="value"><span class="badge badge-pending">Pending Your Approval</span></td></tr>
+  {% if leave.reason %}
+  <tr><td class="label">Reason</td><td class="value">{{ leave.reason }}</td></tr>
+  {% endif %}
+  {% if leave.covering_employee %}
+  <tr><td class="label">Covering Employee</td><td class="value">{{ leave.covering_employee.user.get_full_name }}</td></tr>
+  {% endif %}
+</table>
+
+<p>Please log in to BloomHub to approve or reject this request.</p>
+{% endblock %}

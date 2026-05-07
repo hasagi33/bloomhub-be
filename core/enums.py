@@ -159,6 +159,7 @@ class LeaveType(models.TextChoices):
 
 class LeaveRequestStatus(models.TextChoices):
     PENDING = "pending", "Pending"
+    LEAD_APPROVED = "lead_approved", "Lead Approved"
     APPROVED = "approved", "Approved"
     REJECTED = "rejected", "Rejected"
     CANCELLED = "cancelled", "Cancelled"

@@ -114,6 +114,7 @@ from .serializers import (
     LeaveRequestApproveSerializer,
     LeaveRequestCreateSerializer,
     LeaveRequestDetailSerializer,
+    LeaveRequestHRApproveSerializer,
     LeaveRequestListSerializer,
     LeaveRequestRejectSerializer,
     LoginSerializer,
@@ -2494,8 +2495,8 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         instance = serializer.save()
-        # Return full details using the list serializer
-        response_serializer = LeaveRequestListSerializer(instance)
+        # Return full details so the client keeps the submitted reason and approval metadata.
+        response_serializer = LeaveRequestDetailSerializer(instance)
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
     def perform_create(self, serializer):
@@ -2505,6 +2506,7 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
     @extend_schema(
         request=LeaveRequestApproveSerializer,
         responses={200: LeaveRequestDetailSerializer},
+        summary="Tech Lead first-level approval (PENDING → LEAD_APPROVED)",
     )
     @action(
         detail=True,
@@ -2512,8 +2514,8 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
         permission_classes=[IsAuthenticated, IsManagerForApproval],
     )
     def approve(self, request, pk=None):
-        """Approve a leave request."""
-        from core.services.leave_service import approve_leave_request
+        """Tech Lead approves a pending request — moves it to 'Lead Approved' and notifies HR."""
+        from core.services.leave_service import approve_leave_request_lead
 
         leave_request = self.get_object()
         serializer = LeaveRequestApproveSerializer(
@@ -2523,25 +2525,61 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        comments = serializer.validated_data.get("comments", "")
-
-        # Use service to approve
-        success, error = approve_leave_request(
+        success, error = approve_leave_request_lead(
             leave_request=leave_request,
             approver=request.user.profile,
-            comments=comments,
+            comments=serializer.validated_data.get("comments", ""),
         )
 
         if not success:
             return Response({"error": error}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Return updated request
-        response_serializer = LeaveRequestDetailSerializer(leave_request)
-        return Response(response_serializer.data, status=status.HTTP_200_OK)
+        return Response(
+            LeaveRequestDetailSerializer(leave_request).data,
+            status=status.HTTP_200_OK,
+        )
+
+    @extend_schema(
+        request=LeaveRequestHRApproveSerializer,
+        responses={200: LeaveRequestDetailSerializer},
+        summary="HR final approval (LEAD_APPROVED → APPROVED)",
+    )
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="hr-approve",
+        permission_classes=[IsAuthenticated, IsHRAdminForAdjustment],
+    )
+    def hr_approve(self, request, pk=None):
+        """HR gives final approval — moves request to 'Approved', deducts balance, notifies employee."""
+        from core.services.leave_service import approve_leave_request_hr
+
+        leave_request = self.get_object()
+        serializer = LeaveRequestHRApproveSerializer(
+            data=request.data, context={"leave_request": leave_request}
+        )
+
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        success, error = approve_leave_request_hr(
+            leave_request=leave_request,
+            approver=request.user.profile,
+            comments=serializer.validated_data.get("comments", ""),
+        )
+
+        if not success:
+            return Response({"error": error}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(
+            LeaveRequestDetailSerializer(leave_request).data,
+            status=status.HTTP_200_OK,
+        )
 
     @extend_schema(
         request=LeaveRequestRejectSerializer,
         responses={200: LeaveRequestDetailSerializer},
+        summary="Reject at any approval stage",
     )
     @action(
         detail=True,
@@ -2549,7 +2587,7 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
         permission_classes=[IsAuthenticated, IsManagerForApproval],
     )
     def reject(self, request, pk=None):
-        """Reject a leave request."""
+        """Reject a leave request — works at both PENDING (Tech Lead) and LEAD_APPROVED (HR) stages."""
         from core.services.leave_service import reject_leave_request
 
         leave_request = self.get_object()
@@ -2560,21 +2598,19 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        reason = serializer.validated_data.get("reason")
-
-        # Use service to reject
         success, error = reject_leave_request(
             leave_request=leave_request,
             approver=request.user.profile,
-            reason=reason,
+            reason=serializer.validated_data.get("reason"),
         )
 
         if not success:
             return Response({"error": error}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Return updated request
-        response_serializer = LeaveRequestDetailSerializer(leave_request)
-        return Response(response_serializer.data, status=status.HTTP_200_OK)
+        return Response(
+            LeaveRequestDetailSerializer(leave_request).data,
+            status=status.HTTP_200_OK,
+        )
 
     @extend_schema(responses={200: LeaveRequestDetailSerializer})
     @action(detail=True, methods=["post"])
@@ -2584,43 +2620,47 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
 
         leave_request = self.get_object()
 
-        # Only owner can cancel
         if leave_request.employee.user != request.user:
             return Response(
                 {"error": "You can only cancel your own requests"},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        # Use service to cancel
         success, error = cancel_leave_request(leave_request)
 
         if not success:
             return Response({"error": error}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Return updated request
-        response_serializer = LeaveRequestDetailSerializer(leave_request)
-        return Response(response_serializer.data, status=status.HTTP_200_OK)
+        return Response(
+            LeaveRequestDetailSerializer(leave_request).data,
+            status=status.HTTP_200_OK,
+        )
 
-    @extend_schema(responses={200: LeaveRequestListSerializer(many=True)})
+    @extend_schema(
+        responses={200: LeaveRequestListSerializer(many=True)},
+        summary="Pending requests for Tech Lead — requests awaiting first-level approval",
+    )
     @action(
         detail=False,
         methods=["get"],
         permission_classes=[IsAuthenticated, IsManagerForApproval],
     )
     def pending(self, request):
-        """Get pending leave requests for manager approval."""
+        """
+        Returns PENDING requests for the current Tech Lead (their direct reports).
+        Staff/superusers see all PENDING requests.
+        """
         user = request.user
 
-        # HR admins see all pending
         if user.is_staff or user.is_superuser:
             pending_requests = LeaveRequest.objects.filter(
                 status=LeaveRequest.Status.PENDING
             )
         else:
-            # Managers see their team's pending requests
             try:
                 pending_requests = LeaveRequest.objects.filter(
-                    employee__manager=user.profile, status=LeaveRequest.Status.PENDING
+                    employee__managers=user.profile,
+                    status=LeaveRequest.Status.PENDING,
                 )
             except Exception:
                 pending_requests = LeaveRequest.objects.none()
@@ -2631,6 +2671,30 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
         ).order_by("-submitted_date")
 
         serializer = LeaveRequestListSerializer(pending_requests, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        responses={200: LeaveRequestListSerializer(many=True)},
+        summary="Lead-approved requests awaiting HR final decision",
+    )
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="hr-pending",
+        permission_classes=[IsAuthenticated, IsHRAdminForAdjustment],
+    )
+    def hr_pending(self, request):
+        """Returns LEAD_APPROVED requests for HR to review."""
+        hr_queue = (
+            LeaveRequest.objects.filter(status=LeaveRequest.Status.LEAD_APPROVED)
+            .select_related(
+                "employee__user",
+                "lead_approver__user",
+                "covering_employee__user",
+            )
+            .order_by("-lead_approved_date")
+        )
+        serializer = LeaveRequestListSerializer(hr_queue, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     @extend_schema(

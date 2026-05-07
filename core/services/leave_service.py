@@ -2,6 +2,7 @@
 Leave Management Business Logic Service
 
 Handles complex validation, calculations, and operations for leave management.
+Multi-level approval workflow: Employee → Tech Lead → HR
 """
 
 from datetime import date, datetime, timedelta
@@ -22,13 +23,6 @@ from core.models import (
 def calculate_working_days(start_date: date, end_date: date) -> int:
     """
     Calculate number of working days between two dates (excluding weekends).
-
-    Args:
-        start_date: Start date (inclusive)
-        end_date: End date (inclusive)
-
-    Returns:
-        Number of working days (Monday-Friday)
     """
     if not start_date or not end_date or start_date > end_date:
         return 0
@@ -37,8 +31,7 @@ def calculate_working_days(start_date: date, end_date: date) -> int:
     count = 0
 
     while current <= end_date:
-        # 0 = Monday, 6 = Sunday
-        if current.weekday() < 5:  # Monday to Friday
+        if current.weekday() < 5:  # Monday–Friday
             count += 1
         current += timedelta(days=1)
 
@@ -56,27 +49,16 @@ def validate_leave_request(
     """
     Validate a leave request against all business rules.
 
-    Args:
-        employee: Employee requesting leave
-        leave_type: Type of leave
-        start_date: Leave start date
-        end_date: Leave end date
-        covering_employee: Optional covering employee
-        exclude_request_id: Request ID to exclude from overlap check (for updates)
-
     Returns:
         Tuple of (is_valid, error_message)
     """
 
-    # 1. Validate date range
     if start_date > end_date:
         return False, "End date must be after start date."
 
-    # 2. Validate not in past
     if start_date < date.today():
         return False, "Start date cannot be in the past."
 
-    # 3. Check for overlapping requests
     overlapping = LeaveRequest.objects.filter(
         employee=employee,
         start_date__lte=end_date,
@@ -92,13 +74,11 @@ def validate_leave_request(
             "You already have an approved or pending leave request during this period.",
         )
 
-    # 4. Get leave policy
     try:
         policy = LeavePolicy.objects.get(leave_type=leave_type)
     except LeavePolicy.DoesNotExist:
         return False, f"Leave policy for {leave_type} not found."
 
-    # 5. Check minimum notice requirement
     if policy.min_notice_in_days > 0:
         notice_days = (start_date - date.today()).days
         if notice_days < policy.min_notice_in_days:
@@ -107,11 +87,9 @@ def validate_leave_request(
                 f"This leave type requires at least {policy.min_notice_in_days} days notice.",
             )
 
-    # 6. Check covering employee requirement
     if policy.requires_covering_employee and not covering_employee:
         return False, "This leave type requires a covering employee."
 
-    # 7. Check max consecutive days
     if policy.max_consecutive_days:
         days = calculate_working_days(start_date, end_date)
         if days > policy.max_consecutive_days:
@@ -120,7 +98,6 @@ def validate_leave_request(
                 f"This leave type allows maximum {policy.max_consecutive_days} consecutive days.",
             )
 
-    # 8. Check sufficient balance
     current_year = datetime.now().year
     try:
         balance = LeaveBalance.objects.get(
@@ -130,7 +107,8 @@ def validate_leave_request(
         if balance.remaining < requested_days:
             return (
                 False,
-                f"Insufficient leave balance. You have {balance.remaining} days remaining, but requesting {requested_days} days.",
+                f"Insufficient leave balance. You have {balance.remaining} days remaining, "
+                f"but requesting {requested_days} days.",
             )
     except LeaveBalance.DoesNotExist:
         return (
@@ -142,26 +120,58 @@ def validate_leave_request(
 
 
 @transaction.atomic
-def approve_leave_request(
-    leave_request: LeaveRequest, approver: UserProfile, comments: str = ""
+def approve_leave_request_lead(
+    leave_request: LeaveRequest,
+    approver: UserProfile,
+    comments: str = "",
 ) -> tuple[bool, str | None]:
     """
-    Approve a leave request and deduct from balance.
+    Tech Lead first-level approval: PENDING → LEAD_APPROVED.
 
-    Args:
-        leave_request: Leave request to approve
-        approver: Manager approving the request
-        comments: Optional approval comments
-
-    Returns:
-        Tuple of (success, error_message)
+    Sends:
+      - Confirmation email to Tech Lead
+      - Decision notification to employee
+      - Forwarded request email to HR
     """
-
-    # Check if already approved
     if leave_request.status != LeaveRequest.Status.PENDING:
-        return False, "Only pending requests can be approved."
+        return False, "Only pending requests can be approved by a Tech Lead."
 
-    # Check sufficient balance again (in case it changed)
+    leave_request.status = LeaveRequest.Status.LEAD_APPROVED
+    leave_request.lead_approver = approver
+    leave_request.lead_approved_date = timezone.now()
+    leave_request.lead_approval_comments = comments
+    leave_request.save()
+
+    # Emails (non-blocking — failures are logged, not raised)
+    from core.services.email_service import (
+        notify_approver_confirmation,
+        notify_employee_lead_decision,
+        notify_hr_lead_approved,
+    )
+
+    notify_approver_confirmation(leave_request, approver, approved=True, stage="lead")
+    notify_employee_lead_decision(leave_request, approved=True)
+    notify_hr_lead_approved(leave_request)
+
+    return True, None
+
+
+@transaction.atomic
+def approve_leave_request_hr(
+    leave_request: LeaveRequest,
+    approver: UserProfile,
+    comments: str = "",
+) -> tuple[bool, str | None]:
+    """
+    HR final approval: LEAD_APPROVED → APPROVED + balance deduction.
+
+    Sends:
+      - Confirmation email to HR
+      - Final decision notification to employee
+    """
+    if leave_request.status != LeaveRequest.Status.LEAD_APPROVED:
+        return False, "Only lead-approved requests can be given final approval by HR."
+
     current_year = datetime.now().year
     try:
         balance = LeaveBalance.objects.get(
@@ -179,46 +189,63 @@ def approve_leave_request(
             f"Insufficient leave balance. Employee has {balance.remaining} days remaining.",
         )
 
-    # Update leave request
     leave_request.status = LeaveRequest.Status.APPROVED
     leave_request.approver = approver
     leave_request.approved_date = timezone.now()
     leave_request.approval_comments = comments
     leave_request.save()
 
-    # Deduct from balance
     balance.used += requested_days
     balance.save()
+
+    from core.services.email_service import (
+        notify_approver_confirmation,
+        notify_employee_hr_decision,
+    )
+
+    notify_approver_confirmation(leave_request, approver, approved=True, stage="hr")
+    notify_employee_hr_decision(leave_request, approved=True)
 
     return True, None
 
 
 @transaction.atomic
 def reject_leave_request(
-    leave_request: LeaveRequest, approver: UserProfile, reason: str
+    leave_request: LeaveRequest,
+    approver: UserProfile,
+    reason: str,
 ) -> tuple[bool, str | None]:
     """
-    Reject a leave request.
+    Reject at either stage (PENDING by Tech Lead, or LEAD_APPROVED by HR).
 
-    Args:
-        leave_request: Leave request to reject
-        approver: Manager rejecting the request
-        reason: Rejection reason
-
-    Returns:
-        Tuple of (success, error_message)
+    Sends:
+      - Confirmation email to the rejector
+      - Decision notification to employee (with appropriate stage context)
     """
+    rejectable = {LeaveRequest.Status.PENDING, LeaveRequest.Status.LEAD_APPROVED}
+    if leave_request.status not in rejectable:
+        return False, "Only pending or lead-approved requests can be rejected."
 
-    # Check if already processed
-    if leave_request.status != LeaveRequest.Status.PENDING:
-        return False, "Only pending requests can be rejected."
+    stage = "lead" if leave_request.status == LeaveRequest.Status.PENDING else "hr"
 
-    # Update leave request
     leave_request.status = LeaveRequest.Status.REJECTED
     leave_request.approver = approver
     leave_request.approved_date = timezone.now()
     leave_request.rejection_reason = reason
     leave_request.save()
+
+    from core.services.email_service import (
+        notify_approver_confirmation,
+        notify_employee_hr_decision,
+        notify_employee_lead_decision,
+    )
+
+    notify_approver_confirmation(leave_request, approver, approved=False, stage=stage)
+
+    if stage == "lead":
+        notify_employee_lead_decision(leave_request, approved=False)
+    else:
+        notify_employee_hr_decision(leave_request, approved=False)
 
     return True, None
 
@@ -226,23 +253,14 @@ def reject_leave_request(
 @transaction.atomic
 def cancel_leave_request(leave_request: LeaveRequest) -> tuple[bool, str | None]:
     """
-    Cancel a leave request and restore balance if approved.
-
-    Args:
-        leave_request: Leave request to cancel
-
-    Returns:
-        Tuple of (success, error_message)
+    Cancel a leave request and restore balance if it was already approved.
     """
-
-    # Cannot cancel rejected or already cancelled requests
     if leave_request.status in [
         LeaveRequest.Status.REJECTED,
         LeaveRequest.Status.CANCELLED,
     ]:
         return False, f"Cannot cancel a {leave_request.status} request."
 
-    # If approved, restore the balance
     if leave_request.status == LeaveRequest.Status.APPROVED:
         current_year = datetime.now().year
         try:
@@ -251,15 +269,11 @@ def cancel_leave_request(leave_request: LeaveRequest) -> tuple[bool, str | None]
                 leave_type=leave_request.leave_type,
                 year=current_year,
             )
-
-            # Restore days
-            days_to_restore = leave_request.days
-            balance.used = max(0, balance.used - days_to_restore)
+            balance.used = max(0, balance.used - leave_request.days)
             balance.save()
         except LeaveBalance.DoesNotExist:
-            pass  # Balance not found, skip restoration
+            pass
 
-    # Update status
     leave_request.status = LeaveRequest.Status.CANCELLED
     leave_request.save()
 
@@ -275,25 +289,11 @@ def adjust_leave_balance(
     adjusted_by: UserProfile,
     year: int | None = None,
 ) -> tuple[bool, str | None, LeaveBalance | None]:
-    """
-    Adjust employee leave balance (admin function).
-
-    Args:
-        employee: Employee whose balance to adjust
-        leave_type: Type of leave
-        new_allocated: New allocated days
-        reason: Reason for adjustment
-        adjusted_by: Admin making the adjustment
-        year: Year (defaults to current year)
-
-    Returns:
-        Tuple of (success, error_message, updated_balance)
-    """
+    """Adjust employee leave balance (admin function)."""
 
     if year is None:
         year = datetime.now().year
 
-    # Get or create balance
     balance, created = LeaveBalance.objects.get_or_create(
         employee=employee,
         leave_type=leave_type,
@@ -302,12 +302,9 @@ def adjust_leave_balance(
     )
 
     old_allocated = balance.allocated
-
-    # Update allocated
     balance.allocated = new_allocated
     balance.save()
 
-    # Create audit record
     LeaveAdjustment.objects.create(
         employee=employee,
         leave_type=leave_type,
@@ -323,29 +320,16 @@ def adjust_leave_balance(
 def apply_carryover(
     employee: UserProfile, leave_type: str, from_year: int, to_year: int
 ) -> tuple[bool, str | None]:
-    """
-    Apply carryover from one year to the next.
+    """Apply carryover from one year to the next."""
 
-    Args:
-        employee: Employee
-        leave_type: Type of leave
-        from_year: Source year
-        to_year: Target year
-
-    Returns:
-        Tuple of (success, error_message)
-    """
-
-    # Get policy
     try:
         policy = LeavePolicy.objects.get(leave_type=leave_type)
     except LeavePolicy.DoesNotExist:
         return False, f"Leave policy for {leave_type} not found."
 
     if policy.carryover_days == 0:
-        return True, None  # No carryover for this leave type
+        return True, None
 
-    # Get source balance
     try:
         source_balance = LeaveBalance.objects.get(
             employee=employee, leave_type=leave_type, year=from_year
@@ -353,14 +337,12 @@ def apply_carryover(
     except LeaveBalance.DoesNotExist:
         return False, f"Balance for {leave_type} in year {from_year} not found."
 
-    # Calculate carryover amount
     remaining = source_balance.remaining
     carryover_amount = min(remaining, policy.carryover_days)
 
     if carryover_amount <= 0:
-        return True, None  # Nothing to carry over
+        return True, None
 
-    # Get or create target balance
     target_balance, created = LeaveBalance.objects.get_or_create(
         employee=employee,
         leave_type=leave_type,
@@ -382,13 +364,5 @@ def apply_carryover(
 def initialize_leave_balances_for_employee(
     employee: UserProfile, year: int | None = None
 ) -> None:
-    """
-    Initialize leave balances for all leave types for an employee.
-    Useful for new employees or new year setup.
-
-    Args:
-        employee: Employee to initialize balances for
-        year: Year (defaults to current year)
-    """
-
+    """Initialize leave balances for all leave types for an employee."""
     initialize_leave_balances_for_profile(employee, year)

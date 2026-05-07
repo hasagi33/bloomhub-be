@@ -241,3 +241,11 @@ else:
 
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
+
+# ── Resend email service ──────────────────────────────────────────────────────
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
+DEFAULT_FROM_EMAIL = os.environ.get(
+    "DEFAULT_FROM_EMAIL", "BloomHub <onboarding@resend.dev>"
+)
+# Public base URL used in email templates (e.g. for logo src). Set in production.
+SITE_URL = os.environ.get("SITE_URL", "").rstrip("/")

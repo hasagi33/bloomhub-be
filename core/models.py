@@ -1115,16 +1115,30 @@ class LeaveRequest(models.Model):
         help_text="Employee covering during leave",
     )
     submitted_date = models.DateTimeField(auto_now_add=True)
+    lead_approver = models.ForeignKey(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="lead_approved_leaves",
+        help_text="Tech Lead who gave first-level approval",
+    )
+    lead_approved_date = models.DateTimeField(null=True, blank=True)
+    lead_approval_comments = models.TextField(
+        blank=True, help_text="Comments from Tech Lead"
+    )
     approver = models.ForeignKey(
         UserProfile,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name="approved_leaves",
-        help_text="Manager who approved/rejected",
+        help_text="HR who gave final approval/rejection",
     )
     approved_date = models.DateTimeField(null=True, blank=True)
-    approval_comments = models.TextField(blank=True, help_text="Comments from approver")
+    approval_comments = models.TextField(
+        blank=True, help_text="Comments from HR approver"
+    )
     rejection_reason = models.TextField(blank=True, help_text="Reason for rejection")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

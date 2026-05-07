@@ -921,6 +921,7 @@ class LeaveRequestListSerializer(serializers.ModelSerializer):
             "start_date",
             "end_date",
             "days",
+            "reason",
             "status",
             "status_display",
             "submitted_date",
@@ -960,6 +961,12 @@ class LeaveRequestDetailSerializer(serializers.ModelSerializer):
         source="covering_employee.user.get_full_name", read_only=True, allow_null=True
     )
 
+    lead_approver_id = serializers.IntegerField(
+        source="lead_approver.id", read_only=True, allow_null=True
+    )
+    lead_approver_name = serializers.CharField(
+        source="lead_approver.user.get_full_name", read_only=True, allow_null=True
+    )
     approver_id = serializers.IntegerField(
         source="approver.id", read_only=True, allow_null=True
     )
@@ -985,6 +992,10 @@ class LeaveRequestDetailSerializer(serializers.ModelSerializer):
             "covering_employee_id",
             "covering_employee_name",
             "submitted_date",
+            "lead_approver_id",
+            "lead_approver_name",
+            "lead_approved_date",
+            "lead_approval_comments",
             "approver_id",
             "approver_name",
             "approved_date",
@@ -1147,40 +1158,60 @@ class LeaveRequestCreateSerializer(serializers.ModelSerializer):
             **validated_data,
         )
 
+        # Notify Tech Lead(s) of the new request
+        from core.services.email_service import notify_lead_new_request
+
+        notify_lead_new_request(leave_request)
+
         return leave_request
 
 
 class LeaveRequestApproveSerializer(serializers.Serializer):
-    """Serializer for approving leave requests."""
+    """Serializer for Tech Lead first-level approval (PENDING → LEAD_APPROVED)."""
 
     comments = serializers.CharField(required=False, allow_blank=True)
 
     def validate(self, data):
-        """Validate approval data."""
         leave_request = self.context.get("leave_request")
         if not leave_request:
             raise serializers.ValidationError("Leave request not found.")
-
         if leave_request.status != LeaveRequest.Status.PENDING:
-            raise serializers.ValidationError("Only pending requests can be approved.")
+            raise serializers.ValidationError(
+                "Only pending requests can be approved by a Tech Lead."
+            )
+        return data
 
+
+class LeaveRequestHRApproveSerializer(serializers.Serializer):
+    """Serializer for HR final approval (LEAD_APPROVED → APPROVED)."""
+
+    comments = serializers.CharField(required=False, allow_blank=True)
+
+    def validate(self, data):
+        leave_request = self.context.get("leave_request")
+        if not leave_request:
+            raise serializers.ValidationError("Leave request not found.")
+        if leave_request.status != LeaveRequest.Status.LEAD_APPROVED:
+            raise serializers.ValidationError(
+                "Only lead-approved requests can receive final HR approval."
+            )
         return data
 
 
 class LeaveRequestRejectSerializer(serializers.Serializer):
-    """Serializer for rejecting leave requests."""
+    """Serializer for rejecting a request at any approval stage."""
 
     reason = serializers.CharField(required=True)
 
     def validate(self, data):
-        """Validate rejection data."""
         leave_request = self.context.get("leave_request")
         if not leave_request:
             raise serializers.ValidationError("Leave request not found.")
-
-        if leave_request.status != LeaveRequest.Status.PENDING:
-            raise serializers.ValidationError("Only pending requests can be rejected.")
-
+        rejectable = {LeaveRequest.Status.PENDING, LeaveRequest.Status.LEAD_APPROVED}
+        if leave_request.status not in rejectable:
+            raise serializers.ValidationError(
+                "Only pending or lead-approved requests can be rejected."
+            )
         return data
 
 
