@@ -1,7 +1,35 @@
+from typing import Any, cast
+
 from rest_framework import permissions
 
 from .enums import ReviewNoteVisibility
 from .models import Permission
+
+ASSET_PERMISSION_KEYS = [
+    "view_own_assets",
+    "view_team_assets",
+    "view_all_assets",
+    "assign_assets",
+    "update_asset_condition",
+    "track_warranty",
+    "initiate_asset_return",
+    "process_asset_return",
+    "log_asset_lost",
+    "generate_qr_codes",
+    "view_asset_history",
+    "configure_asset_types",
+    "export_inventory",
+]
+
+ASSET_PERMISSION_ALIASES = {
+    "view_own_assets": ["view_own_assets", "view_own_assigned_assets"],
+    "assign_assets": ["assign_assets", "assign_assets_to_employees"],
+    "process_asset_return": ["process_asset_return", "approve_asset_return"],
+}
+
+
+def _asset_permission_names(feature_action: str) -> list[str]:
+    return ASSET_PERMISSION_ALIASES.get(feature_action, [feature_action])
 
 
 def _get_user_profile(user):
@@ -39,9 +67,143 @@ def _has_permission(user, module_name, feature_actions):
     return False
 
 
-def has_asset_permission(user, feature_action):
-    """Helper used by asset views to evaluate Asset Management permissions."""
-    return _has_permission(user, "Asset Management", [feature_action])
+def has_asset_permission(user, feature_action: str) -> bool:
+    """
+    Check whether `user` holds a specific `Asset Management` feature/action permission.
+    Superusers and staff are always granted access.
+    """
+    if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+        return True
+
+    profile = _get_user_profile(user)
+    if profile is None:
+        return False
+
+    asset_permissions = Permission.objects.filter(
+        module_name="Asset Management",
+        feature_action__in=_asset_permission_names(feature_action),
+    )
+    return any(profile.has_permission(perm) for perm in asset_permissions)
+
+
+def get_asset_permissions(user) -> list[str]:
+    """Return canonical asset permission keys held by the user."""
+    if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+        return list(ASSET_PERMISSION_KEYS)
+    return [
+        permission
+        for permission in ASSET_PERMISSION_KEYS
+        if has_asset_permission(user, permission)
+    ]
+
+
+def get_asset_scope(user) -> str:
+    if has_asset_permission(user, "view_all_assets"):
+        return "all"
+    if has_asset_permission(user, "view_team_assets"):
+        return "team"
+    if has_asset_permission(user, "view_own_assets"):
+        return "own"
+    return "none"
+
+
+def get_asset_capabilities(user) -> dict[str, bool]:
+    return {
+        "can_view_any_assets": get_asset_scope(user) != "none",
+        "can_create_assets": has_asset_permission(user, "configure_asset_types"),
+        "can_update_assets": has_asset_permission(user, "configure_asset_types"),
+        "can_delete_assets": has_asset_permission(user, "configure_asset_types"),
+        "can_assign_assets": has_asset_permission(user, "assign_assets"),
+        "can_request_return": has_asset_permission(user, "initiate_asset_return"),
+        "can_process_return": has_asset_permission(user, "process_asset_return"),
+        "can_export_inventory": has_asset_permission(user, "export_inventory"),
+        "can_view_asset_history": has_asset_permission(user, "view_asset_history"),
+        "can_update_asset_condition": has_asset_permission(
+            user, "update_asset_condition"
+        )
+        or has_asset_permission(user, "log_asset_lost"),
+        "can_generate_qr_codes": has_asset_permission(user, "generate_qr_codes"),
+    }
+
+
+def can_view_asset(user, asset) -> bool:
+    scope = get_asset_scope(user)
+    if scope == "all":
+        return True
+    if scope == "none":
+        return False
+
+    profile = _get_user_profile(user)
+    if profile is None:
+        return False
+
+    assignment = asset.current_assignment
+    if not assignment:
+        return False
+    if assignment.employee_id == profile.id:
+        return True
+    if scope == "team":
+        return profile.direct_reports.filter(id=assignment.employee_id).exists()
+    return False
+
+
+def can_view_assignment(user, assignment) -> bool:
+    scope = get_asset_scope(user)
+    if scope == "all":
+        return True
+    if scope == "none":
+        return False
+
+    profile = _get_user_profile(user)
+    if profile is None:
+        return False
+
+    if assignment.employee_id == profile.id:
+        return True
+    if scope == "team":
+        return profile.direct_reports.filter(id=assignment.employee_id).exists()
+    return False
+
+
+def get_asset_object_capabilities(user, asset) -> dict[str, bool]:
+    can_configure = has_asset_permission(user, "configure_asset_types")
+    can_assign = has_asset_permission(user, "assign_assets")
+    can_process_return = has_asset_permission(user, "process_asset_return")
+    can_update_condition = has_asset_permission(
+        user, "update_asset_condition"
+    ) or has_asset_permission(user, "log_asset_lost")
+
+    can_request_return = False
+    profile = _get_user_profile(user)
+    assignment = asset.current_assignment
+    if profile and assignment and assignment.employee_id == profile.id:
+        can_request_return = has_asset_permission(user, "initiate_asset_return")
+
+    return {
+        "can_view": can_view_asset(user, asset),
+        "can_update": can_configure,
+        "can_delete": can_configure,
+        "can_assign": can_assign and asset.is_available,
+        "can_request_return": can_request_return,
+        "can_process_return": can_process_return,
+        "can_view_history": has_asset_permission(user, "view_asset_history"),
+        "can_update_condition": can_update_condition,
+    }
+
+
+def can_view_return_checklist(user, assignment) -> bool:
+    """Check whether a user can view return checklist/details for an assignment."""
+    if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+        return True
+
+    profile = _get_user_profile(user)
+    if profile is None:
+        return False
+
+    if assignment.employee_id == profile.id:
+        return True
+
+    return has_asset_permission(user, "process_asset_return")
 
 
 class IsEmployeeOrHR(permissions.BasePermission):
@@ -109,12 +271,12 @@ class IsHRAdminOrReadOnlyOwnProfile(permissions.BasePermission):
             return False
 
         if request.method == "POST":
-            return self._is_hr_admin(request.user)
+            return self._is_hr_admin(cast(Any, request.user))
 
         return True
 
     def has_object_permission(self, request, view, obj):
-        if self._is_hr_admin(request.user):
+        if self._is_hr_admin(cast(Any, request.user)):
             return True
 
         if request.method in permissions.SAFE_METHODS:
@@ -122,7 +284,7 @@ class IsHRAdminOrReadOnlyOwnProfile(permissions.BasePermission):
 
         return False
 
-    def _is_hr_admin(self, user):
+    def _is_hr_admin(self, user: Any):
         if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
             return True
 

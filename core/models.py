@@ -123,6 +123,17 @@ DEFAULT_LEAVE_POLICIES = [
     },
 ]
 
+ASSET_MANAGEMENT_MODULE = "Asset Management"
+DEFAULT_ASSET_PERMISSION_ACTIONS = (
+    "view_own_assets",
+    "process_asset_return",
+    "initiate_asset_return",
+)
+DEFAULT_USER_ASSET_PERMISSION_ACTIONS = (
+    "view_own_assets",
+    "initiate_asset_return",
+)
+
 
 def employee_document_upload_to(instance: "EmployeeDocument", filename: str) -> str:
     """
@@ -189,6 +200,20 @@ class Permission(models.Model):
             )
             self.bit_position = max_bit + 1
         super().save(*args, **kwargs)
+
+
+def ensure_asset_permissions(actions=None):
+    if actions is None:
+        actions = DEFAULT_ASSET_PERMISSION_ACTIONS
+
+    permissions = []
+    for action in actions:
+        permission, _ = Permission.objects.get_or_create(
+            module_name=ASSET_MANAGEMENT_MODULE,
+            feature_action=action,
+        )
+        permissions.append(permission)
+    return permissions
 
 
 class Role(models.Model):
@@ -697,6 +722,17 @@ class EmployeeProfileChangeHistory(models.Model):
         return f"{self.employee.user.username} - {self.field} @ {self.changed_at.isoformat()}"
 
 
+class AssetCategory(models.TextChoices):
+    LAPTOPS = "laptops", "Laptops"
+    PHONES = "phones", "Phones"
+    MONITORS = "monitors", "Monitors"
+    HEADPHONES = "headphones", "Headphones"
+    CAMERAS = "cameras", "Cameras"
+    VEHICLES = "vehicles", "Vehicles"
+    FURNITURE = "furniture", "Furniture"
+    OTHER = "other", "Other"
+
+
 class Asset(models.Model):
     """
     Comprehensive Asset model for equipment management
@@ -706,6 +742,12 @@ class Asset(models.Model):
         max_length=50, unique=True, help_text="Unique identifier for the asset"
     )
     name = models.CharField(max_length=200, help_text="Asset name/type")
+    category = models.CharField(
+        max_length=20,
+        choices=AssetCategory.choices,
+        default=AssetCategory.OTHER,
+        help_text="Asset category",
+    )
     condition = models.CharField(
         max_length=20,
         choices=AssetCondition.choices,
@@ -773,11 +815,23 @@ class Asset(models.Model):
     @property
     def current_assignment(self):
         """Get current active assignment if any"""
-        return self.assignments.filter(returned_at__isnull=True).first()
+        active_assignments = getattr(self, "active_assignments", None)
+        if active_assignments is not None:
+            return active_assignments[0] if active_assignments else None
+
+        return (
+            self.assignments.filter(returned_at__isnull=True)
+            .select_related("employee__user")
+            .first()
+        )
 
     @property
     def is_available(self):
         """Check if asset is available for assignment"""
+        has_active_assignment = getattr(self, "has_active_assignment", None)
+        if has_active_assignment is not None:
+            return self.status == AssetStatus.ACTIVE and not has_active_assignment
+
         return self.status == AssetStatus.ACTIVE and not self.current_assignment
 
 
@@ -785,6 +839,12 @@ class Assignment(models.Model):
     """
     Asset assignment to employees
     """
+
+    class ReturnRequestStatus(models.TextChoices):
+        NONE = "none", "None"
+        PENDING = "pending", "Pending"
+        APPROVED = "approved", "Approved"
+        REJECTED = "rejected", "Rejected"
 
     asset = models.ForeignKey(
         Asset,
@@ -803,6 +863,53 @@ class Assignment(models.Model):
     )
     returned_at = models.DateTimeField(
         null=True, blank=True, help_text="When the asset was returned (optional)"
+    )
+    return_request_status = models.CharField(
+        max_length=20,
+        choices=ReturnRequestStatus.choices,
+        default=ReturnRequestStatus.NONE,
+        help_text="Two-step return workflow status",
+    )
+    return_requested_by = models.ForeignKey(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="return_requests_made",
+        help_text="Who requested asset return",
+    )
+    return_requested_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When return was requested",
+    )
+    return_reviewed_by = models.ForeignKey(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="return_requests_reviewed",
+        help_text="Who reviewed return request",
+    )
+    return_reviewed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When return request was reviewed",
+    )
+    return_rejection_reason = models.TextField(
+        blank=True,
+        null=True,
+        help_text="Reason provided when return request is rejected",
+    )
+    return_description = models.TextField(
+        blank=True,
+        null=True,
+        help_text="Description entered when requesting a return",
+    )
+    return_checklist = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Structured checklist submitted as part of the return request",
     )
 
     # Additional useful fields
@@ -824,6 +931,8 @@ class Assignment(models.Model):
     notes = models.TextField(
         blank=True, null=True, help_text="Additional notes about the assignment"
     )
+    asset_id_snapshot = models.CharField(max_length=50, default="", blank=True)
+    asset_name_snapshot = models.CharField(max_length=200, default="", blank=True)
 
     class Meta:
         verbose_name = "Assignment"
@@ -835,6 +944,13 @@ class Assignment(models.Model):
             "Active" if not self.returned_at else f"Returned {self.returned_at.date()}"
         )
         return f"{self.asset.asset_id} → {self.employee.user.get_full_name() or self.employee.user.username} ({status})"
+
+    def save(self, *args, **kwargs):
+        if self.asset_id and not self.asset_id_snapshot:
+            self.asset_id_snapshot = self.asset.asset_id
+        if self.asset_id and not self.asset_name_snapshot:
+            self.asset_name_snapshot = self.asset.name
+        super().save(*args, **kwargs)
 
     @property
     def is_active(self):
@@ -917,6 +1033,8 @@ def create_user_profile(sender, instance, created, **kwargs):
         profile.full_name = profile.full_name or full_name
         profile.email_address = profile.email_address or email_address
 
+        default_asset_permissions = ensure_asset_permissions()
+
         # If superuser, assign all permissions
         if instance.is_superuser:
             # Get all permissions and build a bitmap with all their bits set
@@ -930,6 +1048,12 @@ def create_user_profile(sender, instance, created, **kwargs):
 
         profile.save(update_fields=["full_name", "email_address", "permissions"])
         initialize_leave_balances_for_profile(profile)
+
+        for permission in default_asset_permissions:
+            if permission.feature_action not in DEFAULT_USER_ASSET_PERMISSION_ACTIONS:
+                continue
+            if not profile.has_permission(permission):
+                profile.add_permission(permission)
 
         if not profile.avatar:
             try:

@@ -1,7 +1,13 @@
 import pytest
 from django.contrib.auth.models import User
 
-from core.models import Permission, UserProfile
+from core.models import (
+    ASSET_MANAGEMENT_MODULE,
+    DEFAULT_ASSET_PERMISSION_ACTIONS,
+    DEFAULT_USER_ASSET_PERMISSION_ACTIONS,
+    Permission,
+    UserProfile,
+)
 
 
 @pytest.mark.django_db
@@ -18,7 +24,7 @@ class TestSuperuserPermissions:
             )
 
         total_permissions = Permission.objects.count()
-        assert total_permissions == 5
+        assert total_permissions == 5 + len(DEFAULT_ASSET_PERMISSION_ACTIONS)
 
         # Create a superuser
         superuser = User.objects.create_superuser(
@@ -41,8 +47,8 @@ class TestSuperuserPermissions:
         for permission in Permission.objects.all():
             assert profile.has_permission(permission)
 
-    def test_regular_user_no_auto_permissions(self):
-        """When a regular user is created, they should have no permissions."""
+    def test_regular_user_gets_default_asset_permissions_only(self):
+        """When a regular user is created, they should get default asset permissions only."""
         # Create some permissions
         for i in range(3):
             Permission.objects.create(
@@ -61,15 +67,24 @@ class TestSuperuserPermissions:
         profile = UserProfile.objects.get(user=regular_user)
         assert profile is not None
 
-        # Verify no permissions are set
-        assert profile.permissions == ""
+        default_asset_permissions = Permission.objects.filter(
+            module_name=ASSET_MANAGEMENT_MODULE,
+            feature_action__in=DEFAULT_USER_ASSET_PERMISSION_ACTIONS,
+        )
+        assert default_asset_permissions.count() == len(
+            DEFAULT_USER_ASSET_PERMISSION_ACTIONS
+        )
 
-        # Verify user has no permissions
+        # Verify user has default asset permissions and no custom permissions
         for permission in Permission.objects.all():
-            assert not profile.has_permission(permission)
+            expected = (
+                permission.module_name == ASSET_MANAGEMENT_MODULE
+                and permission.feature_action in DEFAULT_USER_ASSET_PERMISSION_ACTIONS
+            )
+            assert profile.has_permission(permission) is expected
 
-    def test_superuser_with_no_permissions_in_db(self):
-        """Superuser created when no permissions exist should have empty bitmap."""
+    def test_superuser_with_no_preexisting_permissions_gets_all_created_defaults(self):
+        """Superuser created with no preexisting permissions should get all created defaults."""
         # Ensure no permissions exist
         Permission.objects.all().delete()
 
@@ -84,5 +99,10 @@ class TestSuperuserPermissions:
         profile = UserProfile.objects.get(user=superuser)
         assert profile is not None
 
-        # Verify the permissions bitmap is empty (no permissions to assign)
-        assert profile.permissions == ""
+        # The profile signal creates defaults before the superuser all-permission grant.
+        created_permissions = Permission.objects.all()
+        assert created_permissions.count() == len(DEFAULT_ASSET_PERMISSION_ACTIONS)
+        for permission in created_permissions:
+            assert permission.module_name == ASSET_MANAGEMENT_MODULE
+            assert permission.feature_action in DEFAULT_ASSET_PERMISSION_ACTIONS
+            assert profile.has_permission(permission)

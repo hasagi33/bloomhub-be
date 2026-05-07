@@ -34,7 +34,10 @@ def test_asset_endpoints():
 
     # Create a test user and get JWT token
     user = User.objects.create_user(
-        username="testuser", email="test@example.com", password="testpass123"
+        username="testuser",
+        email="test@example.com",
+        password="testpass123",
+        is_staff=True,
     )
 
     refresh = RefreshToken.for_user(user)

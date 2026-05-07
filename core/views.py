@@ -13,7 +13,8 @@ from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.core.validators import URLValidator
 from django.db import models, transaction
-from django.db.models import Avg, Max, Prefetch
+from django.db.models import Avg, Exists, Max, OuterRef, Prefetch, Q
+from django.http import HttpResponse
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.types import OpenApiTypes
@@ -41,6 +42,7 @@ from .constants import (
 )
 from .models import (
     Asset,
+    AssetStatus,
     Assignment,
     ChecklistTask,
     ChecklistTemplate,
@@ -83,14 +85,22 @@ from .permissions import (
     IsReviewViewer,
     can_attach_review_documents,
     can_edit_review_note,
+    can_view_asset,
+    can_view_assignment,
+    get_asset_capabilities,
+    get_asset_permissions,
+    get_asset_scope,
     has_asset_permission,
     has_review_permission,
 )
 from .serializers import (
     APIRootResponseSerializer,
     AssetCreateSerializer,
+    AssetExportRequestSerializer,
     AssetSerializer,
     AssignmentCreateSerializer,
+    AssignmentRejectReturnSerializer,
+    AssignmentRequestReturnSerializer,
     AssignmentReturnSerializer,
     AssignmentSerializer,
     AvatarUploadSerializer,
@@ -129,6 +139,7 @@ from .serializers import (
     RegisterSerializer,
     ReplacementLogSerializer,
     RequestSignatureSerializer,
+    ReturnRequestQueueSerializer,
     TemplateGeneratedDocumentSerializer,
     TemplateUseSerializer,
     TokenSerializer,
@@ -205,6 +216,9 @@ class APIRootView(APIView):
                         "review_detail": "GET/PATCH/DELETE /api/performance-reviews/{id}/",
                         "summary": "GET /api/performance-reviews/summary/",
                         "review_reminders": "GET /api/performance-review-reminders/",
+                    },
+                    "assets": {
+                        "capabilities": "GET /api/assets/capabilities/",
                     },
                     "django_admin": "GET /admin/",
                 },
@@ -1687,6 +1701,129 @@ class EmployeeProfileChangeHistoryView(APIView):
 # Asset Management API Views
 
 
+def _active_assignment_queryset():
+    return Assignment.objects.filter(returned_at__isnull=True).select_related(
+        "employee__user"
+    )
+
+
+def _with_asset_availability(assets):
+    active_assignments = _active_assignment_queryset()
+    return assets.annotate(
+        has_active_assignment=Exists(
+            Assignment.objects.filter(
+                asset_id=OuterRef("pk"),
+                returned_at__isnull=True,
+            )
+        )
+    ).prefetch_related(
+        Prefetch(
+            "assignments",
+            queryset=active_assignments,
+            to_attr="active_assignments",
+        )
+    )
+
+
+def _get_assets_for_user(user):
+    if has_asset_permission(user, "view_all_assets"):
+        return Asset.objects.all()
+    if has_asset_permission(user, "view_team_assets"):
+        try:
+            profile = user.profile
+        except Exception:
+            return Asset.objects.none()
+        team_ids = profile.direct_reports.values_list("id", flat=True)
+        assigned_asset_ids = Assignment.objects.filter(
+            employee_id__in=list(team_ids) + [profile.id],
+            returned_at__isnull=True,
+        ).values_list("asset_id", flat=True)
+        return Asset.objects.filter(id__in=assigned_asset_ids)
+    if has_asset_permission(user, "view_own_assets"):
+        try:
+            profile = user.profile
+        except Exception:
+            return Asset.objects.none()
+        assigned_asset_ids = Assignment.objects.filter(
+            employee=profile, returned_at__isnull=True
+        ).values_list("asset_id", flat=True)
+        return Asset.objects.filter(id__in=assigned_asset_ids)
+    return Asset.objects.none()
+
+
+def _apply_asset_filters(assets, filter_data):
+    status_filter = filter_data.get("status")
+    if status_filter:
+        assets = assets.filter(status=status_filter)
+
+    condition_filter = filter_data.get("condition")
+    if condition_filter:
+        assets = assets.filter(condition=condition_filter)
+
+    category_filter = filter_data.get("category")
+    if category_filter:
+        assets = assets.filter(category=category_filter)
+
+    assigned_employee_id = filter_data.get("assigned_employee_id")
+    if assigned_employee_id:
+        assets = assets.filter(
+            assignments__employee_id=assigned_employee_id,
+            assignments__returned_at__isnull=True,
+        ).distinct()
+
+    available_filter = filter_data.get("available")
+    assets = _with_asset_availability(assets)
+    if available_filter is not None:
+        if available_filter:
+            assets = assets.filter(
+                status=AssetStatus.ACTIVE,
+                has_active_assignment=False,
+            )
+        else:
+            assets = assets.filter(
+                Q(has_active_assignment=True) | ~Q(status=AssetStatus.ACTIVE)
+            )
+
+    return assets
+
+
+def _assignment_update_permission(request) -> str:
+    return_fields = {
+        "returned_at",
+        "return_request_status",
+        "return_requested_by",
+        "return_requested_at",
+        "return_reviewed_by",
+        "return_reviewed_at",
+        "return_rejection_reason",
+        "return_description",
+        "return_checklist",
+        "return_condition",
+    }
+    if return_fields.intersection(set(request.data.keys())):
+        return "process_asset_return"
+    return "assign_assets"
+
+
+@extend_schema(
+    tags=["Asset Management"],
+    responses={200: OpenApiTypes.OBJECT},
+    description="Return canonical asset permissions and UI capabilities for the current user.",
+)
+class AssetCapabilitiesView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        return Response(
+            {
+                "permissions": get_asset_permissions(request.user),
+                "capabilities": get_asset_capabilities(request.user),
+                "scope": get_asset_scope(request.user),
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
 @extend_schema(
     tags=["Asset Management"],
     responses={200: AssetSerializer(many=True)},
@@ -1707,6 +1844,13 @@ class EmployeeProfileChangeHistoryView(APIView):
             required=False,
         ),
         OpenApiParameter(
+            name="category",
+            type=OpenApiTypes.STR,
+            location=OpenApiParameter.QUERY,
+            description="Filter by asset category (laptops, phones, monitors, headphones, cameras, vehicles, furniture, other)",
+            required=False,
+        ),
+        OpenApiParameter(
             name="available",
             type=OpenApiTypes.BOOL,
             location=OpenApiParameter.QUERY,
@@ -1720,51 +1864,21 @@ class AssetListView(APIView):
 
     def get(self, request):
         """Get list of assets with optional filtering, scoped by visibility permissions."""
-        user = request.user
+        assets = _get_assets_for_user(request.user)
+        available_query = request.query_params.get("available")
+        filter_data = {
+            "status": request.query_params.get("status"),
+            "condition": request.query_params.get("condition"),
+            "category": request.query_params.get("category"),
+            "available": (
+                available_query.lower() == "true"
+                if available_query is not None
+                else None
+            ),
+        }
+        assets = _apply_asset_filters(assets, filter_data)
 
-        if has_asset_permission(user, "view_all_assets"):
-            assets = Asset.objects.all()
-        elif has_asset_permission(user, "view_team_assets"):
-            # Assets assigned to direct reports of this user
-            try:
-                profile = user.profile
-            except Exception:
-                return Response([], status=status.HTTP_200_OK)
-            team_ids = profile.direct_reports.values_list("id", flat=True)
-            assigned_asset_ids = Assignment.objects.filter(
-                employee_id__in=list(team_ids) + [profile.id],
-                returned_at__isnull=True,
-            ).values_list("asset_id", flat=True)
-            assets = Asset.objects.filter(id__in=assigned_asset_ids)
-        elif has_asset_permission(user, "view_own_assigned_assets"):
-            try:
-                profile = user.profile
-            except Exception:
-                return Response([], status=status.HTTP_200_OK)
-            assigned_asset_ids = Assignment.objects.filter(
-                employee=profile, returned_at__isnull=True
-            ).values_list("asset_id", flat=True)
-            assets = Asset.objects.filter(id__in=assigned_asset_ids)
-        else:
-            assets = Asset.objects.none()
-
-        # Apply additional filters
-        status_filter = request.query_params.get("status")
-        if status_filter:
-            assets = assets.filter(status=status_filter)
-
-        condition_filter = request.query_params.get("condition")
-        if condition_filter:
-            assets = assets.filter(condition=condition_filter)
-
-        available_filter = request.query_params.get("available")
-        if available_filter is not None:
-            if available_filter.lower() == "true":
-                assets = [asset for asset in assets if asset.is_available]
-            else:
-                assets = [asset for asset in assets if not asset.is_available]
-
-        serializer = AssetSerializer(assets, many=True)
+        serializer = AssetSerializer(assets, many=True, context={"request": request})
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     @extend_schema(
@@ -1774,12 +1888,107 @@ class AssetListView(APIView):
     )
     def post(self, request):
         """Create a new asset"""
+        if not has_asset_permission(request.user, "configure_asset_types"):
+            return Response(
+                {"error": "You do not have permission to create assets."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         serializer = AssetCreateSerializer(data=request.data)
         if serializer.is_valid():
             asset = serializer.save()
-            response_serializer = AssetSerializer(asset)
+            response_serializer = AssetSerializer(asset, context={"request": request})
             return Response(response_serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@extend_schema(
+    tags=["Asset Management"],
+    request=AssetExportRequestSerializer,
+    responses={200: OpenApiTypes.BINARY, 400: None, 403: None},
+    description=(
+        "Export assets as CSV. Requires `export_inventory` permission. "
+        "Supports optional filters and optional assignment columns."
+    ),
+)
+class AssetExportView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    ASSIGNMENT_COLUMNS = [
+        "current_assignment_id",
+        "current_assignment_employee_id",
+        "current_assignment_employee_name",
+        "current_assignment_assigned_at",
+    ]
+
+    def post(self, request):
+        if not has_asset_permission(request.user, "export_inventory"):
+            return Response(
+                {"error": "You do not have permission to export inventory."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        serializer = AssetExportRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        payload = serializer.validated_data
+
+        selected_fields = (
+            payload.get("fields") or AssetExportRequestSerializer.ASSET_FIELDS
+        )
+        include_assignment = payload.get("include_assignment", True)
+        filter_data = payload.get("filters") or {}
+
+        assets = _apply_asset_filters(Asset.objects.all(), filter_data)
+
+        output = io.StringIO()
+        writer = csv.writer(output)
+        headers = list(selected_fields)
+        if include_assignment:
+            headers.extend(self.ASSIGNMENT_COLUMNS)
+        writer.writerow(headers)
+
+        for asset in assets:
+            row = [
+                self._serialize_asset_field(asset, field_name)
+                for field_name in selected_fields
+            ]
+            if include_assignment:
+                row.extend(self._assignment_values(asset))
+            writer.writerow(row)
+
+        filename = payload.get("filename") or "asset_export.csv"
+        response = HttpResponse(output.getvalue(), content_type="text/csv")
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return response
+
+    def _serialize_asset_field(self, asset, field_name):
+        if field_name == "is_under_warranty":
+            value = asset.is_under_warranty
+        elif field_name == "is_available":
+            value = asset.is_available
+        else:
+            value = getattr(asset, field_name, None)
+
+        if value is None:
+            return ""
+        if hasattr(value, "isoformat"):
+            return value.isoformat()
+        return str(value)
+
+    def _assignment_values(self, asset):
+        assignment = asset.current_assignment
+        if not assignment:
+            return ["", "", "", ""]
+
+        employee_name = (
+            assignment.employee.user.get_full_name()
+            or assignment.employee.user.username
+        )
+        return [
+            str(assignment.id),
+            str(assignment.employee_id),
+            employee_name,
+            assignment.assigned_at.isoformat() if assignment.assigned_at else "",
+        ]
 
 
 @extend_schema(
@@ -1793,7 +2002,7 @@ class AssetDetailView(APIView):
     def get_object(self, pk):
         """Get asset by ID"""
         try:
-            return Asset.objects.get(pk=pk)
+            return _with_asset_availability(Asset.objects).get(pk=pk)
         except Asset.DoesNotExist:
             return None
 
@@ -1808,8 +2017,13 @@ class AssetDetailView(APIView):
             return Response(
                 {"error": "Asset not found"}, status=status.HTTP_404_NOT_FOUND
             )
+        if not can_view_asset(request.user, asset):
+            return Response(
+                {"error": "You do not have permission to view this asset."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
-        serializer = AssetSerializer(asset)
+        serializer = AssetSerializer(asset, context={"request": request})
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     @extend_schema(
@@ -1824,11 +2038,41 @@ class AssetDetailView(APIView):
             return Response(
                 {"error": "Asset not found"}, status=status.HTTP_404_NOT_FOUND
             )
+        if not has_asset_permission(request.user, "configure_asset_types"):
+            return Response(
+                {"error": "You do not have permission to update assets."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         serializer = AssetCreateSerializer(asset, data=request.data)
         if serializer.is_valid():
             asset = serializer.save()
-            response_serializer = AssetSerializer(asset)
+            response_serializer = AssetSerializer(asset, context={"request": request})
+            return Response(response_serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @extend_schema(
+        request=AssetCreateSerializer,
+        responses={200: AssetSerializer, 400: None, 404: None},
+        description="Partially update an asset",
+    )
+    def patch(self, request, pk):
+        """Partially update asset"""
+        asset = self.get_object(pk)
+        if not asset:
+            return Response(
+                {"error": "Asset not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+        if not has_asset_permission(request.user, "configure_asset_types"):
+            return Response(
+                {"error": "You do not have permission to update assets."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        serializer = AssetCreateSerializer(asset, data=request.data, partial=True)
+        if serializer.is_valid():
+            asset = serializer.save()
+            response_serializer = AssetSerializer(asset, context={"request": request})
             return Response(response_serializer.data, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -1842,6 +2086,11 @@ class AssetDetailView(APIView):
         if not asset:
             return Response(
                 {"error": "Asset not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+        if not has_asset_permission(request.user, "configure_asset_types"):
+            return Response(
+                {"error": "You do not have permission to delete assets."},
+                status=status.HTTP_403_FORBIDDEN,
             )
 
         asset.delete()
@@ -1894,7 +2143,7 @@ class AssignmentListView(APIView):
             assignments = Assignment.objects.filter(
                 employee_id__in=list(team_ids) + [profile.id]
             )
-        elif has_asset_permission(user, "view_own_assigned_assets"):
+        elif has_asset_permission(user, "view_own_assets"):
             try:
                 profile = user.profile
             except Exception:
@@ -1919,7 +2168,9 @@ class AssignmentListView(APIView):
         if asset_filter:
             assignments = assignments.filter(asset_id=asset_filter)
 
-        serializer = AssignmentSerializer(assignments, many=True)
+        serializer = AssignmentSerializer(
+            assignments, many=True, context={"request": request}
+        )
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     @extend_schema(
@@ -1929,7 +2180,7 @@ class AssignmentListView(APIView):
     )
     def post(self, request):
         """Create a new assignment"""
-        if not has_asset_permission(request.user, "assign_assets_to_employees"):
+        if not has_asset_permission(request.user, "assign_assets"):
             return Response(
                 {"error": "You do not have permission to assign assets."},
                 status=status.HTTP_403_FORBIDDEN,
@@ -1937,7 +2188,9 @@ class AssignmentListView(APIView):
         serializer = AssignmentCreateSerializer(data=request.data)
         if serializer.is_valid():
             assignment = serializer.save(assigned_by=request.user.profile)
-            response_serializer = AssignmentSerializer(assignment)
+            response_serializer = AssignmentSerializer(
+                assignment, context={"request": request}
+            )
             return Response(response_serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -1968,8 +2221,13 @@ class AssignmentDetailView(APIView):
             return Response(
                 {"error": "Assignment not found"}, status=status.HTTP_404_NOT_FOUND
             )
+        if not can_view_assignment(request.user, assignment):
+            return Response(
+                {"error": "You do not have permission to view this assignment."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
-        serializer = AssignmentSerializer(assignment)
+        serializer = AssignmentSerializer(assignment, context={"request": request})
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     @extend_schema(
@@ -1984,11 +2242,20 @@ class AssignmentDetailView(APIView):
             return Response(
                 {"error": "Assignment not found"}, status=status.HTTP_404_NOT_FOUND
             )
+        required_permission = _assignment_update_permission(request)
+        if not has_asset_permission(request.user, required_permission):
+            return Response(
+                {"error": "You do not have permission to update assignments."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         serializer = AssignmentSerializer(assignment, data=request.data, partial=True)
         if serializer.is_valid():
             assignment = serializer.save()
-            return Response(serializer.data, status=status.HTTP_200_OK)
+            return Response(
+                AssignmentSerializer(assignment, context={"request": request}).data,
+                status=status.HTTP_200_OK,
+            )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @extend_schema(
@@ -2002,6 +2269,11 @@ class AssignmentDetailView(APIView):
             return Response(
                 {"error": "Assignment not found"}, status=status.HTTP_404_NOT_FOUND
             )
+        if not has_asset_permission(request.user, "assign_assets"):
+            return Response(
+                {"error": "You do not have permission to delete assignments."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         assignment.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -2009,9 +2281,135 @@ class AssignmentDetailView(APIView):
 
 @extend_schema(
     tags=["Asset Management"],
+    request=AssignmentRequestReturnSerializer,
+    responses={200: AssignmentSerializer, 400: None, 403: None, 404: None},
+    description="Request return for an assigned asset",
+)
+class AssignmentRequestReturnView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self, pk):
+        try:
+            return Assignment.objects.get(pk=pk)
+        except Assignment.DoesNotExist:
+            return None
+
+    def post(self, request, pk):
+        if not has_asset_permission(request.user, "initiate_asset_return"):
+            return Response(
+                {"error": "You do not have permission to initiate asset returns."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        assignment = self.get_object(pk)
+        if not assignment:
+            return Response(
+                {"error": "Assignment not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        if not request.user.is_staff and not request.user.is_superuser:
+            try:
+                requester_profile = request.user.profile
+            except Exception:
+                return Response(
+                    {"error": "User profile not found."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            if assignment.employee_id != requester_profile.id:
+                return Response(
+                    {"error": "You can only request return for your own assignments."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
+        serializer = AssignmentRequestReturnSerializer(assignment, data=request.data)
+        if serializer.is_valid():
+            from django.utils import timezone
+
+            assignment.return_request_status = Assignment.ReturnRequestStatus.PENDING
+            assignment.return_requested_by = request.user.profile
+            assignment.return_requested_at = timezone.now()
+            assignment.return_reviewed_by = None
+            assignment.return_reviewed_at = None
+            assignment.return_rejection_reason = None
+            assignment.return_description = serializer.validated_data.get(
+                "return_description", assignment.return_description
+            )
+            assignment.return_checklist = serializer.validated_data.get(
+                "return_checklist", assignment.return_checklist
+            )
+            assignment.notes = serializer.validated_data.get("notes", assignment.notes)
+            assignment.save(
+                update_fields=[
+                    "return_request_status",
+                    "return_requested_by",
+                    "return_requested_at",
+                    "return_reviewed_by",
+                    "return_reviewed_at",
+                    "return_rejection_reason",
+                    "return_description",
+                    "return_checklist",
+                    "notes",
+                ]
+            )
+            return Response(
+                AssignmentSerializer(assignment, context={"request": request}).data,
+                status=status.HTTP_200_OK,
+            )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@extend_schema(
+    tags=["Asset Management"],
+    parameters=[
+        OpenApiParameter(
+            name="status",
+            type=OpenApiTypes.STR,
+            location=OpenApiParameter.QUERY,
+            required=False,
+            description="Filter return requests by status (pending, approved, rejected). Defaults to pending.",
+        ),
+    ],
+    responses={200: ReturnRequestQueueSerializer(many=True), 403: None},
+    description="List return requests for HR/Admin review queue.",
+)
+class ReturnRequestListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not has_asset_permission(request.user, "process_asset_return"):
+            return Response(
+                {"error": "You do not have permission to view return requests."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        allowed_statuses = {
+            Assignment.ReturnRequestStatus.PENDING,
+            Assignment.ReturnRequestStatus.APPROVED,
+            Assignment.ReturnRequestStatus.REJECTED,
+        }
+        status_filter = request.query_params.get(
+            "status", Assignment.ReturnRequestStatus.PENDING
+        )
+        if status_filter not in allowed_statuses:
+            return Response(
+                {"error": "Invalid status filter. Use pending, approved, or rejected."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        requests_qs = Assignment.objects.filter(
+            return_request_status=status_filter
+        ).select_related("asset", "employee__user", "return_requested_by__user")
+        serializer = ReturnRequestQueueSerializer(
+            requests_qs, many=True, context={"request": request}
+        )
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+@extend_schema(
+    tags=["Asset Management"],
     request=AssignmentReturnSerializer,
     responses={200: AssignmentSerializer, 400: None, 403: None, 404: None},
-    description="Return an assigned asset",
+    description="Approve and complete a pending asset return",
 )
 class AssignmentReturnView(APIView):
     permission_classes = [IsAuthenticated]
@@ -2032,7 +2430,7 @@ class AssignmentReturnView(APIView):
         """Return an assigned asset"""
         if not has_asset_permission(request.user, "process_asset_return"):
             return Response(
-                {"error": "You do not have permission to process asset returns."},
+                {"error": "You do not have permission to approve asset returns."},
                 status=status.HTTP_403_FORBIDDEN,
             )
         assignment = self.get_object(pk)
@@ -2046,14 +2444,84 @@ class AssignmentReturnView(APIView):
             from django.utils import timezone
 
             assignment.returned_at = timezone.now()
+            assignment.return_request_status = Assignment.ReturnRequestStatus.APPROVED
+            assignment.return_reviewed_by = request.user.profile
+            assignment.return_reviewed_at = timezone.now()
+            assignment.return_rejection_reason = None
             assignment.return_condition = serializer.validated_data.get(
                 "return_condition"
             )
             assignment.notes = serializer.validated_data.get("notes", assignment.notes)
             assignment.save()
 
-            response_serializer = AssignmentSerializer(assignment)
+            response_serializer = AssignmentSerializer(
+                assignment, context={"request": request}
+            )
             return Response(response_serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@extend_schema(
+    tags=["Asset Management"],
+    request=AssignmentRejectReturnSerializer,
+    responses={200: AssignmentSerializer, 400: None, 403: None, 404: None},
+    description="Reject a pending asset return request",
+)
+class AssignmentRejectReturnView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self, pk):
+        try:
+            return Assignment.objects.get(pk=pk)
+        except Assignment.DoesNotExist:
+            return None
+
+    def post(self, request, pk):
+        if not has_asset_permission(request.user, "process_asset_return"):
+            return Response(
+                {"error": "You do not have permission to reject asset returns."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        assignment = self.get_object(pk)
+        if not assignment:
+            return Response(
+                {"error": "Assignment not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        serializer = AssignmentRejectReturnSerializer(data=request.data)
+        if serializer.is_valid():
+            if (
+                assignment.return_request_status
+                != Assignment.ReturnRequestStatus.PENDING
+            ):
+                return Response(
+                    {
+                        "error": "This assignment does not have a pending return request."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            from django.utils import timezone
+
+            assignment.return_request_status = Assignment.ReturnRequestStatus.REJECTED
+            assignment.return_reviewed_by = request.user.profile
+            assignment.return_reviewed_at = timezone.now()
+            assignment.return_rejection_reason = serializer.validated_data.get(
+                "rejection_reason", ""
+            )
+            assignment.save(
+                update_fields=[
+                    "return_request_status",
+                    "return_reviewed_by",
+                    "return_reviewed_at",
+                    "return_rejection_reason",
+                ]
+            )
+            return Response(
+                AssignmentSerializer(assignment, context={"request": request}).data,
+                status=status.HTTP_200_OK,
+            )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -2083,6 +2551,11 @@ class ReplacementLogListView(APIView):
 
     def get(self, request):
         """Get list of replacement logs with optional filtering"""
+        if not has_asset_permission(request.user, "view_asset_history"):
+            return Response(
+                {"error": "You do not have permission to view asset history."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         logs = ReplacementLog.objects.all()
 
         # Apply filters
@@ -2104,6 +2577,11 @@ class ReplacementLogListView(APIView):
     )
     def post(self, request):
         """Create a new replacement log"""
+        if not has_asset_permission(request.user, "log_asset_lost"):
+            return Response(
+                {"error": "You do not have permission to log asset changes."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         serializer = ReplacementLogSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
@@ -2137,6 +2615,11 @@ class ReplacementLogDetailView(APIView):
             return Response(
                 {"error": "Replacement log not found"}, status=status.HTTP_404_NOT_FOUND
             )
+        if not has_asset_permission(request.user, "view_asset_history"):
+            return Response(
+                {"error": "You do not have permission to view asset history."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         serializer = ReplacementLogSerializer(log)
         return Response(serializer.data, status=status.HTTP_200_OK)
@@ -2152,6 +2635,11 @@ class ReplacementLogDetailView(APIView):
         if not log:
             return Response(
                 {"error": "Replacement log not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+        if not has_asset_permission(request.user, "log_asset_lost"):
+            return Response(
+                {"error": "You do not have permission to update asset history."},
+                status=status.HTTP_403_FORBIDDEN,
             )
 
         serializer = ReplacementLogSerializer(log, data=request.data, partial=True)
@@ -2171,6 +2659,11 @@ class ReplacementLogDetailView(APIView):
             return Response(
                 {"error": "Replacement log not found"}, status=status.HTTP_404_NOT_FOUND
             )
+        if not has_asset_permission(request.user, "log_asset_lost"):
+            return Response(
+                {"error": "You do not have permission to delete asset history."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         log.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -2186,6 +2679,11 @@ class UserProfileListView(APIView):
 
     def get(self, request):
         """Get list of user profiles"""
+        if not has_asset_permission(request.user, "assign_assets"):
+            return Response(
+                {"error": "You do not have permission to list assignment targets."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         profiles = UserProfile.objects.select_related("user").all()
         serializer = UserProfileSerializer(profiles, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)

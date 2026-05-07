@@ -14,6 +14,9 @@ from core.constants import (
 )
 from core.models import (
     Asset,
+    AssetCategory,
+    AssetCondition,
+    AssetStatus,
     Assignment,
     Certificate,
     ChecklistTask,
@@ -48,6 +51,7 @@ from core.models import (
     TrainingEntry,
     UserProfile,
 )
+from core.permissions import can_view_return_checklist, get_asset_object_capabilities
 from core.services.profile_change_history import (
     log_employee_profile_change,
     manager_payload_from_ids,
@@ -650,6 +654,7 @@ class AssetSerializer(serializers.ModelSerializer):
     current_assignment = serializers.SerializerMethodField()
     is_under_warranty = serializers.SerializerMethodField()
     is_available = serializers.SerializerMethodField()
+    capabilities = serializers.SerializerMethodField()
 
     class Meta:
         model = Asset
@@ -657,6 +662,7 @@ class AssetSerializer(serializers.ModelSerializer):
             "id",
             "asset_id",
             "name",
+            "category",
             "condition",
             "warranty_until",
             "purchase_date",
@@ -671,6 +677,7 @@ class AssetSerializer(serializers.ModelSerializer):
             "current_assignment",
             "is_under_warranty",
             "is_available",
+            "capabilities",
         ]
         read_only_fields = ["created_at", "updated_at"]
 
@@ -697,6 +704,13 @@ class AssetSerializer(serializers.ModelSerializer):
         """Check if asset is available for assignment"""
         return obj.is_available
 
+    @extend_schema_field(serializers.DictField())
+    def get_capabilities(self, obj) -> dict[str, bool]:
+        request = self.context.get("request")
+        if request is None:
+            return {}
+        return get_asset_object_capabilities(request.user, obj)
+
 
 class AssignmentSerializer(serializers.ModelSerializer):
     """Serializer for Assignment model"""
@@ -706,6 +720,9 @@ class AssignmentSerializer(serializers.ModelSerializer):
     assigned_by_details = UserProfileSerializer(source="assigned_by", read_only=True)
     is_active = serializers.SerializerMethodField()
     duration_days = serializers.SerializerMethodField()
+    return_requested = serializers.SerializerMethodField()
+    return_description = serializers.SerializerMethodField()
+    return_checklist = serializers.SerializerMethodField()
 
     class Meta:
         model = Assignment
@@ -715,6 +732,15 @@ class AssignmentSerializer(serializers.ModelSerializer):
             "employee",
             "assigned_at",
             "returned_at",
+            "return_request_status",
+            "return_requested_by",
+            "return_requested_at",
+            "return_reviewed_by",
+            "return_reviewed_at",
+            "return_rejection_reason",
+            "return_description",
+            "return_checklist",
+            "return_requested",
             "assigned_by",
             "return_condition",
             "notes",
@@ -748,6 +774,87 @@ class AssignmentSerializer(serializers.ModelSerializer):
     def get_duration_days(self, obj) -> int | None:
         """Get duration of assignment in days"""
         return obj.duration_days
+
+    def _can_view_return_details(self, obj) -> bool:
+        request = self.context.get("request")
+        if request is None:
+            return False
+        return can_view_return_checklist(request.user, obj)
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_return_description(self, obj) -> str | None:
+        if not self._can_view_return_details(obj):
+            return None
+        return obj.return_description
+
+    @extend_schema_field(serializers.JSONField(allow_null=True))
+    def get_return_checklist(self, obj) -> list[dict[str, Any]] | None:
+        if not self._can_view_return_details(obj):
+            return None
+        return obj.return_checklist or []
+
+    @extend_schema_field(serializers.DictField(allow_null=True))
+    def get_return_requested(self, obj) -> dict[str, Any] | None:
+        """Return a nested workflow object to simplify frontend state handling."""
+        if obj.return_request_status == Assignment.ReturnRequestStatus.NONE:
+            return None
+
+        if not self._can_view_return_details(obj):
+            return None
+
+        requested_by = None
+        if obj.return_requested_by:
+            requested_by = {
+                "id": obj.return_requested_by.id,
+                "name": obj.return_requested_by.full_name
+                or obj.return_requested_by.user.get_full_name()
+                or obj.return_requested_by.user.username,
+            }
+
+        reviewed_by = None
+        if obj.return_reviewed_by:
+            reviewed_by = {
+                "id": obj.return_reviewed_by.id,
+                "name": obj.return_reviewed_by.full_name
+                or obj.return_reviewed_by.user.get_full_name()
+                or obj.return_reviewed_by.user.username,
+            }
+
+        return {
+            "status": obj.return_request_status,
+            "requested_by": requested_by,
+            "requested_at": obj.return_requested_at,
+            "reviewed_by": reviewed_by,
+            "reviewed_at": obj.return_reviewed_at,
+            "rejection_reason": obj.return_rejection_reason,
+            "return_condition": obj.return_condition,
+            "return_description": obj.return_description,
+            "return_checklist": obj.return_checklist or [],
+        }
+
+
+class ReturnRequestQueueSerializer(serializers.ModelSerializer):
+    """Compact serializer for the HR pending-return queue."""
+
+    assignment_id = serializers.IntegerField(source="id", read_only=True)
+    asset = AssetSerializer(read_only=True)
+    employee = UserProfileSerializer(read_only=True)
+    requested_by = UserProfileSerializer(source="return_requested_by", read_only=True)
+
+    class Meta:
+        model = Assignment
+        fields = [
+            "assignment_id",
+            "asset",
+            "employee",
+            "requested_by",
+            "return_request_status",
+            "return_requested_at",
+            "return_description",
+            "return_checklist",
+            "notes",
+            "return_rejection_reason",
+        ]
 
 
 class ReplacementLogSerializer(serializers.ModelSerializer):
@@ -784,6 +891,7 @@ class AssetCreateSerializer(serializers.ModelSerializer):
         fields = [
             "asset_id",
             "name",
+            "category",
             "condition",
             "warranty_until",
             "purchase_date",
@@ -794,6 +902,53 @@ class AssetCreateSerializer(serializers.ModelSerializer):
             "purchase_price",
             "description",
         ]
+
+
+class AssetExportFiltersSerializer(serializers.Serializer):
+    """Supported filters for exported assets."""
+
+    status = serializers.ChoiceField(choices=AssetStatus.choices, required=False)
+    condition = serializers.ChoiceField(choices=AssetCondition.choices, required=False)
+    category = serializers.ChoiceField(choices=AssetCategory.choices, required=False)
+    available = serializers.BooleanField(required=False)
+    assigned_employee_id = serializers.IntegerField(required=False, min_value=1)
+
+
+class AssetExportRequestSerializer(serializers.Serializer):
+    """Payload accepted by the CSV export endpoint."""
+
+    ASSET_FIELDS = [
+        "id",
+        "asset_id",
+        "name",
+        "category",
+        "condition",
+        "warranty_until",
+        "purchase_date",
+        "status",
+        "serial_number",
+        "model",
+        "manufacturer",
+        "purchase_price",
+        "description",
+        "created_at",
+        "updated_at",
+        "is_under_warranty",
+        "is_available",
+    ]
+
+    filters = AssetExportFiltersSerializer(required=False)
+    fields = serializers.ListField(
+        child=serializers.ChoiceField(choices=ASSET_FIELDS),
+        required=False,
+        allow_empty=False,
+    )
+    include_assignment = serializers.BooleanField(required=False, default=True)
+    filename = serializers.RegexField(
+        regex=r"^[A-Za-z0-9._-]+$",
+        required=False,
+        max_length=120,
+    )
 
 
 class AssignmentCreateSerializer(serializers.ModelSerializer):
@@ -824,7 +979,41 @@ class AssignmentReturnSerializer(serializers.ModelSerializer):
         """Validate return data"""
         if not self.instance.is_active:
             raise serializers.ValidationError("This assignment is already returned.")
+        if (
+            self.instance.return_request_status
+            != Assignment.ReturnRequestStatus.PENDING
+        ):
+            raise serializers.ValidationError(
+                "This assignment does not have a pending return request."
+            )
         return data
+
+
+class AssignmentRequestReturnSerializer(serializers.ModelSerializer):
+    return_description = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True
+    )
+    return_checklist = serializers.ListField(
+        child=serializers.DictField(), required=False, allow_empty=True
+    )
+
+    class Meta:
+        model = Assignment
+        fields = ["notes", "return_description", "return_checklist"]
+
+    def validate(self, data):
+        if not self.instance.is_active:
+            raise serializers.ValidationError("This assignment is already returned.")
+        if (
+            self.instance.return_request_status
+            == Assignment.ReturnRequestStatus.PENDING
+        ):
+            raise serializers.ValidationError("A return request is already pending.")
+        return data
+
+
+class AssignmentRejectReturnSerializer(serializers.Serializer):
+    rejection_reason = serializers.CharField(required=False, allow_blank=True)
 
 
 # ──────────────────────────────────────────

@@ -3,10 +3,14 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     APIRootView,
+    AssetCapabilitiesView,
     AssetDetailView,
+    AssetExportView,
     AssetListView,
     AssignmentDetailView,
     AssignmentListView,
+    AssignmentRejectReturnView,
+    AssignmentRequestReturnView,
     AssignmentReturnView,
     AvatarUploadView,
     ChecklistTaskViewSet,
@@ -32,6 +36,7 @@ from .views import (
     RegisterView,
     ReplacementLogDetailView,
     ReplacementLogListView,
+    ReturnRequestListView,
     RoleListView,
     SessionView,
     TokenRefreshViewCustom,
@@ -87,6 +92,12 @@ urlpatterns = [
     ),
     # Asset Management API endpoints
     path("assets/", AssetListView.as_view(), name="asset_list"),
+    path(
+        "assets/capabilities/",
+        AssetCapabilitiesView.as_view(),
+        name="asset_capabilities",
+    ),
+    path("assets/export/", AssetExportView.as_view(), name="asset_export"),
     path("assets/<int:pk>/", AssetDetailView.as_view(), name="asset_detail"),
     path("assignments/", AssignmentListView.as_view(), name="assignment_list"),
     path(
@@ -95,9 +106,24 @@ urlpatterns = [
         name="assignment_detail",
     ),
     path(
+        "assignments/<int:pk>/request-return/",
+        AssignmentRequestReturnView.as_view(),
+        name="assignment_request_return",
+    ),
+    path(
         "assignments/<int:pk>/return/",
         AssignmentReturnView.as_view(),
         name="assignment_return",
+    ),
+    path(
+        "assignments/<int:pk>/reject-return/",
+        AssignmentRejectReturnView.as_view(),
+        name="assignment_reject_return",
+    ),
+    path(
+        "return-requests/",
+        ReturnRequestListView.as_view(),
+        name="return_request_list",
     ),
     path(
         "replacement-logs/",

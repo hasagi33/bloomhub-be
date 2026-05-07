@@ -22,5 +22,6 @@ media/
 .idea/
 .codex
 .pgdata/
+.postgres/
 postgres.log
 .claude/

@@ -53,6 +53,12 @@ paths:
           type: boolean
         description: Filter by availability (true/false)
       - in: query
+        name: category
+        schema:
+          type: string
+        description: Filter by asset category (laptops, phones, monitors, headphones,
+          cameras, vehicles, furniture, other)
+      - in: query
         name: condition
         schema:
           type: string
@@ -84,6 +90,12 @@ paths:
         schema:
           type: boolean
         description: Filter by availability (true/false)
+      - in: query
+        name: category
+        schema:
+          type: string
+        description: Filter by asset category (laptops, phones, monitors, headphones,
+          cameras, vehicles, furniture, other)
       - in: query
         name: condition
         schema:
@@ -178,6 +190,41 @@ paths:
           description: No response body
         '404':
           description: No response body
+    patch:
+      operationId: assets_partial_update
+      description: Partially update an asset
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Asset Management
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedAssetCreateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedAssetCreateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedAssetCreateRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Asset'
+          description: ''
+        '400':
+          description: No response body
+        '404':
+          description: No response body
     delete:
       operationId: assets_destroy
       description: Delete an asset
@@ -195,6 +242,55 @@ paths:
         '204':
           description: No response body
         '404':
+          description: No response body
+  /api/assets/capabilities/:
+    get:
+      operationId: assets_capabilities_retrieve
+      description: Return canonical asset permissions and UI capabilities for the
+        current user.
+      tags:
+      - Asset Management
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/assets/export/:
+    post:
+      operationId: assets_export_create
+      description: Export assets as CSV. Requires `export_inventory` permission. Supports
+        optional filters and optional assignment columns.
+      tags:
+      - Asset Management
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssetExportRequestRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AssetExportRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AssetExportRequestRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: string
+                format: binary
+          description: ''
+        '400':
+          description: No response body
+        '403':
           description: No response body
   /api/assignments/:
     get:
@@ -350,6 +446,82 @@ paths:
       - jwtAuth: []
       responses:
         '204':
+          description: No response body
+        '404':
+          description: No response body
+  /api/assignments/{id}/reject-return/:
+    post:
+      operationId: assignments_reject_return_create
+      description: Reject a pending asset return request
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Asset Management
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssignmentRejectReturnRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AssignmentRejectReturnRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AssignmentRejectReturnRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Assignment'
+          description: ''
+        '400':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+  /api/assignments/{id}/request-return/:
+    post:
+      operationId: assignments_request_return_create
+      description: Request return for an assigned asset
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Asset Management
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssignmentRequestReturnRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AssignmentRequestReturnRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AssignmentRequestReturnRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Assignment'
+          description: ''
+        '400':
+          description: No response body
+        '403':
           description: No response body
         '404':
           description: No response body
@@ -4619,6 +4791,32 @@ paths:
           description: No response body
         '404':
           description: No response body
+  /api/return-requests/:
+    get:
+      operationId: return_requests_list
+      description: List return requests for HR/Admin review queue.
+      parameters:
+      - in: query
+        name: status
+        schema:
+          type: string
+        description: Filter return requests by status (pending, approved, rejected).
+          Defaults to pending.
+      tags:
+      - Asset Management
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ReturnRequestQueue'
+          description: ''
+        '403':
+          description: No response body
   /api/roles/:
     get:
       operationId: roles_retrieve
@@ -4886,6 +5084,20 @@ components:
           type: string
           description: Asset name/type
           maxLength: 200
+        category:
+          allOf:
+          - $ref: '#/components/schemas/Category59fEnum'
+          description: |-
+            Asset category
+
+            * `laptops` - Laptops
+            * `phones` - Phones
+            * `monitors` - Monitors
+            * `headphones` - Headphones
+            * `cameras` - Cameras
+            * `vehicles` - Vehicles
+            * `furniture` - Furniture
+            * `other` - Other
         condition:
           allOf:
           - $ref: '#/components/schemas/ConditionEnum'
@@ -4960,8 +5172,13 @@ components:
         is_available:
           type: boolean
           readOnly: true
+        capabilities:
+          type: object
+          additionalProperties: {}
+          readOnly: true
       required:
       - asset_id
+      - capabilities
       - created_at
       - current_assignment
       - id
@@ -4984,6 +5201,20 @@ components:
           minLength: 1
           description: Asset name/type
           maxLength: 200
+        category:
+          allOf:
+          - $ref: '#/components/schemas/Category59fEnum'
+          description: |-
+            Asset category
+
+            * `laptops` - Laptops
+            * `phones` - Phones
+            * `monitors` - Monitors
+            * `headphones` - Headphones
+            * `cameras` - Cameras
+            * `vehicles` - Vehicles
+            * `furniture` - Furniture
+            * `other` - Other
         condition:
           allOf:
           - $ref: '#/components/schemas/ConditionEnum'
@@ -5043,6 +5274,39 @@ components:
       - asset_id
       - name
       - purchase_date
+    AssetExportFiltersRequest:
+      type: object
+      description: Supported filters for exported assets.
+      properties:
+        status:
+          $ref: '#/components/schemas/StatusEnum'
+        condition:
+          $ref: '#/components/schemas/ConditionEnum'
+        category:
+          $ref: '#/components/schemas/Category59fEnum'
+        available:
+          type: boolean
+        assigned_employee_id:
+          type: integer
+          minimum: 1
+    AssetExportRequestRequest:
+      type: object
+      description: Payload accepted by the CSV export endpoint.
+      properties:
+        filters:
+          $ref: '#/components/schemas/AssetExportFiltersRequest'
+        fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/FieldsEnum'
+        include_assignment:
+          type: boolean
+          default: true
+        filename:
+          type: string
+          minLength: 1
+          maxLength: 120
+          pattern: ^[A-Za-z0-9._-]+$
     AssetRequest:
       type: object
       description: Serializer for Asset model
@@ -5057,6 +5321,20 @@ components:
           minLength: 1
           description: Asset name/type
           maxLength: 200
+        category:
+          allOf:
+          - $ref: '#/components/schemas/Category59fEnum'
+          description: |-
+            Asset category
+
+            * `laptops` - Laptops
+            * `phones` - Phones
+            * `monitors` - Monitors
+            * `headphones` - Headphones
+            * `cameras` - Cameras
+            * `vehicles` - Vehicles
+            * `furniture` - Furniture
+            * `other` - Other
         condition:
           allOf:
           - $ref: '#/components/schemas/ConditionEnum'
@@ -5139,6 +5417,50 @@ components:
           format: date-time
           nullable: true
           description: When the asset was returned (optional)
+        return_request_status:
+          allOf:
+          - $ref: '#/components/schemas/ReturnRequestStatusEnum'
+          description: |-
+            Two-step return workflow status
+
+            * `none` - None
+            * `pending` - Pending
+            * `approved` - Approved
+            * `rejected` - Rejected
+        return_requested_by:
+          type: integer
+          nullable: true
+          description: Who requested asset return
+        return_requested_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When return was requested
+        return_reviewed_by:
+          type: integer
+          nullable: true
+          description: Who reviewed return request
+        return_reviewed_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When return request was reviewed
+        return_rejection_reason:
+          type: string
+          nullable: true
+          description: Reason provided when return request is rejected
+        return_description:
+          type: string
+          nullable: true
+          readOnly: true
+        return_checklist:
+          nullable: true
+          readOnly: true
+        return_requested:
+          type: object
+          additionalProperties: {}
+          nullable: true
+          readOnly: true
         assigned_by:
           type: integer
           nullable: true
@@ -5190,6 +5512,9 @@ components:
       - employee_details
       - id
       - is_active
+      - return_checklist
+      - return_description
+      - return_requested
     AssignmentCreateRequest:
       type: object
       description: Simplified serializer for creating assignments
@@ -5207,6 +5532,11 @@ components:
       required:
       - asset
       - employee
+    AssignmentRejectReturnRequest:
+      type: object
+      properties:
+        rejection_reason:
+          type: string
     AssignmentRequest:
       type: object
       description: Serializer for Assignment model
@@ -5222,6 +5552,38 @@ components:
           format: date-time
           nullable: true
           description: When the asset was returned (optional)
+        return_request_status:
+          allOf:
+          - $ref: '#/components/schemas/ReturnRequestStatusEnum'
+          description: |-
+            Two-step return workflow status
+
+            * `none` - None
+            * `pending` - Pending
+            * `approved` - Approved
+            * `rejected` - Rejected
+        return_requested_by:
+          type: integer
+          nullable: true
+          description: Who requested asset return
+        return_requested_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When return was requested
+        return_reviewed_by:
+          type: integer
+          nullable: true
+          description: Who reviewed return request
+        return_reviewed_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When return request was reviewed
+        return_rejection_reason:
+          type: string
+          nullable: true
+          description: Reason provided when return request is rejected
         assigned_by:
           type: integer
           nullable: true
@@ -5247,6 +5609,21 @@ components:
       required:
       - asset
       - employee
+    AssignmentRequestReturnRequest:
+      type: object
+      properties:
+        notes:
+          type: string
+          nullable: true
+          description: Additional notes about the assignment
+        return_description:
+          type: string
+          nullable: true
+        return_checklist:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
     AssignmentReturnRequest:
       type: object
       description: Serializer for returning assets
@@ -5307,6 +5684,26 @@ components:
       required:
       - cpf_levels
       - user_role
+    Category59fEnum:
+      enum:
+      - laptops
+      - phones
+      - monitors
+      - headphones
+      - cameras
+      - vehicles
+      - furniture
+      - other
+      type: string
+      description: |-
+        * `laptops` - Laptops
+        * `phones` - Phones
+        * `monitors` - Monitors
+        * `headphones` - Headphones
+        * `cameras` - Cameras
+        * `vehicles` - Vehicles
+        * `furniture` - Furniture
+        * `other` - Other
     Category748Enum:
       enum:
       - contracts
@@ -6136,6 +6533,44 @@ components:
         * `employment_status` - Employment Status
         * `career_level` - Career Level
         * `start_date` - Start Date
+    FieldsEnum:
+      enum:
+      - id
+      - asset_id
+      - name
+      - category
+      - condition
+      - warranty_until
+      - purchase_date
+      - status
+      - serial_number
+      - model
+      - manufacturer
+      - purchase_price
+      - description
+      - created_at
+      - updated_at
+      - is_under_warranty
+      - is_available
+      type: string
+      description: |-
+        * `id` - id
+        * `asset_id` - asset_id
+        * `name` - name
+        * `category` - category
+        * `condition` - condition
+        * `warranty_until` - warranty_until
+        * `purchase_date` - purchase_date
+        * `status` - status
+        * `serial_number` - serial_number
+        * `model` - model
+        * `manufacturer` - manufacturer
+        * `purchase_price` - purchase_price
+        * `description` - description
+        * `created_at` - created_at
+        * `updated_at` - updated_at
+        * `is_under_warranty` - is_under_warranty
+        * `is_available` - is_available
     FormatEnum:
       enum:
       - pdf
@@ -6706,6 +7141,89 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/TemplateGeneratedDocument'
+    PatchedAssetCreateRequest:
+      type: object
+      description: Simplified serializer for creating assets
+      properties:
+        asset_id:
+          type: string
+          minLength: 1
+          description: Unique identifier for the asset
+          maxLength: 50
+        name:
+          type: string
+          minLength: 1
+          description: Asset name/type
+          maxLength: 200
+        category:
+          allOf:
+          - $ref: '#/components/schemas/Category59fEnum'
+          description: |-
+            Asset category
+
+            * `laptops` - Laptops
+            * `phones` - Phones
+            * `monitors` - Monitors
+            * `headphones` - Headphones
+            * `cameras` - Cameras
+            * `vehicles` - Vehicles
+            * `furniture` - Furniture
+            * `other` - Other
+        condition:
+          allOf:
+          - $ref: '#/components/schemas/ConditionEnum'
+          description: |-
+            Current condition of the asset
+
+            * `excellent` - Excellent
+            * `good` - Good
+            * `fair` - Fair
+            * `poor` - Poor
+            * `damaged` - Damaged
+        warranty_until:
+          type: string
+          format: date
+          nullable: true
+          description: Warranty expiration date
+        purchase_date:
+          type: string
+          format: date
+          description: Date when the asset was purchased
+        status:
+          allOf:
+          - $ref: '#/components/schemas/StatusEnum'
+          description: |-
+            Current status of the asset
+
+            * `active` - Active
+            * `lost` - Lost
+            * `returned` - Returned
+            * `damaged` - Damaged
+        serial_number:
+          type: string
+          nullable: true
+          description: Manufacturer serial number
+          maxLength: 100
+        model:
+          type: string
+          nullable: true
+          description: Asset model
+          maxLength: 100
+        manufacturer:
+          type: string
+          nullable: true
+          description: Asset manufacturer
+          maxLength: 100
+        purchase_price:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+          description: Purchase price of the asset
+        description:
+          type: string
+          nullable: true
+          description: Additional description or notes
     PatchedChecklistTemplateRequest:
       type: object
       properties:
@@ -7968,6 +8486,71 @@ components:
             $ref: '#/components/schemas/SignerInputRequest'
       required:
       - signers
+    ReturnRequestQueue:
+      type: object
+      description: Compact serializer for the HR pending-return queue.
+      properties:
+        assignment_id:
+          type: integer
+          readOnly: true
+        asset:
+          allOf:
+          - $ref: '#/components/schemas/Asset'
+          readOnly: true
+        employee:
+          allOf:
+          - $ref: '#/components/schemas/UserProfile'
+          readOnly: true
+        requested_by:
+          allOf:
+          - $ref: '#/components/schemas/UserProfile'
+          readOnly: true
+        return_request_status:
+          allOf:
+          - $ref: '#/components/schemas/ReturnRequestStatusEnum'
+          description: |-
+            Two-step return workflow status
+
+            * `none` - None
+            * `pending` - Pending
+            * `approved` - Approved
+            * `rejected` - Rejected
+        return_requested_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When return was requested
+        return_description:
+          type: string
+          nullable: true
+          description: Description entered when requesting a return
+        return_checklist:
+          description: Structured checklist submitted as part of the return request
+        notes:
+          type: string
+          nullable: true
+          description: Additional notes about the assignment
+        return_rejection_reason:
+          type: string
+          nullable: true
+          description: Reason provided when return request is rejected
+      required:
+      - asset
+      - assignment_id
+      - employee
+      - requested_by
+    ReturnRequestStatusEnum:
+      enum:
+      - none
+      - pending
+      - approved
+      - rejected
+      type: string
+      description: |-
+        * `none` - None
+        * `pending` - Pending
+        * `approved` - Approved
+        * `rejected` - Rejected
     ReviewTypeEnum:
       enum:
       - quarterly
