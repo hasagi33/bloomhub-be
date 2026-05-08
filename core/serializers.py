@@ -1405,6 +1405,30 @@ class LeaveRequestRejectSerializer(serializers.Serializer):
         return data
 
 
+class LeaveTeamMemberSerializer(serializers.Serializer):
+    """Minimal employee shape for the covering-employee dropdown."""
+
+    id = serializers.IntegerField(read_only=True)
+    name = serializers.SerializerMethodField()
+    avatar_url = serializers.CharField(
+        read_only=True, allow_null=True, allow_blank=True
+    )
+
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_name(self, obj) -> str:
+        full_name = obj.user.get_full_name().strip()
+        return full_name or obj.user.username
+
+
+class VacationCapabilitiesSerializer(serializers.Serializer):
+    """Per-feature capability flags for the Vacations module."""
+
+    can_approve_requests = serializers.BooleanField()
+    can_hr_approve = serializers.BooleanField()
+    can_adjust_balances = serializers.BooleanField()
+    can_configure_leave_types = serializers.BooleanField()
+
+
 class LeaveAdjustmentSerializer(serializers.ModelSerializer):
     """Serializer for leave adjustments."""
 

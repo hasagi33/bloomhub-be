@@ -3228,6 +3228,23 @@ paths:
               schema:
                 $ref: '#/components/schemas/LeaveRequestDetail'
           description: ''
+  /api/leave-requests/capabilities/:
+    get:
+      operationId: leave_requests_capabilities_retrieve
+      description: Return what the current user can do in the Vacations module (drives
+        FE UI gating).
+      summary: Per-feature capability flags for the Vacations module
+      tags:
+      - Leave Management
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VacationCapabilities'
+          description: ''
   /api/leave-requests/hr-pending/:
     get:
       operationId: leave_requests_hr_pending_list
@@ -3395,6 +3412,74 @@ paths:
                       type: string
                     status:
                       type: string
+          description: ''
+  /api/leave-requests/team-members/:
+    get:
+      operationId: leave_requests_team_members_list
+      description: Active employees who share at least one active project with the
+        requester (self excluded).
+      summary: Selectable covering employees from the requester's active project teams
+      parameters:
+      - in: query
+        name: employee
+        schema:
+          type: integer
+      - in: query
+        name: leave_type
+        schema:
+          type: string
+          enum:
+          - bereavement
+          - maternity
+          - paternity
+          - personal
+          - sick
+          - unpaid
+          - vacation
+          - wfh
+        description: |-
+          * `vacation` - Vacation
+          * `sick` - Sick Leave
+          * `wfh` - Work From Home
+          * `personal` - Personal
+          * `maternity` - Maternity
+          * `paternity` - Paternity
+          * `bereavement` - Bereavement
+          * `unpaid` - Unpaid Leave
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - in: query
+        name: status
+        schema:
+          type: string
+          enum:
+          - approved
+          - cancelled
+          - lead_approved
+          - pending
+          - rejected
+        description: |-
+          * `pending` - Pending
+          * `lead_approved` - Lead Approved
+          * `approved` - Approved
+          * `rejected` - Rejected
+          * `cancelled` - Cancelled
+      tags:
+      - Leave Management
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LeaveTeamMember'
           description: ''
   /api/onboarding/tasks/:
     get:
@@ -7157,6 +7242,24 @@ components:
           minLength: 1
       required:
       - reason
+    LeaveTeamMember:
+      type: object
+      description: Minimal employee shape for the covering-employee dropdown.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          readOnly: true
+        avatar_url:
+          type: string
+          readOnly: true
+          nullable: true
+      required:
+      - avatar_url
+      - id
+      - name
     LeaveTypeEnum:
       enum:
       - vacation
@@ -9585,6 +9688,23 @@ components:
       required:
       - html
       - label
+    VacationCapabilities:
+      type: object
+      description: Per-feature capability flags for the Vacations module.
+      properties:
+        can_approve_requests:
+          type: boolean
+        can_hr_approve:
+          type: boolean
+        can_adjust_balances:
+          type: boolean
+        can_configure_leave_types:
+          type: boolean
+      required:
+      - can_adjust_balances
+      - can_approve_requests
+      - can_configure_leave_types
+      - can_hr_approve
     VisibilityEnum:
       enum:
       - private

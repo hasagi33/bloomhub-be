@@ -129,6 +129,7 @@ from .serializers import (
     LeaveRequestHRApproveSerializer,
     LeaveRequestListSerializer,
     LeaveRequestRejectSerializer,
+    LeaveTeamMemberSerializer,
     LoginSerializer,
     PerformanceReviewActionPointSerializer,
     PerformanceReviewAttachmentSerializer,
@@ -154,6 +155,7 @@ from .serializers import (
     UserProfileSerializer,
     UserSerializer,
     UserTemplateSnippetSerializer,
+    VacationCapabilitiesSerializer,
 )
 from .services.document_service import (
     archive_document,
@@ -3266,6 +3268,37 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
             )
 
         return Response(calendar_events, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        responses={200: LeaveTeamMemberSerializer(many=True)},
+        summary="Selectable covering employees from the requester's active project teams",
+    )
+    @action(detail=False, methods=["get"], url_path="team-members")
+    def team_members(self, request):
+        """Active employees who share at least one active project with the requester (self excluded)."""
+        from core.services.leave_service import get_team_members_for_employee
+
+        profile = getattr(request.user, "profile", None)
+        if profile is None:
+            return Response([], status=status.HTTP_200_OK)
+
+        members = get_team_members_for_employee(profile)
+        serializer = LeaveTeamMemberSerializer(members, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        responses={200: VacationCapabilitiesSerializer},
+        summary="Per-feature capability flags for the Vacations module",
+    )
+    @action(detail=False, methods=["get"])
+    def capabilities(self, request):
+        """Return what the current user can do in the Vacations module (drives FE UI gating)."""
+        from core.services.leave_service import get_vacation_capabilities
+
+        return Response(
+            get_vacation_capabilities(request.user),
+            status=status.HTTP_200_OK,
+        )
 
 
 @extend_schema(tags=["Leave Management"])

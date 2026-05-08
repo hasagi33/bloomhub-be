@@ -10,14 +10,70 @@ from datetime import date, datetime, timedelta
 from django.db import transaction
 from django.utils import timezone
 
+from core.enums import ProjectAssignmentStatus
 from core.models import (
     LeaveAdjustment,
     LeaveBalance,
     LeavePolicy,
     LeaveRequest,
+    ProjectAssignment,
     UserProfile,
     initialize_leave_balances_for_profile,
 )
+from core.permissions import _has_permission
+
+VACATIONS_MODULE = "Vacations"
+APPROVE_REQUEST_ACTIONS = [
+    "approve_team_requests",
+    "override_requests",
+    "adjust_balances",
+]
+HR_APPROVE_ACTIONS = ["adjust_balances", "override_requests", "configure_leave_types"]
+ADJUST_BALANCES_ACTIONS = ["adjust_balances"]
+CONFIGURE_LEAVE_TYPES_ACTIONS = ["configure_leave_types"]
+
+
+def get_team_members_for_employee(employee: UserProfile):
+    """Return active UserProfiles sharing at least one active project assignment with the employee, excluding self."""
+    active_project_ids = ProjectAssignment.objects.filter(
+        user_profile=employee,
+        status=ProjectAssignmentStatus.ACTIVE,
+    ).values_list("project_id", flat=True)
+
+    return (
+        UserProfile.objects.filter(
+            is_active=True,
+            project_assignments__project_id__in=active_project_ids,
+            project_assignments__status=ProjectAssignmentStatus.ACTIVE,
+        )
+        .exclude(id=employee.id)
+        .distinct()
+        .select_related("user")
+        .order_by("user__first_name", "user__last_name")
+    )
+
+
+def get_vacation_capabilities(user) -> dict:
+    """Return per-feature capability booleans for the Vacations module."""
+    if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+        return {
+            "can_approve_requests": True,
+            "can_hr_approve": True,
+            "can_adjust_balances": True,
+            "can_configure_leave_types": True,
+        }
+    return {
+        "can_approve_requests": _has_permission(
+            user, VACATIONS_MODULE, APPROVE_REQUEST_ACTIONS
+        ),
+        "can_hr_approve": _has_permission(user, VACATIONS_MODULE, HR_APPROVE_ACTIONS),
+        "can_adjust_balances": _has_permission(
+            user, VACATIONS_MODULE, ADJUST_BALANCES_ACTIONS
+        ),
+        "can_configure_leave_types": _has_permission(
+            user, VACATIONS_MODULE, CONFIGURE_LEAVE_TYPES_ACTIONS
+        ),
+    }
 
 
 def calculate_working_days(start_date: date, end_date: date) -> int:
