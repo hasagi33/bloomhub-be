@@ -19,6 +19,7 @@ from core.models import (
     AssetStatus,
     Assignment,
     Certificate,
+    ChecklistInstance,
     ChecklistTask,
     ChecklistTemplate,
     Document,
@@ -1888,7 +1889,7 @@ class TaskTemplateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = TaskTemplate
-        fields = ["id", "title", "order", "role_responsible"]
+        fields = ["id", "title", "order"]
 
 
 class ChecklistTemplateSerializer(serializers.ModelSerializer):
@@ -1896,7 +1897,7 @@ class ChecklistTemplateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ChecklistTemplate
-        fields = ["id", "name", "type", "task_templates"]
+        fields = ["id", "name", "type", "role_responsible", "task_templates"]
 
     def create(self, validated_data):
         task_templates_data = validated_data.pop("task_templates", [])
@@ -1909,6 +1910,9 @@ class ChecklistTemplateSerializer(serializers.ModelSerializer):
         task_templates_data = validated_data.pop("task_templates", None)
         instance.name = validated_data.get("name", instance.name)
         instance.type = validated_data.get("type", instance.type)
+        instance.role_responsible = validated_data.get(
+            "role_responsible", instance.role_responsible
+        )
         instance.save()
 
         if task_templates_data is not None:
@@ -1919,9 +1923,30 @@ class ChecklistTemplateSerializer(serializers.ModelSerializer):
         return instance
 
 
+class ChecklistInstanceSerializer(serializers.ModelSerializer):
+    employee = UserProfileSerializer(read_only=True)
+    template = ChecklistTemplateSerializer(read_only=True)
+
+    class Meta:
+        model = ChecklistInstance
+        fields = ["id", "employee", "template", "status", "due_date", "created_at"]
+
+
+class ChecklistInstanceCreateSerializer(serializers.Serializer):
+    employee = serializers.IntegerField()
+    template = serializers.IntegerField()
+    due_date = serializers.DateField(required=False, allow_null=True)
+    task_due_dates = serializers.DictField(
+        child=serializers.DateField(allow_null=True),
+        required=False,
+        allow_null=True,
+    )
+
+
 class ChecklistTaskSerializer(serializers.ModelSerializer):
     assigned_to = UserProfileSerializer(read_only=True)
     task_template = TaskTemplateSerializer(read_only=True)
+    checklist_instance = ChecklistInstanceSerializer(read_only=True)
 
     class Meta:
         model = ChecklistTask

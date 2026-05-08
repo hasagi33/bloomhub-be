@@ -3481,6 +3481,67 @@ paths:
                 items:
                   $ref: '#/components/schemas/LeaveTeamMember'
           description: ''
+  /api/onboarding/instances/:
+    get:
+      operationId: onboarding_instances_list
+      summary: List all checklist instances
+      tags:
+      - Onboarding / Offboarding
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ChecklistInstance'
+          description: ''
+    post:
+      operationId: onboarding_instances_create
+      summary: Assign a checklist template to an employee
+      tags:
+      - Onboarding / Offboarding
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChecklistInstanceCreateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ChecklistInstanceCreateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ChecklistInstanceCreateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChecklistInstance'
+          description: ''
+  /api/onboarding/instances/{id}/:
+    delete:
+      operationId: onboarding_instances_destroy
+      summary: Remove a checklist instance and all its tasks
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Checklist Instance.
+        required: true
+      tags:
+      - Onboarding / Offboarding
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
   /api/onboarding/tasks/:
     get:
       operationId: onboarding_tasks_list
@@ -3509,6 +3570,40 @@ paths:
         required: true
       tags:
       - Onboarding / Offboarding
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChecklistTask'
+          description: ''
+    patch:
+      operationId: onboarding_tasks_partial_update
+      description: Updates the status of a checklist task. Only the assigned user
+        or HR/staff may update. Setting status to 'done' automatically records completed_at.
+      summary: Update task status
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Checklist Task.
+        required: true
+      tags:
+      - Onboarding / Offboarding
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedChecklistTaskRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedChecklistTaskRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedChecklistTaskRequest'
       security:
       - jwtAuth: []
       responses:
@@ -5988,6 +6083,73 @@ components:
         * `training` - Training
         * `benefits` - Benefits
         * `other` - Other
+    ChecklistInstance:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        employee:
+          allOf:
+          - $ref: '#/components/schemas/UserProfile'
+          readOnly: true
+        template:
+          allOf:
+          - $ref: '#/components/schemas/ChecklistTemplate'
+          readOnly: true
+        status:
+          $ref: '#/components/schemas/ChecklistInstanceStatusEnum'
+        due_date:
+          type: string
+          format: date
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - employee
+      - id
+      - template
+    ChecklistInstanceCreateRequest:
+      type: object
+      properties:
+        employee:
+          type: integer
+        template:
+          type: integer
+        due_date:
+          type: string
+          format: date
+          nullable: true
+        task_due_dates:
+          type: object
+          additionalProperties:
+            type: string
+            format: date
+            nullable: true
+          nullable: true
+      required:
+      - employee
+      - template
+    ChecklistInstanceRequest:
+      type: object
+      properties:
+        status:
+          $ref: '#/components/schemas/ChecklistInstanceStatusEnum'
+        due_date:
+          type: string
+          format: date
+          nullable: true
+    ChecklistInstanceStatusEnum:
+      enum:
+      - in_progress
+      - done
+      type: string
+      description: |-
+        * `in_progress` - In Progress
+        * `done` - Done
     ChecklistTask:
       type: object
       properties:
@@ -5995,7 +6157,8 @@ components:
           type: integer
           readOnly: true
         checklist_instance:
-          type: integer
+          allOf:
+          - $ref: '#/components/schemas/ChecklistInstance'
           readOnly: true
         task_template:
           allOf:
@@ -6047,6 +6210,8 @@ components:
           maxLength: 150
         type:
           $ref: '#/components/schemas/TypeEnum'
+        role_responsible:
+          $ref: '#/components/schemas/RoleResponsibleEnum'
         task_templates:
           type: array
           items:
@@ -6064,6 +6229,8 @@ components:
           maxLength: 150
         type:
           $ref: '#/components/schemas/TypeEnum'
+        role_responsible:
+          $ref: '#/components/schemas/RoleResponsibleEnum'
         task_templates:
           type: array
           items:
@@ -7486,6 +7653,19 @@ components:
           type: string
           nullable: true
           description: Additional description or notes
+    PatchedChecklistTaskRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        status:
+          $ref: '#/components/schemas/ChecklistTaskStatusEnum'
+        due_date:
+          type: string
+          format: date
+          nullable: true
     PatchedChecklistTemplateRequest:
       type: object
       properties:
@@ -7495,6 +7675,8 @@ components:
           maxLength: 150
         type:
           $ref: '#/components/schemas/TypeEnum'
+        role_responsible:
+          $ref: '#/components/schemas/RoleResponsibleEnum'
         task_templates:
           type: array
           items:
@@ -8959,8 +9141,6 @@ components:
           type: integer
           format: int64
           minimum: 0
-        role_responsible:
-          $ref: '#/components/schemas/RoleResponsibleEnum'
       required:
       - id
       - order
@@ -8976,8 +9156,6 @@ components:
           type: integer
           format: int64
           minimum: 0
-        role_responsible:
-          $ref: '#/components/schemas/RoleResponsibleEnum'
       required:
       - order
       - title

@@ -1799,9 +1799,13 @@ class PerformanceReviewHistoryEvent(models.Model):
 class ChecklistTemplate(models.Model):
     # Enum alias — defined in core/enums.py; kept here for backward-compat access
     Type = ChecklistType
+    Role = TaskRole
 
     name = models.CharField(max_length=150)
     type = models.CharField(max_length=20, choices=ChecklistType.choices)
+    role_responsible = models.CharField(
+        max_length=20, choices=TaskRole.choices, default=TaskRole.HR
+    )
 
     def __str__(self):
         return f"{self.name} ({self.type})"
@@ -1812,9 +1816,6 @@ class ChecklistTemplate(models.Model):
 
 
 class TaskTemplate(models.Model):
-    # Enum alias — defined in core/enums.py; kept here for backward-compat access
-    Role = TaskRole
-
     checklist_template = models.ForeignKey(
         ChecklistTemplate,
         on_delete=models.CASCADE,
@@ -1822,12 +1823,9 @@ class TaskTemplate(models.Model):
     )
     title = models.CharField(max_length=200)
     order = models.PositiveIntegerField(default=0)
-    role_responsible = models.CharField(
-        max_length=20, choices=TaskRole.choices, default=TaskRole.HR
-    )
 
     def __str__(self):
-        return f"{self.title} ({self.role_responsible})"
+        return self.title
 
     class Meta:
         ordering = ["order"]
@@ -1854,6 +1852,14 @@ class ChecklistInstance(models.Model):
         choices=ChecklistInstanceStatus.choices,
         default=ChecklistInstanceStatus.IN_PROGRESS,
     )
+    due_date = models.DateField(null=True, blank=True)
+    created_by = models.ForeignKey(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_checklist_instances",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -1861,10 +1867,10 @@ class ChecklistInstance(models.Model):
 
     def get_assignee_for_role(self, role_responsible: str):
         """Return the appropriate assignee for a task role."""
-        if role_responsible == TaskTemplate.Role.MANAGER:
+        if role_responsible == ChecklistTemplate.Role.MANAGER:
             return self.employee.managers.first()
 
-        if role_responsible in {TaskTemplate.Role.HR, TaskTemplate.Role.IT}:
+        if role_responsible in {ChecklistTemplate.Role.HR, ChecklistTemplate.Role.IT}:
             return (
                 UserProfile.objects.filter(
                     role__name__iexact=role_responsible,
@@ -1878,12 +1884,16 @@ class ChecklistInstance(models.Model):
 
     def create_tasks_from_template(self):
         """Create checklist tasks from the associated checklist template."""
+        assignee = self.get_assignee_for_role(self.template.role_responsible)
+        if assignee is None:
+            assignee = self.created_by
         for task_template in self.template.task_templates.all():
             ChecklistTask.objects.create(
                 checklist_instance=self,
                 task_template=task_template,
                 title=task_template.title,
-                assigned_to=self.get_assignee_for_role(task_template.role_responsible),
+                assigned_to=assignee,
+                due_date=self.due_date,
             )
 
     class Meta:
