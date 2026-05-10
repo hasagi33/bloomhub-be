@@ -199,7 +199,7 @@ def approve_leave_request_lead(
     leave_request.save()
 
     # Emails (non-blocking — failures are logged, not raised)
-    from core.services.email_service import (
+    from core.services.mail.leave_notifications import (
         notify_approver_confirmation,
         notify_employee_lead_decision,
         notify_hr_lead_approved,
@@ -254,7 +254,7 @@ def approve_leave_request_hr(
     balance.used += requested_days
     balance.save()
 
-    from core.services.email_service import (
+    from core.services.mail.leave_notifications import (
         notify_approver_confirmation,
         notify_employee_hr_decision,
     )
@@ -290,7 +290,7 @@ def reject_leave_request(
     leave_request.rejection_reason = reason
     leave_request.save()
 
-    from core.services.email_service import (
+    from core.services.mail.leave_notifications import (
         notify_approver_confirmation,
         notify_employee_hr_decision,
         notify_employee_lead_decision,

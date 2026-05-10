@@ -1350,7 +1350,7 @@ class LeaveRequestCreateSerializer(serializers.ModelSerializer):
         )
 
         # Notify Tech Lead(s) of the new request
-        from core.services.email_service import notify_lead_new_request
+        from core.services.mail.leave_notifications import notify_lead_new_request
 
         notify_lead_new_request(leave_request)
 
