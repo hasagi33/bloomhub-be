@@ -89,7 +89,7 @@ class DocumentsAPITestCase(APITestCase):
             signature_status=Document.SignatureStatus.PENDING,
             is_confidential=True,
             tags=["secret"],
-            allowed_roles=[Document.AccessRole.EMPLOYEE, Document.AccessRole.HR],
+            allowed_roles=[Document.AccessRole.ADMIN],
         )
 
     # ── list / access control ──────────────────────────────────────────
@@ -215,7 +215,7 @@ class DocumentsAPITestCase(APITestCase):
                 "file": upload,
                 "name": "Invalid Roles",
                 "category": Document.Category.CONTRACTS,
-                "allowed_roles": ["manager"],
+                "allowed_roles": ["intern"],
             },
             format="multipart",
         )

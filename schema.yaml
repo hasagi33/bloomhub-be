@@ -1372,6 +1372,58 @@ paths:
               schema:
                 $ref: '#/components/schemas/PaginatedDocumentVersionList'
           description: ''
+  /api/documents/{id}/visibility/:
+    patch:
+      operationId: documents_visibility_partial_update
+      description: |-
+        Full document management viewset.
+
+        Endpoints:
+          GET    /api/documents/                    list
+          POST   /api/documents/                    create (upload)
+          GET    /api/documents/{id}/               retrieve
+          DELETE /api/documents/{id}/               destroy (HR/admin)
+          GET    /api/documents/{id}/download/      signed download URL
+          GET    /api/documents/{id}/preview/       signed preview URL
+          POST   /api/documents/{id}/archive/       soft-delete (HR/admin)
+          POST   /api/documents/{id}/unarchive/     restore archived doc (HR/admin)
+          POST   /api/documents/{id}/request-signature/  start e-sig workflow (HR/admin)
+          POST   /api/documents/{id}/send-reminder/ resend signature emails
+          GET    /api/documents/{id}/versions/      version history
+          POST   /api/documents/bulk-delete/        bulk hard-delete (HR/admin)
+          POST   /api/documents/bulk-archive/       bulk soft-delete (HR/admin)
+          POST   /api/documents/bulk-download/      ZIP download URL
+          GET    /api/documents/export/             CSV export URL (HR/admin)
+      summary: Update document visibility (HR/admin only)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Document.
+        required: true
+      tags:
+      - Documents
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedDocumentVisibilityUpdateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedDocumentVisibilityUpdateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedDocumentVisibilityUpdateRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentList'
+          description: ''
   /api/documents/bulk-archive/:
     post:
       operationId: documents_bulk_archive_create
@@ -1504,6 +1556,120 @@ paths:
                 properties:
                   download_url:
                     type: string
+          description: ''
+  /api/documents/category-defaults/:
+    get:
+      operationId: documents_category_defaults_retrieve
+      summary: List category default visibility
+      tags:
+      - Documents
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: array
+                  items:
+                    type: string
+          description: ''
+    patch:
+      operationId: documents_category_defaults_partial_update
+      summary: Update default visibility for a category (admin only)
+      tags:
+      - Documents
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedDocumentCategoryDefaultUpdateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedDocumentCategoryDefaultUpdateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedDocumentCategoryDefaultUpdateRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  category:
+                    type: string
+                  allowed_roles:
+                    type: array
+                    items:
+                      type: string
+          description: ''
+  /api/documents/category-defaults/{category}/:
+    get:
+      operationId: documents_category_defaults_retrieve_2
+      summary: List category default visibility
+      parameters:
+      - in: path
+        name: category
+        schema:
+          type: string
+        required: true
+      tags:
+      - Documents
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: array
+                  items:
+                    type: string
+          description: ''
+    patch:
+      operationId: documents_category_defaults_partial_update_2
+      summary: Update default visibility for a category (admin only)
+      parameters:
+      - in: path
+        name: category
+        schema:
+          type: string
+        required: true
+      tags:
+      - Documents
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedDocumentCategoryDefaultUpdateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedDocumentCategoryDefaultUpdateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedDocumentCategoryDefaultUpdateRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  category:
+                    type: string
+                  allowed_roles:
+                    type: array
+                    items:
+                      type: string
           description: ''
   /api/documents/export/:
     get:
@@ -5401,11 +5567,13 @@ components:
     AllowedRolesEnum:
       enum:
       - employee
+      - manager
       - hr
       - admin
       type: string
       description: |-
         * `employee` - Employee
+        * `manager` - Manager
         * `hr` - HR
         * `admin` - Admin
     Asset:
@@ -6280,9 +6448,6 @@ components:
           type: string
           format: date
           nullable: true
-        is_confidential:
-          type: boolean
-          default: false
         tags:
           type: array
           items:
@@ -7681,6 +7846,13 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/TaskTemplateRequest'
+    PatchedDocumentCategoryDefaultUpdateRequest:
+      type: object
+      properties:
+        allowed_roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/AllowedRolesEnum'
     PatchedDocumentTemplatePartialUpdateRequest:
       type: object
       description: PATCH variant — all top-level fields are optional.
@@ -7711,6 +7883,13 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/TemplateFieldRequest'
+    PatchedDocumentVisibilityUpdateRequest:
+      type: object
+      properties:
+        allowed_roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/AllowedRolesEnum'
     PatchedEmployeeProfileRequest:
       type: object
       properties:
@@ -9717,10 +9896,14 @@ components:
           title: Superuser status
           description: Designates that this user has all permissions without explicitly
             assigning them.
+        is_manager:
+          type: boolean
+          readOnly: true
       required:
       - avatar_url
       - career_level
       - id
+      - is_manager
       - username
     UserProfile:
       type: object

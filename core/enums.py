@@ -84,6 +84,7 @@ class DocumentAccessRole(models.TextChoices):
     """Roles that may be granted access to a document via ``allowed_roles``."""
 
     EMPLOYEE = "employee", "Employee"
+    MANAGER = "manager", "Manager"
     HR = "hr", "HR"
     ADMIN = "admin", "Admin"
 

@@ -127,6 +127,7 @@ class Base64ImageField(serializers.ImageField):
 class UserSerializer(serializers.ModelSerializer):
     avatar_url = serializers.SerializerMethodField()
     career_level = serializers.CharField(source="profile.career_level", read_only=True)
+    is_manager = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -140,7 +141,14 @@ class UserSerializer(serializers.ModelSerializer):
             "career_level",
             "is_staff",
             "is_superuser",
+            "is_manager",
         ]
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_is_manager(self, obj: User) -> bool:
+        from core.services.document_service import is_user_manager
+
+        return is_user_manager(obj)
 
     def get_avatar_url(self, obj: User) -> str | None:
         try:
@@ -2045,7 +2053,6 @@ class DocumentCreateSerializer(serializers.Serializer):
     category = serializers.ChoiceField(choices=Document.Category.choices)
     description = serializers.CharField(required=False, default="", allow_blank=True)
     expiry_date = serializers.DateField(required=False, allow_null=True, default=None)
-    is_confidential = serializers.BooleanField(required=False, default=False)
     tags = serializers.ListField(
         child=serializers.CharField(),
         required=False,
@@ -2073,6 +2080,20 @@ class DocumentCreateSerializer(serializers.Serializer):
                 "Unsupported file type. Allowed: pdf, doc, docx, png, jpg."
             )
         return value
+
+
+class DocumentVisibilityUpdateSerializer(serializers.Serializer):
+    allowed_roles = serializers.ListField(
+        child=serializers.ChoiceField(choices=Document.AccessRole.choices),
+        allow_empty=True,
+    )
+
+
+class DocumentCategoryDefaultUpdateSerializer(serializers.Serializer):
+    allowed_roles = serializers.ListField(
+        child=serializers.ChoiceField(choices=Document.AccessRole.choices),
+        allow_empty=True,
+    )
 
 
 class BulkIdsSerializer(serializers.Serializer):

@@ -113,6 +113,7 @@ from .serializers import (
     ChecklistInstanceSerializer,
     ChecklistTaskSerializer,
     ChecklistTemplateSerializer,
+    DocumentCategoryDefaultUpdateSerializer,
     DocumentCreateSerializer,
     DocumentListSerializer,
     DocumentTemplateCreateUpdateSerializer,
@@ -120,6 +121,7 @@ from .serializers import (
     DocumentTemplateListSerializer,
     DocumentTemplatePartialUpdateSerializer,
     DocumentVersionSerializer,
+    DocumentVisibilityUpdateSerializer,
     EmployeeCVSerializer,
     EmployeeProfileChangeHistorySerializer,
     EmployeeProfileSerializer,
@@ -170,10 +172,14 @@ from .services.document_service import (
     filter_accessible_documents,
     generate_presigned_url,
     generate_zip_url,
+    get_document_category_defaults,
     hard_delete_document,
+    is_admin_user,
     is_document_accessible,
     is_hr_or_admin,
+    set_document_category_default,
     unarchive_document,
+    update_document_visibility,
 )
 from .services.performance_review_service import (
     materialize_performance_review_reminders,
@@ -4285,9 +4291,9 @@ class DocumentViewSet(viewsets.GenericViewSet):
             file_size=getattr(uploaded_file, "size", 0) or 0,
             mime_type=getattr(uploaded_file, "content_type", "") or "",
             expiry_date=v.get("expiry_date"),
-            is_confidential=v.get("is_confidential", False),
             tags=v.get("tags", []),
-            allowed_roles=v.get("allowed_roles", []),
+            allowed_roles=v.get("allowed_roles")
+            or [Document.AccessRole.EMPLOYEE.value],
             signature_status=Document.SignatureStatus.NOT_REQUIRED,
             current_version="1.0",
         )
@@ -4433,6 +4439,33 @@ class DocumentViewSet(viewsets.GenericViewSet):
             )
 
         document = unarchive_document(document)
+        return Response(
+            DocumentListSerializer(document).data, status=status.HTTP_200_OK
+        )
+
+    @extend_schema(
+        summary="Update document visibility (HR/admin only)",
+        request=DocumentVisibilityUpdateSerializer,
+        responses={200: DocumentListSerializer},
+    )
+    @action(detail=True, methods=["patch"], url_path="visibility")
+    def update_visibility(self, request, pk=None):
+        if not is_hr_or_admin(request.user):
+            return Response(
+                {"detail": "Only HR or admin users can update document visibility."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        document = self._get_document_or_404(pk)
+        if not document:
+            return Response(
+                {"detail": "Document not found."}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        serializer = DocumentVisibilityUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        update_document_visibility(document, serializer.validated_data["allowed_roles"])
         return Response(
             DocumentListSerializer(document).data, status=status.HTTP_200_OK
         )
@@ -4664,6 +4697,65 @@ class DocumentViewSet(viewsets.GenericViewSet):
         accessible = filter_accessible_documents(request.user, queryset)
         export_url = export_documents_csv(accessible)
         return Response({"export_url": export_url}, status=status.HTTP_200_OK)
+
+
+class IsDocumentAdmin(permissions.BasePermission):
+    def has_permission(self, request, view):
+        if request.method in permissions.SAFE_METHODS:
+            return bool(request.user and request.user.is_authenticated)
+        return bool(request.user and is_admin_user(request.user))
+
+
+@extend_schema(tags=["Documents"])
+class DocumentCategoryDefaultsView(APIView):
+    permission_classes = [IsDocumentAdmin]
+
+    @extend_schema(
+        summary="List category default visibility",
+        responses={
+            200: {
+                "type": "object",
+                "additionalProperties": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                },
+            }
+        },
+    )
+    def get(self, request):
+        return Response(get_document_category_defaults(), status=status.HTTP_200_OK)
+
+    @extend_schema(
+        summary="Update default visibility for a category (admin only)",
+        request=DocumentCategoryDefaultUpdateSerializer,
+        responses={
+            200: {
+                "type": "object",
+                "properties": {
+                    "category": {"type": "string"},
+                    "allowed_roles": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
+                },
+            }
+        },
+    )
+    def patch(self, request, category: str | None = None):
+        if category is None or category not in Document.Category.values:
+            return Response(
+                {"detail": "Unknown document category."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        serializer = DocumentCategoryDefaultUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        row = set_document_category_default(
+            category, serializer.validated_data["allowed_roles"]
+        )
+        return Response(
+            {"category": row.category, "allowed_roles": list(row.allowed_roles or [])},
+            status=status.HTTP_200_OK,
+        )
 
 
 # ──────────────────────────────────────────

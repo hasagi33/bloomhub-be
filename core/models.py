@@ -488,6 +488,23 @@ class DocumentCategory(models.Model):
         return self.name
 
 
+class DocumentCategoryDefault(models.Model):
+    category = models.CharField(
+        max_length=20,
+        choices=_DocumentCategory.choices,
+        unique=True,
+    )
+    allowed_roles = models.JSONField(default=list, blank=True)
+
+    class Meta:
+        verbose_name = "Document Category Default"
+        verbose_name_plural = "Document Category Defaults"
+        ordering = ["category"]
+
+    def __str__(self):
+        return f"{self.category}: {self.allowed_roles}"
+
+
 class Document(models.Model):
     Category = _DocumentCategory
     SignatureStatus = DocumentSignatureStatus

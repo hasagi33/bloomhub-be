@@ -67,3 +67,19 @@ EMPLOYEE_PROFILE_SEARCH_FIELDS = [
 ]
 
 EMPLOYEE_PROFILE_ORDERING_FIELDS = ["full_name", "start_date", "created_at"]
+
+DOCUMENT_ROLE_RANK_ADMIN = 4
+DOCUMENT_ROLE_RANK_HR = 3
+DOCUMENT_ROLE_RANK_MANAGER = 2
+DOCUMENT_ROLE_RANK_EMPLOYEE = 1
+
+DOCUMENT_CATEGORY_DEFAULT_VISIBILITY = {
+    "contracts": ["hr"],
+    "compliance": ["hr"],
+    "agreements": ["hr"],
+    "policies": ["employee"],
+    "onboarding": ["employee"],
+    "training": ["employee"],
+    "benefits": ["employee"],
+    "other": ["employee"],
+}

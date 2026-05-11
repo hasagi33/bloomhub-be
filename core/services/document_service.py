@@ -10,8 +10,16 @@ from django.core.files.storage import default_storage
 from django.db import transaction
 from django.utils import timezone
 
+from core.constants import (
+    DOCUMENT_CATEGORY_DEFAULT_VISIBILITY,
+    DOCUMENT_ROLE_RANK_ADMIN,
+    DOCUMENT_ROLE_RANK_EMPLOYEE,
+    DOCUMENT_ROLE_RANK_HR,
+    DOCUMENT_ROLE_RANK_MANAGER,
+)
 from core.enums import DocumentAccessRole
-from core.models import Document, DocumentVersion
+from core.models import Document, DocumentCategoryDefault, DocumentVersion
+from core.permissions import _get_user_profile
 from core.utils import generate_presigned_url, uploader_display_name
 
 # Backward-compat alias so callers that import DocumentRole from this module
@@ -22,6 +30,30 @@ DocumentRole = DocumentAccessRole
 # ──────────────────────────────────────────
 # Role resolution
 # ──────────────────────────────────────────
+
+
+DOCUMENT_ROLE_RANK: dict[str, int] = {
+    DocumentAccessRole.ADMIN.value: DOCUMENT_ROLE_RANK_ADMIN,
+    DocumentAccessRole.HR.value: DOCUMENT_ROLE_RANK_HR,
+    DocumentAccessRole.MANAGER.value: DOCUMENT_ROLE_RANK_MANAGER,
+    DocumentAccessRole.EMPLOYEE.value: DOCUMENT_ROLE_RANK_EMPLOYEE,
+}
+
+
+def _profile_role_name(profile) -> str:
+    role = getattr(profile, "role", None)
+    return (getattr(role, "name", "") or "").lower()
+
+
+def is_user_manager(user) -> bool:
+    profile = _get_user_profile(user)
+    if profile is None:
+        return False
+    return profile.direct_reports.exists()
+
+
+def is_admin_user(user) -> bool:
+    return resolve_document_role(user) == DocumentRole.ADMIN
 
 
 def resolve_document_role(user) -> DocumentAccessRole:
@@ -35,13 +67,16 @@ def resolve_document_role(user) -> DocumentAccessRole:
     if getattr(user, "is_staff", False):
         return DocumentRole.HR
 
-    profile = getattr(user, "profile", None)
-    role_name = (getattr(getattr(profile, "role", None), "name", "") or "").lower()
+    role_name = _profile_role_name(_get_user_profile(user))
 
-    if role_name == "admin":
+    if role_name == DocumentRole.ADMIN.value:
         return DocumentRole.ADMIN
-    if role_name.startswith("hr"):
+    if role_name.startswith(DocumentRole.HR.value):
         return DocumentRole.HR
+
+    if is_user_manager(user):
+        return DocumentRole.MANAGER
+
     return DocumentRole.EMPLOYEE
 
 
@@ -55,45 +90,66 @@ def is_hr_or_admin(user) -> bool:
 # ──────────────────────────────────────────
 
 
+def _effective_allowed_roles(document: Document) -> list[str]:
+    roles = document.allowed_roles or []
+    if not roles:
+        return [DocumentAccessRole.EMPLOYEE.value]
+    return list(roles)
+
+
+def _min_allowed_rank(allowed: list[str]) -> int:
+    ranks = [DOCUMENT_ROLE_RANK[r] for r in allowed if r in DOCUMENT_ROLE_RANK]
+    if not ranks:
+        return DOCUMENT_ROLE_RANK_EMPLOYEE
+    return min(ranks)
+
+
 def is_document_accessible(user, document: Document) -> bool:
     """Check whether a user can access a specific document."""
     role = resolve_document_role(user)
-
     if role == DocumentRole.ADMIN:
         return True
 
-    if document.is_confidential:
-        return False
-
-    allowed = set(document.allowed_roles or [])
-    if role == DocumentRole.HR:
-        return bool(allowed & {DocumentRole.HR.value, DocumentRole.EMPLOYEE.value})
-
-    return DocumentRole.EMPLOYEE.value in allowed
+    user_rank = DOCUMENT_ROLE_RANK.get(role.value, 0)
+    allowed = _effective_allowed_roles(document)
+    return user_rank >= _min_allowed_rank(allowed)
 
 
 def filter_accessible_documents(user, queryset):
     """Return only the subset of the queryset the user is allowed to see."""
-    role = resolve_document_role(user)
-
-    if role == DocumentRole.ADMIN:
+    if is_admin_user(user):
         return queryset
+    return [doc for doc in queryset if is_document_accessible(user, doc)]
 
-    non_confidential = queryset.filter(is_confidential=False)
 
-    if role == DocumentRole.HR:
-        return [
-            doc
-            for doc in non_confidential
-            if set(doc.allowed_roles or [])
-            & {DocumentRole.HR.value, DocumentRole.EMPLOYEE.value}
-        ]
+# ──────────────────────────────────────────
+# Visibility writes
+# ──────────────────────────────────────────
 
-    return [
-        doc
-        for doc in non_confidential
-        if DocumentRole.EMPLOYEE.value in (doc.allowed_roles or [])
-    ]
+
+def update_document_visibility(
+    document: Document, allowed_roles: list[str]
+) -> Document:
+    document.allowed_roles = list(allowed_roles)
+    document.save(update_fields=["allowed_roles", "updated_at"])
+    return document
+
+
+def get_document_category_defaults() -> dict[str, list[str]]:
+    defaults = {k: list(v) for k, v in DOCUMENT_CATEGORY_DEFAULT_VISIBILITY.items()}
+    for row in DocumentCategoryDefault.objects.all():
+        defaults[row.category] = list(row.allowed_roles or [])
+    return defaults
+
+
+def set_document_category_default(
+    category: str, allowed_roles: list[str]
+) -> DocumentCategoryDefault:
+    row, _ = DocumentCategoryDefault.objects.update_or_create(
+        category=category,
+        defaults={"allowed_roles": list(allowed_roles)},
+    )
+    return row
 
 
 # ──────────────────────────────────────────

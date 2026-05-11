@@ -18,6 +18,7 @@ from .views import (
     ChecklistTemplateViewSet,
     CPFLevelListView,
     DepartmentListView,
+    DocumentCategoryDefaultsView,
     DocumentTemplateViewSet,
     DocumentViewSet,
     EmployeeProfileChangeHistoryView,
@@ -163,6 +164,16 @@ urlpatterns = [
         "employees/<int:employee_id>/tech-leads/",
         EmployeeTechLeadsView.as_view(),
         name="employee_tech_leads",
+    ),
+    path(
+        "documents/category-defaults/",
+        DocumentCategoryDefaultsView.as_view(),
+        name="document_category_defaults",
+    ),
+    path(
+        "documents/category-defaults/<str:category>/",
+        DocumentCategoryDefaultsView.as_view(),
+        name="document_category_default_detail",
     ),
 ]
 
