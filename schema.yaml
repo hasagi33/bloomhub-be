@@ -7229,6 +7229,9 @@ components:
         employee_name:
           type: string
           readOnly: true
+        employee_avatar:
+          type: string
+          readOnly: true
         leave_type:
           $ref: '#/components/schemas/LeaveTypeEnum'
         leave_type_display:
@@ -7260,6 +7263,7 @@ components:
       required:
       - allocated
       - carryover
+      - employee_avatar
       - employee_id
       - employee_name
       - id

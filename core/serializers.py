@@ -1067,6 +1067,7 @@ class LeaveBalanceSerializer(serializers.ModelSerializer):
     employee_name = serializers.CharField(
         source="employee.user.get_full_name", read_only=True
     )
+    employee_avatar = serializers.SerializerMethodField()
     leave_type_display = serializers.CharField(
         source="get_leave_type_display", read_only=True
     )
@@ -1082,6 +1083,7 @@ class LeaveBalanceSerializer(serializers.ModelSerializer):
             "id",
             "employee_id",
             "employee_name",
+            "employee_avatar",
             "leave_type",
             "leave_type_display",
             "allocated",
@@ -1091,7 +1093,24 @@ class LeaveBalanceSerializer(serializers.ModelSerializer):
             "year",
             "last_updated",
         ]
-        read_only_fields = ["employee_id", "employee_name", "remaining", "last_updated"]
+        read_only_fields = [
+            "employee_id",
+            "employee_name",
+            "employee_avatar",
+            "remaining",
+            "last_updated",
+        ]
+
+    def get_employee_avatar(self, obj):
+        try:
+            profile = obj.employee
+            if profile.avatar_url:
+                return profile.avatar_url
+            if profile.avatar:
+                return profile.avatar.url
+        except Exception:
+            pass
+        return None
 
 
 class LeaveRequestListSerializer(serializers.ModelSerializer):
