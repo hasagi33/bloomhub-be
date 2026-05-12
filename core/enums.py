@@ -92,6 +92,7 @@ class DocumentAccessRole(models.TextChoices):
 class DocumentSignerStatus(models.TextChoices):
     PENDING = "pending", "Pending"
     SIGNED = "signed", "Signed"
+    REJECTED = "rejected", "Rejected"
     NOT_SENT = "notsent", "Not Sent"
 
 

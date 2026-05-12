@@ -1389,7 +1389,7 @@ paths:
           POST   /api/documents/bulk-archive/       bulk soft-delete (HR/admin)
           POST   /api/documents/bulk-download/      ZIP download URL
           GET    /api/documents/export/             CSV export URL (HR/admin)
-      summary: Initiate e-signature workflow (HR/admin only)
+      summary: Initiate e-signature workflow
       parameters:
       - in: path
         name: id
@@ -1410,6 +1410,59 @@ paths:
           multipart/form-data:
             schema:
               $ref: '#/components/schemas/RequestSignatureRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentList'
+          description: ''
+  /api/documents/{id}/reset-signatures/:
+    post:
+      operationId: documents_reset_signatures_create
+      description: |-
+        Full document management viewset.
+
+        Endpoints:
+          GET    /api/documents/                    list
+          POST   /api/documents/                    create (upload)
+          GET    /api/documents/{id}/               retrieve
+          DELETE /api/documents/{id}/               destroy (HR/admin)
+          GET    /api/documents/{id}/download/      signed download URL
+          GET    /api/documents/{id}/preview/       signed preview URL
+          POST   /api/documents/{id}/archive/       soft-delete (HR/admin)
+          POST   /api/documents/{id}/unarchive/     restore archived doc (HR/admin)
+          POST   /api/documents/{id}/request-signature/  start e-sig workflow (HR/admin)
+          POST   /api/documents/{id}/send-reminder/ resend signature emails
+          GET    /api/documents/{id}/versions/      version history
+          POST   /api/documents/bulk-delete/        bulk hard-delete (HR/admin)
+          POST   /api/documents/bulk-archive/       bulk soft-delete (HR/admin)
+          POST   /api/documents/bulk-download/      ZIP download URL
+          GET    /api/documents/export/             CSV export URL (HR/admin)
+      summary: Reset signature workflow (testing/admin only) — clears all signers
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Document.
+        required: true
+      tags:
+      - Documents
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DocumentListRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DocumentListRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DocumentListRequest'
         required: true
       security:
       - jwtAuth: []
@@ -1469,6 +1522,100 @@ paths:
       responses:
         '204':
           description: No response body
+  /api/documents/{id}/sign/:
+    post:
+      operationId: documents_sign_create
+      description: |-
+        Full document management viewset.
+
+        Endpoints:
+          GET    /api/documents/                    list
+          POST   /api/documents/                    create (upload)
+          GET    /api/documents/{id}/               retrieve
+          DELETE /api/documents/{id}/               destroy (HR/admin)
+          GET    /api/documents/{id}/download/      signed download URL
+          GET    /api/documents/{id}/preview/       signed preview URL
+          POST   /api/documents/{id}/archive/       soft-delete (HR/admin)
+          POST   /api/documents/{id}/unarchive/     restore archived doc (HR/admin)
+          POST   /api/documents/{id}/request-signature/  start e-sig workflow (HR/admin)
+          POST   /api/documents/{id}/send-reminder/ resend signature emails
+          GET    /api/documents/{id}/versions/      version history
+          POST   /api/documents/bulk-delete/        bulk hard-delete (HR/admin)
+          POST   /api/documents/bulk-archive/       bulk soft-delete (HR/admin)
+          POST   /api/documents/bulk-download/      ZIP download URL
+          GET    /api/documents/export/             CSV export URL (HR/admin)
+      summary: Record an electronic signature
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Document.
+        required: true
+      tags:
+      - Documents
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignDocumentRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SignDocumentRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SignDocumentRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentList'
+          description: ''
+  /api/documents/{id}/signatures/:
+    get:
+      operationId: documents_signatures_retrieve
+      description: |-
+        Full document management viewset.
+
+        Endpoints:
+          GET    /api/documents/                    list
+          POST   /api/documents/                    create (upload)
+          GET    /api/documents/{id}/               retrieve
+          DELETE /api/documents/{id}/               destroy (HR/admin)
+          GET    /api/documents/{id}/download/      signed download URL
+          GET    /api/documents/{id}/preview/       signed preview URL
+          POST   /api/documents/{id}/archive/       soft-delete (HR/admin)
+          POST   /api/documents/{id}/unarchive/     restore archived doc (HR/admin)
+          POST   /api/documents/{id}/request-signature/  start e-sig workflow (HR/admin)
+          POST   /api/documents/{id}/send-reminder/ resend signature emails
+          GET    /api/documents/{id}/versions/      version history
+          POST   /api/documents/bulk-delete/        bulk hard-delete (HR/admin)
+          POST   /api/documents/bulk-archive/       bulk soft-delete (HR/admin)
+          POST   /api/documents/bulk-download/      ZIP download URL
+          GET    /api/documents/export/             CSV export URL (HR/admin)
+      summary: List document signature status and audit events
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Document.
+        required: true
+      tags:
+      - Documents
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentList'
+          description: ''
   /api/documents/{id}/unarchive/:
     post:
       operationId: documents_unarchive_create
@@ -3849,6 +3996,91 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/LeaveTeamMember'
+          description: ''
+  /api/notifications/:
+    get:
+      operationId: notifications_list
+      description: |-
+        GET    /api/notifications/                 list current user's notifications
+        POST   /api/notifications/{id}/mark-read/  mark a single notification read
+        POST   /api/notifications/mark-all-read/   mark all current-user notifications read
+        GET    /api/notifications/unread-count/    return { count: int }
+      tags:
+      - Notifications
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Notification'
+          description: ''
+  /api/notifications/{id}/mark-read/:
+    post:
+      operationId: notifications_mark_read_create
+      description: |-
+        GET    /api/notifications/                 list current user's notifications
+        POST   /api/notifications/{id}/mark-read/  mark a single notification read
+        POST   /api/notifications/mark-all-read/   mark all current-user notifications read
+        GET    /api/notifications/unread-count/    return { count: int }
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Notification.
+        required: true
+      tags:
+      - Notifications
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notification'
+          description: ''
+  /api/notifications/mark-all-read/:
+    post:
+      operationId: notifications_mark_all_read_create
+      description: |-
+        GET    /api/notifications/                 list current user's notifications
+        POST   /api/notifications/{id}/mark-read/  mark a single notification read
+        POST   /api/notifications/mark-all-read/   mark all current-user notifications read
+        GET    /api/notifications/unread-count/    return { count: int }
+      tags:
+      - Notifications
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notification'
+          description: ''
+  /api/notifications/unread-count/:
+    get:
+      operationId: notifications_unread_count_retrieve
+      description: |-
+        GET    /api/notifications/                 list current user's notifications
+        POST   /api/notifications/{id}/mark-read/  mark a single notification read
+        POST   /api/notifications/mark-all-read/   mark all current-user notifications read
+        GET    /api/notifications/unread-count/    return { count: int }
+      tags:
+      - Notifications
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notification'
           description: ''
   /api/onboarding/instances/:
     get:
@@ -6580,7 +6812,7 @@ components:
           type: string
           maxLength: 150
         type:
-          $ref: '#/components/schemas/TypeEnum'
+          $ref: '#/components/schemas/ChecklistTemplateTypeEnum'
         role_responsible:
           $ref: '#/components/schemas/RoleResponsibleEnum'
         task_templates:
@@ -6599,7 +6831,7 @@ components:
           minLength: 1
           maxLength: 150
         type:
-          $ref: '#/components/schemas/TypeEnum'
+          $ref: '#/components/schemas/ChecklistTemplateTypeEnum'
         role_responsible:
           $ref: '#/components/schemas/RoleResponsibleEnum'
         task_templates:
@@ -6609,6 +6841,14 @@ components:
       required:
       - name
       - type
+    ChecklistTemplateTypeEnum:
+      enum:
+      - onboarding
+      - offboarding
+      type: string
+      description: |-
+        * `onboarding` - Onboarding
+        * `offboarding` - Offboarding
     ConditionEnum:
       enum:
       - excellent
@@ -6769,6 +7009,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AllowedRolesEnum'
+        visibility_scope:
+          allOf:
+          - $ref: '#/components/schemas/VisibilityScopeEnum'
+          default: roles
       required:
       - category
       - file
@@ -6814,10 +7058,16 @@ components:
           nullable: true
         signature_status:
           $ref: '#/components/schemas/SignatureStatusEnum'
+        signed_at:
+          type: string
+          format: date-time
+          nullable: true
         is_confidential:
           type: boolean
         tags: {}
         allowed_roles: {}
+        visibility_scope:
+          $ref: '#/components/schemas/VisibilityScopeEnum'
         current_version:
           type: string
           maxLength: 20
@@ -6863,10 +7113,16 @@ components:
           nullable: true
         signature_status:
           $ref: '#/components/schemas/SignatureStatusEnum'
+        signed_at:
+          type: string
+          format: date-time
+          nullable: true
         is_confidential:
           type: boolean
         tags: {}
         allowed_roles: {}
+        visibility_scope:
+          $ref: '#/components/schemas/VisibilityScopeEnum'
         current_version:
           type: string
           minLength: 1
@@ -6887,8 +7143,20 @@ components:
           format: email
           maxLength: 254
         status:
-          $ref: '#/components/schemas/DocumentSignerStatusEnum'
+          allOf:
+          - $ref: '#/components/schemas/DocumentSignerStatusEnum'
+          readOnly: true
         signed_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        requested_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        last_reminded_at:
           type: string
           format: date-time
           readOnly: true
@@ -6896,8 +7164,11 @@ components:
       required:
       - email
       - id
+      - last_reminded_at
       - name
+      - requested_at
       - signed_at
+      - status
     DocumentSignerRequest:
       type: object
       properties:
@@ -6910,8 +7181,6 @@ components:
           format: email
           minLength: 1
           maxLength: 254
-        status:
-          $ref: '#/components/schemas/DocumentSignerStatusEnum'
       required:
       - email
       - name
@@ -6919,11 +7188,13 @@ components:
       enum:
       - pending
       - signed
+      - rejected
       - notsent
       type: string
       description: |-
         * `pending` - Pending
         * `signed` - Signed
+        * `rejected` - Rejected
         * `notsent` - Not Sent
     DocumentTemplateCreateUpdateRequest:
       type: object
@@ -7942,6 +8213,82 @@ components:
       required:
       - email
       - password
+    ModuleEnum:
+      enum:
+      - documents
+      - vacations
+      - reviews
+      - onboarding
+      - announcements
+      - general
+      type: string
+      description: |-
+        * `documents` - Documents
+        * `vacations` - Vacations
+        * `reviews` - Reviews
+        * `onboarding` - Onboarding
+        * `announcements` - Announcements
+        * `general` - General
+    Notification:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        module:
+          allOf:
+          - $ref: '#/components/schemas/ModuleEnum'
+          readOnly: true
+        type:
+          allOf:
+          - $ref: '#/components/schemas/NotificationTypeEnum'
+          readOnly: true
+        title:
+          type: string
+          readOnly: true
+        message:
+          type: string
+          readOnly: true
+        link:
+          type: string
+          readOnly: true
+        metadata:
+          readOnly: true
+        is_read:
+          type: boolean
+          readOnly: true
+        read_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - id
+      - is_read
+      - link
+      - message
+      - metadata
+      - module
+      - read_at
+      - title
+      - type
+    NotificationTypeEnum:
+      enum:
+      - info
+      - success
+      - warning
+      - alert
+      type: string
+      description: |-
+        * `info` - Info
+        * `success` - Success
+        * `warning` - Warning
+        * `alert` - Alert
     NullEnum:
       enum:
       - null
@@ -8155,7 +8502,7 @@ components:
           minLength: 1
           maxLength: 150
         type:
-          $ref: '#/components/schemas/TypeEnum'
+          $ref: '#/components/schemas/ChecklistTemplateTypeEnum'
         role_responsible:
           $ref: '#/components/schemas/RoleResponsibleEnum'
         task_templates:
@@ -8231,6 +8578,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AllowedRolesEnum'
+        visibility_scope:
+          allOf:
+          - $ref: '#/components/schemas/VisibilityScopeEnum'
+          default: roles
     PatchedEmployeeProfileRequest:
       type: object
       properties:
@@ -9572,6 +9923,19 @@ components:
       required:
       - id
       - name
+    SignDocumentRequest:
+      type: object
+      properties:
+        signer_email:
+          type: string
+          format: email
+          minLength: 1
+        signature:
+          type: object
+          additionalProperties: {}
+      required:
+      - signature
+      - signer_email
     SignatureStatusEnum:
       enum:
       - pending
@@ -10171,14 +10535,6 @@ components:
         * `webinar` - Webinar
         * `certification` - Certification
         * `other` - Other
-    TypeEnum:
-      enum:
-      - onboarding
-      - offboarding
-      type: string
-      description: |-
-        * `onboarding` - Onboarding
-        * `offboarding` - Offboarding
     UpdatePermissionsRequest:
       type: object
       properties:
@@ -10425,6 +10781,16 @@ components:
       description: |-
         * `private` - Private
         * `shared` - Shared
+    VisibilityScopeEnum:
+      enum:
+      - roles
+      - only_me
+      - project_group
+      type: string
+      description: |-
+        * `roles` - Roles
+        * `only_me` - Only Me
+        * `project_group` - Project Group
   securitySchemes:
     JWTAuth:
       type: http

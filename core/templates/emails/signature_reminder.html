@@ -1,0 +1,26 @@
+{% extends "emails/base.html" %}
+{% block content %}
+<p>Hi {{ signer.name }},</p>
+<p>
+  This is a friendly reminder that your electronic signature is still required on
+  <strong>&ldquo;{{ document.name }}&rdquo;</strong>.
+</p>
+
+<table class="card">
+  <tr><td class="label">Document</td><td class="value">{{ document.name }}</td></tr>
+  <tr><td class="label">Status</td><td class="value"><span class="badge badge-pending">Awaiting Signature</span></td></tr>
+  <tr><td class="label">Originally requested</td><td class="value">{{ signer.requested_at|date:"N j, Y" }}</td></tr>
+  {% if signer.last_reminded_at %}
+  <tr><td class="label">Last reminder</td><td class="value">{{ signer.last_reminded_at|date:"N j, Y \a\t H:i" }} UTC</td></tr>
+  {% endif %}
+</table>
+
+{% if site_url %}
+<p>
+  Please review and sign in BloomHub:
+  <a href="{{ site_url }}/documents">{{ site_url }}/documents</a>
+</p>
+{% else %}
+<p>Please log in to BloomHub to complete your signature.</p>
+{% endif %}
+{% endblock %}

@@ -5,7 +5,13 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from core.models import Document, Role
+from core.models import (
+    Document,
+    DocumentSignatureAuditLog,
+    DocumentSigner,
+    Permission,
+    Role,
+)
 
 
 class DocumentsAPITestCase(APITestCase):
@@ -414,8 +420,8 @@ class DocumentsAPITestCase(APITestCase):
             f"/api/documents/{self.hr_doc.id}/request-signature/",
             {
                 "signers": [
-                    {"name": "Jane Smith", "email": "jane@co.com"},
-                    {"name": "John Doe", "email": "john@co.com"},
+                    {"name": "Employee Test", "email": "employee@example.com"},
+                    {"name": "Admin Test", "email": "admin@example.com"},
                 ]
             },
             format="json",
@@ -425,12 +431,38 @@ class DocumentsAPITestCase(APITestCase):
             response.data["signature_status"], Document.SignatureStatus.PENDING
         )
         self.assertEqual(len(response.data["signers"]), 2)
+        signer = DocumentSigner.objects.get(
+            document=self.hr_doc, email="employee@example.com"
+        )
+        self.assertIsNotNone(signer.requested_at)
+        self.assertEqual(signer.requested_by, self.hr_profile)
+        self.assertEqual(
+            DocumentSignatureAuditLog.objects.filter(
+                document=self.hr_doc,
+                event=DocumentSignatureAuditLog.Event.REQUESTED,
+            ).count(),
+            2,
+        )
+
+    def test_request_signature_rejects_duplicate_emails(self):
+        self.client.force_authenticate(user=self.hr_user)
+        response = self.client.post(
+            f"/api/documents/{self.hr_doc.id}/request-signature/",
+            {
+                "signers": [
+                    {"name": "Jane", "email": "jane@co.com"},
+                    {"name": "Jane Again", "email": "JANE@co.com"},
+                ]
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_request_signature_conflicts_when_already_pending(self):
         self.client.force_authenticate(user=self.admin_user)
         response = self.client.post(
             f"/api/documents/{self.confidential_doc.id}/request-signature/",
-            {"signers": [{"name": "A", "email": "a@co.com"}]},
+            {"signers": [{"name": "Employee", "email": "employee@example.com"}]},
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
@@ -443,6 +475,256 @@ class DocumentsAPITestCase(APITestCase):
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_employee_with_permission_can_request_signature(self):
+        permission, _ = Permission.objects.get_or_create(
+            module_name="Documents",
+            feature_action="initiate_signature_requests",
+        )
+        self.employee_profile.add_permission(permission)
+        self.employee_doc.signature_status = Document.SignatureStatus.NOT_REQUIRED
+        self.employee_doc.save(update_fields=["signature_status"])
+
+        self.client.force_authenticate(user=self.employee_user)
+        response = self.client.post(
+            f"/api/documents/{self.employee_doc.id}/request-signature/",
+            {"signers": [{"name": "Employee", "email": "employee@example.com"}]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_archived_document_cannot_be_requested_for_signature(self):
+        self.hr_doc.archived = True
+        self.hr_doc.save(update_fields=["archived"])
+        self.client.force_authenticate(user=self.hr_user)
+        response = self.client.post(
+            f"/api/documents/{self.hr_doc.id}/request-signature/",
+            {"signers": [{"name": "A", "email": "a@co.com"}]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_authorized_signer_can_sign_and_persists_metadata(self):
+        doc = Document.objects.create(
+            uploaded_by=self.hr_profile,
+            category=Document.Category.CONTRACTS,
+            file_key="documents/signable.pdf",
+            name="Signable",
+            original_filename="signable.pdf",
+            allowed_roles=[Document.AccessRole.EMPLOYEE],
+            signature_status=Document.SignatureStatus.NOT_REQUIRED,
+        )
+        signer = DocumentSigner.objects.create(
+            document=doc,
+            name="Employee User",
+            email="employee@example.com",
+            status=DocumentSigner.Status.PENDING,
+        )
+        doc.signature_status = Document.SignatureStatus.PENDING
+        doc.save(update_fields=["signature_status"])
+
+        self.client.force_authenticate(user=self.employee_user)
+        response = self.client.post(
+            f"/api/documents/{doc.id}/sign/",
+            {
+                "signer_email": "employee@example.com",
+                "signature": {
+                    "type": "typed_name",
+                    "value": "Employee User",
+                    "accepted_terms": True,
+                },
+            },
+            format="json",
+            HTTP_USER_AGENT="UnitTest",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            response.data["document"]["signature_status"],
+            Document.SignatureStatus.SIGNED,
+        )
+        signer.refresh_from_db()
+        doc.refresh_from_db()
+        self.assertEqual(signer.status, DocumentSigner.Status.SIGNED)
+        self.assertIsNotNone(signer.signed_at)
+        self.assertIsNotNone(doc.signed_at)
+        self.assertEqual(signer.signed_by, self.employee_profile)
+        self.assertTrue(signer.signature_hash)
+        self.assertEqual(signer.signature_metadata["type"], "typed_name")
+        self.assertEqual(signer.signature_metadata["user_agent"], "UnitTest")
+        self.assertTrue(
+            DocumentSignatureAuditLog.objects.filter(
+                document=doc,
+                signer=signer,
+                event=DocumentSignatureAuditLog.Event.SIGNED,
+            ).exists()
+        )
+
+    def test_unauthorized_user_cannot_sign_for_another_signer(self):
+        doc = Document.objects.create(
+            uploaded_by=self.hr_profile,
+            category=Document.Category.CONTRACTS,
+            file_key="documents/signable.pdf",
+            name="Signable",
+            original_filename="signable.pdf",
+            allowed_roles=[Document.AccessRole.EMPLOYEE],
+            signature_status=Document.SignatureStatus.PENDING,
+        )
+        DocumentSigner.objects.create(
+            document=doc,
+            name="Other Person",
+            email="other@example.com",
+            status=DocumentSigner.Status.PENDING,
+        )
+
+        self.client.force_authenticate(user=self.employee_user)
+        response = self.client.post(
+            f"/api/documents/{doc.id}/sign/",
+            {
+                "signer_email": "other@example.com",
+                "signature": {
+                    "type": "typed_name",
+                    "value": "Other Person",
+                    "accepted_terms": True,
+                },
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_partial_multi_signer_flow_remains_pending_until_all_signed(self):
+        doc = Document.objects.create(
+            uploaded_by=self.hr_profile,
+            category=Document.Category.CONTRACTS,
+            file_key="documents/multi.pdf",
+            name="Multi",
+            original_filename="multi.pdf",
+            allowed_roles=[Document.AccessRole.EMPLOYEE],
+            signature_status=Document.SignatureStatus.PENDING,
+        )
+        DocumentSigner.objects.create(
+            document=doc,
+            name="Employee User",
+            email="employee@example.com",
+            status=DocumentSigner.Status.PENDING,
+        )
+        DocumentSigner.objects.create(
+            document=doc,
+            name="Second User",
+            email="second@example.com",
+            status=DocumentSigner.Status.PENDING,
+        )
+
+        self.client.force_authenticate(user=self.employee_user)
+        response = self.client.post(
+            f"/api/documents/{doc.id}/sign/",
+            {
+                "signer_email": "employee@example.com",
+                "signature": {
+                    "type": "typed_name",
+                    "value": "Employee User",
+                    "accepted_terms": True,
+                },
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            response.data["document"]["signature_status"],
+            Document.SignatureStatus.PENDING,
+        )
+
+        self.client.force_authenticate(user=self.hr_user)
+        response = self.client.post(
+            f"/api/documents/{doc.id}/sign/",
+            {
+                "signer_email": "second@example.com",
+                "signature": {
+                    "type": "typed_name",
+                    "value": "Second User",
+                    "accepted_terms": True,
+                },
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            response.data["document"]["signature_status"],
+            Document.SignatureStatus.SIGNED,
+        )
+
+    def test_archived_document_cannot_be_signed(self):
+        doc = Document.objects.create(
+            uploaded_by=self.hr_profile,
+            category=Document.Category.CONTRACTS,
+            file_key="documents/archived-sign.pdf",
+            name="Archived Sign",
+            original_filename="archived-sign.pdf",
+            allowed_roles=[Document.AccessRole.EMPLOYEE],
+            signature_status=Document.SignatureStatus.PENDING,
+            archived=True,
+        )
+        DocumentSigner.objects.create(
+            document=doc,
+            name="Employee User",
+            email="employee@example.com",
+            status=DocumentSigner.Status.PENDING,
+        )
+        self.client.force_authenticate(user=self.employee_user)
+        response = self.client.post(
+            f"/api/documents/{doc.id}/sign/",
+            {
+                "signer_email": "employee@example.com",
+                "signature": {
+                    "type": "typed_name",
+                    "value": "Employee User",
+                    "accepted_terms": True,
+                },
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_signatures_endpoint_returns_audit_events(self):
+        DocumentSigner.objects.create(
+            document=self.hr_doc,
+            name="Jane",
+            email="jane@co.com",
+            status=DocumentSigner.Status.PENDING,
+        )
+        DocumentSignatureAuditLog.objects.create(
+            document=self.hr_doc,
+            event=DocumentSignatureAuditLog.Event.REQUESTED,
+            actor=self.hr_profile,
+        )
+        self.client.force_authenticate(user=self.hr_user)
+        response = self.client.get(f"/api/documents/{self.hr_doc.id}/signatures/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["document_id"], self.hr_doc.id)
+        self.assertEqual(len(response.data["signers"]), 1)
+        self.assertEqual(len(response.data["audit_events"]), 1)
+
+    def test_send_reminder_updates_pending_signers_and_audit(self):
+        signer = DocumentSigner.objects.create(
+            document=self.hr_doc,
+            name="Jane",
+            email="jane@co.com",
+            status=DocumentSigner.Status.PENDING,
+        )
+        self.hr_doc.signature_status = Document.SignatureStatus.PENDING
+        self.hr_doc.save(update_fields=["signature_status"])
+        self.client.force_authenticate(user=self.hr_user)
+        response = self.client.post(f"/api/documents/{self.hr_doc.id}/send-reminder/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["reminded_count"], 1)
+        signer.refresh_from_db()
+        self.assertIsNotNone(signer.last_reminded_at)
+        self.assertTrue(
+            DocumentSignatureAuditLog.objects.filter(
+                document=self.hr_doc,
+                signer=signer,
+                event=DocumentSignatureAuditLog.Event.REMINDED,
+            ).exists()
+        )
 
     # ── versions ──────────────────────────────────────────────────────
 

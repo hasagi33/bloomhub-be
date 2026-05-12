@@ -53,7 +53,6 @@ from .models import (
     CPFLevel,
     Department,
     Document,
-    DocumentSigner,
     DocumentTemplate,
     DocumentType,
     EmployeeDocument,
@@ -62,6 +61,7 @@ from .models import (
     LeaveBalance,
     LeavePolicy,
     LeaveRequest,
+    Notification,
     PerformanceReview,
     PerformanceReviewActionPoint,
     PerformanceReviewAttachment,
@@ -119,6 +119,7 @@ from .serializers import (
     DocumentCategoryDefaultUpdateSerializer,
     DocumentCreateSerializer,
     DocumentListSerializer,
+    DocumentSignerSerializer,
     DocumentTemplateCreateUpdateSerializer,
     DocumentTemplateDetailSerializer,
     DocumentTemplateListSerializer,
@@ -140,6 +141,7 @@ from .serializers import (
     LeaveRequestRejectSerializer,
     LeaveTeamMemberSerializer,
     LoginSerializer,
+    NotificationSerializer,
     PerformanceReviewActionPointSerializer,
     PerformanceReviewAttachmentSerializer,
     PerformanceReviewCreateUpdateSerializer,
@@ -152,6 +154,8 @@ from .serializers import (
     ReplacementLogSerializer,
     RequestSignatureSerializer,
     ReturnRequestQueueSerializer,
+    SignatureAuditLogSerializer,
+    SignDocumentSerializer,
     TemplateGeneratedDocumentSerializer,
     TemplateUseSerializer,
     TokenSerializer,
@@ -165,6 +169,13 @@ from .serializers import (
     UserSerializer,
     UserTemplateSnippetSerializer,
     VacationCapabilitiesSerializer,
+)
+from .services.document_query_service import (
+    DocumentFilterError,
+    apply_document_list_filters,
+    document_queryset,
+    get_document_for_api,
+    get_document_for_response,
 )
 from .services.document_service import (
     archive_document,
@@ -183,6 +194,19 @@ from .services.document_service import (
     set_document_category_default,
     unarchive_document,
     update_document_visibility,
+)
+from .services.document_signature_permissions import (
+    can_initiate_signature_request,
+    can_send_signature_reminder,
+    can_sign_for,
+)
+from .services.document_signature_service import (
+    ActiveSignatureWorkflowError,
+    get_signature_audit_events,
+    remind_pending_signers,
+    request_document_signatures,
+    reset_document_signatures,
+    sign_document,
 )
 from .services.performance_review_service import (
     materialize_performance_review_reminders,
@@ -4140,84 +4164,20 @@ class DocumentViewSet(viewsets.GenericViewSet):
     # ── queryset helpers ──────────────────────────────────────────────
 
     def _base_queryset(self, request):
-        show_archived = request.query_params.get("archived", "").lower() == "true"
-        qs = Document.objects.select_related(
-            "uploaded_by__user", "employee__user"
-        ).prefetch_related("signers", "versions")
-        if not show_archived:
-            qs = qs.filter(archived=False)
-        return qs
+        include_archived = request.query_params.get("archived", "").lower() == "true"
+        return document_queryset(include_archived=include_archived)
 
     def _get_document_or_404(self, pk):
-        try:
-            return (
-                Document.objects.select_related("uploaded_by__user", "employee__user")
-                .prefetch_related("signers", "versions")
-                .get(pk=pk)
-            )
-        except Document.DoesNotExist:
-            return None
+        return get_document_for_api(pk)
 
     def _apply_filters(self, queryset, request):
-        params = request.query_params
-
-        category = params.get("category")
-        if category:
-            if category not in Document.Category.values:
-                return None, Response(
-                    {"detail": "Invalid category filter."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            queryset = queryset.filter(category=category)
-
-        sig_status = params.get("signature_status")
-        if sig_status:
-            if sig_status not in Document.SignatureStatus.values:
-                return None, Response(
-                    {"detail": "Invalid signature_status filter."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            queryset = queryset.filter(signature_status=sig_status)
-
-        expiry_filter = params.get("expiry_filter")
-        if expiry_filter:
-            today = timezone.localdate()
-            if expiry_filter == "expiring_soon":
-                queryset = queryset.filter(
-                    expiry_date__gte=today,
-                    expiry_date__lte=today + timedelta(days=30),
-                )
-            elif expiry_filter == "expired":
-                queryset = queryset.filter(expiry_date__lt=today)
-            else:
-                return None, Response(
-                    {"detail": "Invalid expiry_filter value."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-        search = params.get("search", "").strip()
-        if search:
-            queryset = queryset.filter(
-                models.Q(name__icontains=search)
-                | models.Q(description__icontains=search)
-                | models.Q(tags__icontains=search)
+        try:
+            return apply_document_list_filters(queryset, request.query_params), None
+        except DocumentFilterError as exc:
+            return None, Response(
+                {"detail": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
             )
-
-        ordering = params.get("ordering", "-updated_at")
-        allowed_orderings = {
-            "updated_at",
-            "-updated_at",
-            "expiry_date",
-            "-expiry_date",
-            "category",
-            "-category",
-            "name",
-            "-name",
-        }
-        if ordering in allowed_orderings:
-            queryset = queryset.order_by(ordering)
-
-        return queryset, None
 
     # ── list ──────────────────────────────────────────────────────────
 
@@ -4270,6 +4230,9 @@ class DocumentViewSet(viewsets.GenericViewSet):
         }
         data["tags"] = request.data.getlist("tags")
         data["allowed_roles"] = request.data.getlist("allowed_roles")
+        scope_value = request.data.get("visibility_scope")
+        if scope_value:
+            data["visibility_scope"] = scope_value
         if "file" in request.data:
             data["file"] = request.data["file"]
 
@@ -4297,6 +4260,7 @@ class DocumentViewSet(viewsets.GenericViewSet):
             tags=v.get("tags", []),
             allowed_roles=v.get("allowed_roles")
             or [Document.AccessRole.EMPLOYEE.value],
+            visibility_scope=v.get("visibility_scope", Document.VisibilityScope.ROLES),
             signature_status=Document.SignatureStatus.NOT_REQUIRED,
             current_version="1.0",
         )
@@ -4468,7 +4432,13 @@ class DocumentViewSet(viewsets.GenericViewSet):
         serializer = DocumentVisibilityUpdateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        update_document_visibility(document, serializer.validated_data["allowed_roles"])
+        update_document_visibility(
+            document,
+            serializer.validated_data["allowed_roles"],
+            visibility_scope=serializer.validated_data.get(
+                "visibility_scope", Document.VisibilityScope.ROLES
+            ),
+        )
         return Response(
             DocumentListSerializer(document).data, status=status.HTTP_200_OK
         )
@@ -4476,15 +4446,15 @@ class DocumentViewSet(viewsets.GenericViewSet):
     # ── request-signature ─────────────────────────────────────────────
 
     @extend_schema(
-        summary="Initiate e-signature workflow (HR/admin only)",
+        summary="Initiate e-signature workflow",
         request=RequestSignatureSerializer,
         responses={200: DocumentListSerializer},
     )
     @action(detail=True, methods=["post"], url_path="request-signature")
     def request_signature(self, request, pk=None):
-        if not is_hr_or_admin(request.user):
+        if not can_initiate_signature_request(request.user):
             return Response(
-                {"detail": "Only HR or admin users can request signatures."},
+                {"detail": "You do not have permission to request signatures."},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -4493,43 +4463,103 @@ class DocumentViewSet(viewsets.GenericViewSet):
             return Response(
                 {"detail": "Document not found."}, status=status.HTTP_404_NOT_FOUND
             )
-
-        if document.signature_status == Document.SignatureStatus.PENDING:
+        if not is_document_accessible(request.user, document):
             return Response(
-                {"detail": "A signature workflow is already active for this document."},
-                status=status.HTTP_409_CONFLICT,
+                {"detail": "You do not have permission to access this document."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if document.archived:
+            return Response(
+                {"detail": "Archived documents cannot be sent for signature."},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         serializer = RequestSignatureSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        signer_data = serializer.validated_data["signers"]
-
-        DocumentSigner.objects.filter(document=document).delete()
-        for entry in signer_data:
-            DocumentSigner.objects.create(
-                document=document,
-                name=entry["name"],
-                email=entry["email"],
-                status=DocumentSigner.Status.PENDING,
+        try:
+            document, _ = request_document_signatures(
+                document,
+                serializer.validated_data["signers"],
+                requested_by=request.user,
+                request_context=request,
             )
-
-        document.signature_status = Document.SignatureStatus.PENDING
-        document.save(update_fields=["signature_status"])
+        except ActiveSignatureWorkflowError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_409_CONFLICT)
 
         return Response(
-            DocumentListSerializer(
-                Document.objects.prefetch_related("signers", "versions")
-                .select_related("uploaded_by__user")
-                .get(pk=document.pk)
-            ).data,
+            DocumentListSerializer(get_document_for_response(document.pk)).data,
             status=status.HTTP_200_OK,
         )
 
-    # ── send-reminder ─────────────────────────────────────────────────
+    # ── sign ─────────────────────────────────────────────────────────
 
-    @extend_schema(summary="Re-send signature reminder emails", responses={204: None})
-    @action(detail=True, methods=["post"], url_path="send-reminder")
-    def send_reminder(self, request, pk=None):
+    @extend_schema(
+        summary="Record an electronic signature",
+        request=SignDocumentSerializer,
+        responses={200: DocumentListSerializer},
+    )
+    @action(detail=True, methods=["post"], url_path="sign")
+    def sign(self, request, pk=None):
+        document = self._get_document_or_404(pk)
+        if not document:
+            return Response(
+                {"detail": "Document not found."}, status=status.HTTP_404_NOT_FOUND
+            )
+        if not is_document_accessible(request.user, document):
+            return Response(
+                {"detail": "You do not have permission to access this document."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if document.archived:
+            return Response(
+                {"detail": "Archived documents cannot be signed."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = SignDocumentSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        signer_email = serializer.validated_data["signer_email"].lower()
+        signer = document.signers.filter(email__iexact=signer_email).first()
+        if signer is None:
+            return Response(
+                {"detail": "Signer not found for this document."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not can_sign_for(request.user, signer):
+            return Response(
+                {"detail": "You do not have permission to sign for this signer."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        document, signer = sign_document(
+            document,
+            signer,
+            actor=request.user,
+            signature_payload=serializer.validated_data["signature"],
+            request_context=request,
+        )
+        document = get_document_for_response(document.pk)
+        return Response(
+            {
+                "document": DocumentListSerializer(document).data,
+                "signer": DocumentSignerSerializer(signer).data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    # ── reset signatures (testing helper) ────────────────────────────
+
+    @extend_schema(
+        summary="Reset signature workflow (testing/admin only) — clears all signers",
+        responses={200: DocumentListSerializer},
+    )
+    @action(detail=True, methods=["post"], url_path="reset-signatures")
+    def reset_signatures(self, request, pk=None):
+        if not can_initiate_signature_request(request.user):
+            return Response(
+                {"detail": "You do not have permission to reset signatures."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         document = self._get_document_or_404(pk)
         if not document:
             return Response(
@@ -4541,15 +4571,77 @@ class DocumentViewSet(viewsets.GenericViewSet):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        pending_signers = document.signers.filter(status=DocumentSigner.Status.PENDING)
-        if not pending_signers.exists():
+        document = reset_document_signatures(
+            document, actor=request.user, request_context=request
+        )
+        return Response(
+            DocumentListSerializer(get_document_for_response(document.pk)).data,
+            status=status.HTTP_200_OK,
+        )
+
+    # ── signatures ───────────────────────────────────────────────────
+
+    @extend_schema(summary="List document signature status and audit events")
+    @action(detail=True, methods=["get"], url_path="signatures")
+    def signatures(self, request, pk=None):
+        document = self._get_document_or_404(pk)
+        if not document:
+            return Response(
+                {"detail": "Document not found."}, status=status.HTTP_404_NOT_FOUND
+            )
+        if not is_document_accessible(request.user, document):
+            return Response(
+                {"detail": "You do not have permission to access this document."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        events = get_signature_audit_events(document)
+        return Response(
+            {
+                "document_id": document.pk,
+                "signature_status": document.signature_status,
+                "signers": DocumentSignerSerializer(
+                    document.signers.all(), many=True
+                ).data,
+                "audit_events": SignatureAuditLogSerializer(events, many=True).data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    # ── send-reminder ─────────────────────────────────────────────────
+
+    @extend_schema(summary="Re-send signature reminder emails", responses={204: None})
+    @action(detail=True, methods=["post"], url_path="send-reminder")
+    def send_reminder(self, request, pk=None):
+        if not can_send_signature_reminder(request.user):
+            return Response(
+                {"detail": "You do not have permission to send signature reminders."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        document = self._get_document_or_404(pk)
+        if not document:
+            return Response(
+                {"detail": "Document not found."}, status=status.HTTP_404_NOT_FOUND
+            )
+        if not is_document_accessible(request.user, document):
+            return Response(
+                {"detail": "You do not have permission to access this document."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        pending_count = remind_pending_signers(
+            document,
+            actor=request.user,
+            request_context=request,
+        )
+        if pending_count == 0:
             return Response(
                 {"detail": "No pending signers to remind."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Placeholder: email sending would be implemented with the email backend
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        return Response({"reminded_count": pending_count}, status=status.HTTP_200_OK)
 
     # ── versions ──────────────────────────────────────────────────────
 
@@ -5614,3 +5706,61 @@ class UserTemplateSnippetViewSet(viewsets.ModelViewSet):
         if profile is None:
             raise PermissionDenied(detail="User profile required.")
         serializer.save(user_profile=profile)
+
+
+# ──────────────────────────────────────────
+# Notifications (in-app)
+# ──────────────────────────────────────────
+
+
+@extend_schema(tags=["Notifications"])
+class NotificationViewSet(
+    mixins.ListModelMixin,
+    viewsets.GenericViewSet,
+):
+    """
+    GET    /api/notifications/                 list current user's notifications
+    POST   /api/notifications/{id}/mark-read/  mark a single notification read
+    POST   /api/notifications/mark-all-read/   mark all current-user notifications read
+    GET    /api/notifications/unread-count/    return { count: int }
+    """
+
+    serializer_class = NotificationSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):
+            return Notification.objects.none()
+        profile = getattr(self.request.user, "profile", None)
+        if profile is None:
+            return Notification.objects.none()
+        qs = Notification.objects.filter(recipient=profile)
+        unread_only = self.request.query_params.get("unread", "").lower() == "true"
+        if unread_only:
+            qs = qs.filter(is_read=False)
+        return qs
+
+    @action(detail=True, methods=["post"], url_path="mark-read")
+    def mark_read(self, request, pk=None):
+        notification = self.get_object()
+        if not notification.is_read:
+            notification.is_read = True
+            notification.read_at = timezone.now()
+            notification.save(update_fields=["is_read", "read_at"])
+        return Response(
+            self.get_serializer(notification).data, status=status.HTTP_200_OK
+        )
+
+    @action(detail=False, methods=["post"], url_path="mark-all-read")
+    def mark_all_read(self, request):
+        updated = (
+            self.get_queryset()
+            .filter(is_read=False)
+            .update(is_read=True, read_at=timezone.now())
+        )
+        return Response({"updated": updated}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["get"], url_path="unread-count")
+    def unread_count(self, request):
+        count = self.get_queryset().filter(is_read=False).count()
+        return Response({"count": count}, status=status.HTTP_200_OK)

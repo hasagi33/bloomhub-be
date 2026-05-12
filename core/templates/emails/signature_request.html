@@ -1,0 +1,27 @@
+{% extends "emails/base.html" %}
+{% block content %}
+<p>Hi {{ signer.name }},</p>
+<p>
+  {% if requester %}<strong>{{ requester.get_full_name|default:requester.username }}</strong>{% else %}BloomHub{% endif %}
+  has requested your electronic signature on the document
+  <strong>&ldquo;{{ document.name }}&rdquo;</strong>.
+</p>
+
+<table class="card">
+  <tr><td class="label">Document</td><td class="value">{{ document.name }}</td></tr>
+  {% if document.description %}
+  <tr><td class="label">Description</td><td class="value">{{ document.description }}</td></tr>
+  {% endif %}
+  <tr><td class="label">Status</td><td class="value"><span class="badge badge-pending">Awaiting Signature</span></td></tr>
+  <tr><td class="label">Requested</td><td class="value">{{ signer.requested_at|date:"N j, Y \a\t H:i" }} UTC</td></tr>
+</table>
+
+{% if site_url %}
+<p>
+  Please review and sign the document in BloomHub:
+  <a href="{{ site_url }}/documents">{{ site_url }}/documents</a>
+</p>
+{% else %}
+<p>Please log in to BloomHub to review and sign the document.</p>
+{% endif %}
+{% endblock %}

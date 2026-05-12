@@ -24,6 +24,7 @@ from core.models import (
     ChecklistTemplate,
     ConferenceCourseRegistration,
     Document,
+    DocumentSignatureAuditLog,
     DocumentSigner,
     DocumentTemplate,
     DocumentVersion,
@@ -34,6 +35,7 @@ from core.models import (
     LeaveBalance,
     LeavePolicy,
     LeaveRequest,
+    Notification,
     PeerSession,
     PerformanceReview,
     PerformanceReviewActionPoint,
@@ -2005,8 +2007,47 @@ class ChecklistTaskSerializer(serializers.ModelSerializer):
 class DocumentSignerSerializer(serializers.ModelSerializer):
     class Meta:
         model = DocumentSigner
-        fields = ["id", "name", "email", "status", "signed_at"]
-        read_only_fields = ["id", "signed_at"]
+        fields = [
+            "id",
+            "name",
+            "email",
+            "status",
+            "signed_at",
+            "requested_at",
+            "last_reminded_at",
+        ]
+        read_only_fields = [
+            "id",
+            "status",
+            "signed_at",
+            "requested_at",
+            "last_reminded_at",
+        ]
+
+
+class SignatureAuditLogSerializer(serializers.ModelSerializer):
+    signer_email = serializers.EmailField(source="signer.email", read_only=True)
+    actor_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DocumentSignatureAuditLog
+        fields = [
+            "id",
+            "event",
+            "signer",
+            "signer_email",
+            "actor",
+            "actor_name",
+            "ip_address",
+            "user_agent",
+            "metadata",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+    @extend_schema_field(serializers.CharField())
+    def get_actor_name(self, obj) -> str:
+        return uploader_display_name(obj.actor)
 
 
 class DocumentVersionSerializer(serializers.ModelSerializer):
@@ -2049,9 +2090,11 @@ class DocumentListSerializer(serializers.ModelSerializer):
             "updated_at",
             "expiry_date",
             "signature_status",
+            "signed_at",
             "is_confidential",
             "tags",
             "allowed_roles",
+            "visibility_scope",
             "current_version",
             "version_count",
             "signers",
@@ -2083,6 +2126,11 @@ class DocumentCreateSerializer(serializers.Serializer):
         required=False,
         default=list,
     )
+    visibility_scope = serializers.ChoiceField(
+        choices=Document.VisibilityScope.choices,
+        required=False,
+        default=Document.VisibilityScope.ROLES,
+    )
 
     def validate_file(self, value):
         max_bytes = 25 * 1024 * 1024  # 25 MB
@@ -2107,6 +2155,11 @@ class DocumentVisibilityUpdateSerializer(serializers.Serializer):
         child=serializers.ChoiceField(choices=Document.AccessRole.choices),
         allow_empty=True,
     )
+    visibility_scope = serializers.ChoiceField(
+        choices=Document.VisibilityScope.choices,
+        required=False,
+        default=Document.VisibilityScope.ROLES,
+    )
 
 
 class DocumentCategoryDefaultUpdateSerializer(serializers.Serializer):
@@ -2129,6 +2182,56 @@ class RequestSignatureSerializer(serializers.Serializer):
         email = serializers.EmailField()
 
     signers = SignerInputSerializer(many=True, allow_empty=False)
+
+    def validate_signers(self, value):
+        from django.contrib.auth import get_user_model
+        from django.db.models.functions import Lower
+
+        from core.models import UserProfile
+
+        seen = set()
+        for signer in value:
+            email = signer["email"].lower()
+            if email in seen:
+                raise serializers.ValidationError(
+                    "Duplicate signer emails are not allowed."
+                )
+            seen.add(email)
+            signer["email"] = email
+
+        User = get_user_model()
+        emails = list(seen)
+        user_emails = set(
+            User.objects.annotate(_email_lc=Lower("email"))
+            .filter(_email_lc__in=emails, is_active=True)
+            .values_list("_email_lc", flat=True)
+        )
+        profile_emails = set(
+            UserProfile.objects.annotate(_email_lc=Lower("email_address"))
+            .filter(_email_lc__in=emails, is_active=True)
+            .values_list("_email_lc", flat=True)
+        )
+        known = user_emails | profile_emails
+        unknown = [e for e in emails if e not in known]
+        if unknown:
+            raise serializers.ValidationError(
+                f"Signers must be active company users. Unknown emails: {', '.join(unknown)}"
+            )
+        return value
+
+
+class SignDocumentSerializer(serializers.Serializer):
+    signer_email = serializers.EmailField()
+    signature = serializers.DictField()
+
+    def validate_signature(self, value):
+        if value.get("accepted_terms") is not True:
+            raise serializers.ValidationError("accepted_terms must be true.")
+        if not str(value.get("value", "")).strip():
+            raise serializers.ValidationError("Signature value is required.")
+        if not str(value.get("type", "")).strip():
+            raise serializers.ValidationError("Signature type is required.")
+        return value
 
 
 # ──────────────────────────────────────────
@@ -2723,3 +2826,26 @@ class UserTemplateSnippetSerializer(serializers.ModelSerializer):
         model = UserTemplateSnippet
         fields = ["id", "label", "html", "sort_order", "created_at", "updated_at"]
         read_only_fields = ["id", "created_at", "updated_at"]
+
+
+# ──────────────────────────────────────────
+# Notifications
+# ──────────────────────────────────────────
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Notification
+        fields = [
+            "id",
+            "module",
+            "type",
+            "title",
+            "message",
+            "link",
+            "metadata",
+            "is_read",
+            "read_at",
+            "created_at",
+        ]
+        read_only_fields = fields

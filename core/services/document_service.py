@@ -18,7 +18,7 @@ from core.constants import (
     DOCUMENT_ROLE_RANK_MANAGER,
 )
 from core.enums import DocumentAccessRole
-from core.models import Document, DocumentCategoryDefault, DocumentVersion
+from core.models import Document, DocumentCategoryDefault, DocumentVersion, Permission
 from core.permissions import _get_user_profile
 from core.utils import generate_presigned_url, uploader_display_name
 
@@ -85,6 +85,28 @@ def is_hr_or_admin(user) -> bool:
     return resolve_document_role(user) in (DocumentRole.HR, DocumentRole.ADMIN)
 
 
+def has_document_permission(user, feature_action: str) -> bool:
+    """Check the bitmap/role permission model for a Documents feature action."""
+    if not getattr(user, "is_authenticated", False):
+        return False
+    if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+        return True
+
+    profile = _get_user_profile(user)
+    if profile is None:
+        return False
+
+    try:
+        permission = Permission.objects.get(
+            module_name="Documents",
+            feature_action=feature_action,
+        )
+    except Permission.DoesNotExist:
+        return False
+
+    return profile.has_permission(permission)
+
+
 # ──────────────────────────────────────────
 # Access control
 # ──────────────────────────────────────────
@@ -104,11 +126,67 @@ def _min_allowed_rank(allowed: list[str]) -> int:
     return min(ranks)
 
 
+def _user_emails(user) -> set[str]:
+    """All lowercased emails associated with the user (auth + profile)."""
+    emails: set[str] = set()
+    primary = (getattr(user, "email", "") or "").strip().lower()
+    if primary:
+        emails.add(primary)
+    profile = getattr(user, "profile", None)
+    if profile is not None:
+        profile_email = (getattr(profile, "email_address", "") or "").strip().lower()
+        if profile_email:
+            emails.add(profile_email)
+    return emails
+
+
+def is_user_signer_of(user, document: Document) -> bool:
+    """True if the user is on the signer list for this document."""
+    emails = _user_emails(user)
+    if not emails:
+        return False
+    return document.signers.filter(email__in=list(emails)).exists()
+
+
+def _is_document_owner(user, document: Document) -> bool:
+    """True when the user is the uploader (or owning employee) of the document."""
+    profile = getattr(user, "profile", None)
+    if profile is None:
+        return False
+    if document.uploaded_by_id and document.uploaded_by_id == profile.pk:
+        return True
+    if getattr(document, "employee_id", None) and document.employee_id == profile.pk:
+        return True
+    return False
+
+
 def is_document_accessible(user, document: Document) -> bool:
     """Check whether a user can access a specific document."""
     role = resolve_document_role(user)
     if role == DocumentRole.ADMIN:
         return True
+
+    # Signers always retain access to documents they need to sign,
+    # regardless of role or visibility-scope restrictions.
+    if is_user_signer_of(user, document):
+        return True
+
+    # Owner of the document always has access.
+    if _is_document_owner(user, document):
+        return True
+
+    scope = getattr(document, "visibility_scope", Document.VisibilityScope.ROLES)
+
+    # Private — only owner, signers, admins (already short-circuited above).
+    if scope == Document.VisibilityScope.ONLY_ME:
+        return False
+
+    # Project-group scope: no project-membership model exists yet, so
+    # we currently restrict to owner + signers + admins. Falls through
+    # to role-rank check otherwise to stay backwards-compatible until
+    # project membership lookup is implemented.
+    if scope == Document.VisibilityScope.PROJECT_GROUP:
+        return False
 
     user_rank = DOCUMENT_ROLE_RANK.get(role.value, 0)
     allowed = _effective_allowed_roles(document)
@@ -128,10 +206,16 @@ def filter_accessible_documents(user, queryset):
 
 
 def update_document_visibility(
-    document: Document, allowed_roles: list[str]
+    document: Document,
+    allowed_roles: list[str],
+    visibility_scope: str | None = None,
 ) -> Document:
     document.allowed_roles = list(allowed_roles)
-    document.save(update_fields=["allowed_roles", "updated_at"])
+    update_fields = ["allowed_roles", "updated_at"]
+    if visibility_scope is not None:
+        document.visibility_scope = visibility_scope
+        update_fields.append("visibility_scope")
+    document.save(update_fields=update_fields)
     return document
 
 

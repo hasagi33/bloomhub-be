@@ -547,6 +547,17 @@ class Document(models.Model):
     is_confidential = models.BooleanField(default=False)
     tags = models.JSONField(default=list, blank=True)
     allowed_roles = models.JSONField(default=list, blank=True)
+
+    class VisibilityScope(models.TextChoices):
+        ROLES = "roles", "Roles"
+        ONLY_ME = "only_me", "Only Me"
+        PROJECT_GROUP = "project_group", "Project Group"
+
+    visibility_scope = models.CharField(
+        max_length=20,
+        choices=VisibilityScope.choices,
+        default=VisibilityScope.ROLES,
+    )
     archived = models.BooleanField(default=False)
     current_version = models.CharField(max_length=20, default="1.0")
 
@@ -559,6 +570,7 @@ class Document(models.Model):
             models.Index(fields=["signature_status"]),
             models.Index(fields=["expiry_date"]),
             models.Index(fields=["archived"]),
+            models.Index(fields=["visibility_scope"]),
         ]
 
     def __str__(self):
@@ -572,21 +584,94 @@ class DocumentSigner(models.Model):
     )
     name = models.CharField(max_length=255)
     email = models.EmailField()
+    signed_by = models.ForeignKey(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="document_signatures",
+    )
     status = models.CharField(
         max_length=20,
         choices=DocumentSignerStatus.choices,
         default=DocumentSignerStatus.NOT_SENT,
     )
     signed_at = models.DateTimeField(null=True, blank=True)
+    signature_metadata = models.JSONField(default=dict, blank=True)
+    signature_hash = models.CharField(max_length=128, null=True, blank=True)
+    signing_token_hash = models.CharField(max_length=128, null=True, blank=True)
+    requested_at = models.DateTimeField(null=True, blank=True)
+    requested_by = models.ForeignKey(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="requested_document_signatures",
+    )
+    last_reminded_at = models.DateTimeField(null=True, blank=True)
+    declined_at = models.DateTimeField(null=True, blank=True)
+    decline_reason = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         verbose_name = "Document Signer"
         verbose_name_plural = "Document Signers"
         ordering = ["created_at"]
+        indexes = [
+            models.Index(fields=["document", "status"]),
+            models.Index(fields=["document", "email"]),
+            models.Index(fields=["signed_at"]),
+        ]
 
     def __str__(self):
         return f"{self.name} ({self.email}) – {self.status}"
+
+
+class DocumentSignatureAuditLog(models.Model):
+    class Event(models.TextChoices):
+        REQUESTED = "requested", "Requested"
+        VIEWED = "viewed", "Viewed"
+        SIGNED = "signed", "Signed"
+        REJECTED = "rejected", "Rejected"
+        REMINDED = "reminded", "Reminded"
+        CANCELLED = "cancelled", "Cancelled"
+        EXPIRED = "expired", "Expired"
+
+    document = models.ForeignKey(
+        Document, on_delete=models.CASCADE, related_name="signature_audit_events"
+    )
+    signer = models.ForeignKey(
+        DocumentSigner,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="audit_events",
+    )
+    actor = models.ForeignKey(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="document_signature_audit_events",
+    )
+    event = models.CharField(max_length=20, choices=Event.choices)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(blank=True, default="")
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Document Signature Audit Log"
+        verbose_name_plural = "Document Signature Audit Logs"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["document", "event"]),
+            models.Index(fields=["signer", "event"]),
+            models.Index(fields=["created_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.document_id} {self.event} at {self.created_at}"
 
 
 class DocumentVersion(models.Model):
@@ -2413,3 +2498,54 @@ class TemplateGeneratedDocument(models.Model):
 
     def __str__(self):
         return self.name
+
+
+# ──────────────────────────────────────────
+# In-app notifications
+# ──────────────────────────────────────────
+
+
+class Notification(models.Model):
+    """A user-targeted in-app notification (bell icon list)."""
+
+    class Type(models.TextChoices):
+        INFO = "info", "Info"
+        SUCCESS = "success", "Success"
+        WARNING = "warning", "Warning"
+        ALERT = "alert", "Alert"
+
+    class Module(models.TextChoices):
+        DOCUMENTS = "documents", "Documents"
+        VACATIONS = "vacations", "Vacations"
+        REVIEWS = "reviews", "Reviews"
+        ONBOARDING = "onboarding", "Onboarding"
+        ANNOUNCEMENTS = "announcements", "Announcements"
+        GENERAL = "general", "General"
+
+    recipient = models.ForeignKey(
+        "UserProfile",
+        on_delete=models.CASCADE,
+        related_name="notifications",
+    )
+    module = models.CharField(
+        max_length=32, choices=Module.choices, default=Module.GENERAL
+    )
+    type = models.CharField(max_length=16, choices=Type.choices, default=Type.INFO)
+    title = models.CharField(max_length=255)
+    message = models.TextField(blank=True, default="")
+    link = models.CharField(max_length=512, blank=True, default="")
+    metadata = models.JSONField(default=dict, blank=True)
+    is_read = models.BooleanField(default=False)
+    read_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Notification"
+        verbose_name_plural = "Notifications"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["recipient", "is_read", "-created_at"]),
+        ]
+
+    def __str__(self):
+        return f"Notification({self.recipient_id}, {self.title})"

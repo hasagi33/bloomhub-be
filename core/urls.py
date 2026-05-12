@@ -32,6 +32,7 @@ from .views import (
     LeaveRequestViewSet,
     LoginView,
     LogoutView,
+    NotificationViewSet,
     PerformanceReviewReminderViewSet,
     PerformanceReviewViewSet,
     PermissionsView,
@@ -90,6 +91,7 @@ router.register(
     ConferenceCourseRegistrationViewSet,
     basename="conference-course-registration",
 )
+router.register(r"notifications", NotificationViewSet, basename="notification")
 
 urlpatterns = [
     path("", APIRootView.as_view(), name="api_root"),
