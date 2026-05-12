@@ -22,6 +22,7 @@ from core.models import (
     ChecklistInstance,
     ChecklistTask,
     ChecklistTemplate,
+    ConferenceCourseRegistration,
     Document,
     DocumentSigner,
     DocumentTemplate,
@@ -2254,6 +2255,47 @@ class TrainingEntryDetailSerializer(TrainingEntryListSerializer):
         read_only_fields = TrainingEntryListSerializer.Meta.read_only_fields + [
             "updated_at",
         ]
+
+
+class ConferenceCourseRegistrationListSerializer(serializers.ModelSerializer):
+    """Serializer for conference / course registration list and detail views."""
+
+    employee_id = serializers.IntegerField(source="employee.id", read_only=True)
+    employee_name = serializers.CharField(
+        source="employee.user.get_full_name", read_only=True
+    )
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+
+    class Meta:
+        model = ConferenceCourseRegistration
+        fields = [
+            "id",
+            "employee_id",
+            "employee_name",
+            "name",
+            "date",
+            "status",
+            "status_display",
+            "notes",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "employee_id",
+            "employee_name",
+            "status_display",
+            "created_at",
+            "updated_at",
+        ]
+
+
+class ConferenceCourseRegistrationCreateUpdateSerializer(serializers.ModelSerializer):
+    """Writable serializer for conference / course registrations."""
+
+    class Meta:
+        model = ConferenceCourseRegistration
+        fields = ["name", "date", "status", "notes"]
 
 
 class CertificateListSerializer(serializers.ModelSerializer):

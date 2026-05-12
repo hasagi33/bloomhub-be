@@ -20,6 +20,7 @@ from .enums import (
     ChecklistInstanceStatus,
     ChecklistTaskStatus,
     ChecklistType,
+    ConferenceCourseRegistrationStatus,
     DocumentAccessRole,
     DocumentSignatureStatus,
     DocumentSignerStatus,
@@ -2212,6 +2213,46 @@ class TrainingBudget(models.Model):
             raise ValueError("Budget usage amount cannot be negative")
         self.used_budget += amount
         self.save(update_fields=["used_budget"])
+
+
+class ConferenceCourseRegistration(models.Model):
+    """
+    Tracks an employee's registration for a conference or course, including
+    attendance status and any related notes. Distinct from ``TrainingEntry``,
+    which records completed training history.
+    """
+
+    employee = models.ForeignKey(
+        UserProfile,
+        on_delete=models.CASCADE,
+        related_name="conference_course_registrations",
+        help_text="Employee registered for the conference or course",
+    )
+    name = models.CharField(
+        max_length=255, help_text="Name of the conference or course"
+    )
+    date = models.DateField(help_text="Scheduled date of the conference or course")
+    status = models.CharField(
+        max_length=20,
+        choices=ConferenceCourseRegistrationStatus.choices,
+        default=ConferenceCourseRegistrationStatus.REGISTERED,
+        help_text="Attendance status",
+    )
+    notes = models.TextField(blank=True, default="", help_text="Additional notes")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Conference / Course Registration"
+        verbose_name_plural = "Conference / Course Registrations"
+        ordering = ["-date"]
+        indexes = [
+            models.Index(fields=["employee", "-date"]),
+            models.Index(fields=["status"]),
+        ]
+
+    def __str__(self):
+        return f"{self.employee.user.get_full_name()} - {self.name} ({self.date})"
 
 
 @receiver(post_save, sender=ChecklistInstance)

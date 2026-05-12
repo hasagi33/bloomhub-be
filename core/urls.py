@@ -16,6 +16,7 @@ from .views import (
     ChecklistInstanceViewSet,
     ChecklistTaskViewSet,
     ChecklistTemplateViewSet,
+    ConferenceCourseRegistrationViewSet,
     CPFLevelListView,
     DepartmentListView,
     DocumentCategoryDefaultsView,
@@ -84,6 +85,11 @@ router.register(
     basename="performance-review-reminder",
 )
 router.register(r"training-entries", TrainingEntryViewSet, basename="training-entry")
+router.register(
+    r"conference-course-registrations",
+    ConferenceCourseRegistrationViewSet,
+    basename="conference-course-registration",
+)
 
 urlpatterns = [
     path("", APIRootView.as_view(), name="api_root"),

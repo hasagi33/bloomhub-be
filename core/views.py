@@ -49,6 +49,7 @@ from .models import (
     ChecklistInstance,
     ChecklistTask,
     ChecklistTemplate,
+    ConferenceCourseRegistration,
     CPFLevel,
     Department,
     Document,
@@ -113,6 +114,8 @@ from .serializers import (
     ChecklistInstanceSerializer,
     ChecklistTaskSerializer,
     ChecklistTemplateSerializer,
+    ConferenceCourseRegistrationCreateUpdateSerializer,
+    ConferenceCourseRegistrationListSerializer,
     DocumentCategoryDefaultUpdateSerializer,
     DocumentCreateSerializer,
     DocumentListSerializer,
@@ -4874,6 +4877,109 @@ class TrainingEntryViewSet(viewsets.ModelViewSet):
                 pass
 
         # Apply other filters and ordering
+        queryset = self.filter_queryset(queryset)
+
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+
+@extend_schema(tags=["Training & Development"])
+class ConferenceCourseRegistrationViewSet(viewsets.ModelViewSet):
+    """
+    CRUD for conference and course registrations.
+
+    Employees manage their own registrations; HR/admins can manage and filter
+    by any employee via the ``employee`` query parameter.
+    """
+
+    permission_classes = [IsAuthenticated]
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.SearchFilter,
+        filters.OrderingFilter,
+    ]
+    filterset_fields = ["status", "employee"]
+    search_fields = [
+        "name",
+        "notes",
+        "employee__user__first_name",
+        "employee__user__last_name",
+    ]
+    ordering_fields = ["date", "created_at", "status"]
+    ordering = ["-date"]
+
+    def get_queryset(self):
+        user = self.request.user
+        base = ConferenceCourseRegistration.objects.select_related("employee__user")
+        if user.is_staff or user.is_superuser:
+            return base
+        try:
+            return base.filter(employee=user.profile)
+        except Exception:
+            return ConferenceCourseRegistration.objects.none()
+
+    def get_serializer_class(self):
+        if self.action in {"list", "retrieve"}:
+            return ConferenceCourseRegistrationListSerializer
+        return ConferenceCourseRegistrationCreateUpdateSerializer
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        employee = user.profile
+        if user.is_staff or user.is_superuser:
+            employee_id = self.request.data.get("employee_id")
+            if employee_id:
+                try:
+                    employee = UserProfile.objects.get(id=employee_id)
+                except UserProfile.DoesNotExist:
+                    pass
+        self.created_instance = serializer.save(employee=employee)
+
+    def create(self, request, *args, **kwargs):
+        response = super().create(request, *args, **kwargs)
+        if response.status_code == status.HTTP_201_CREATED and hasattr(
+            self, "created_instance"
+        ):
+            response.data = ConferenceCourseRegistrationListSerializer(
+                self.created_instance
+            ).data
+        return response
+
+    def update(self, request, *args, **kwargs):
+        response = super().update(request, *args, **kwargs)
+        if response.status_code == status.HTTP_200_OK:
+            instance = self.get_object()
+            response.data = ConferenceCourseRegistrationListSerializer(instance).data
+        return response
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="year",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description="Filter by year of registration date (e.g., 2026)",
+                required=False,
+            ),
+        ],
+        responses={200: ConferenceCourseRegistrationListSerializer(many=True)},
+        description="List conference / course registrations with optional year filter",
+    )
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+
+        year_filter = request.query_params.get("year")
+        if year_filter:
+            try:
+                queryset = queryset.filter(date__year=int(year_filter))
+            except (ValueError, TypeError):
+                pass
+
         queryset = self.filter_queryset(queryset)
 
         page = self.paginate_queryset(queryset)

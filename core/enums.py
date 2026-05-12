@@ -264,6 +264,17 @@ class ChecklistTaskStatus(models.TextChoices):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# 9.5 Training & Development
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class ConferenceCourseRegistrationStatus(models.TextChoices):
+    REGISTERED = "registered", "Registered"
+    ATTENDED = "attended", "Attended"
+    CANCELLED = "cancelled", "Cancelled"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # 10. Document Templates
 # ──────────────────────────────────────────────────────────────────────────────
 

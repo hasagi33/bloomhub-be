@@ -777,6 +777,209 @@ paths:
               schema:
                 $ref: '#/components/schemas/User'
           description: ''
+  /api/conference-course-registrations/:
+    get:
+      operationId: conference_course_registrations_list
+      description: List conference / course registrations with optional year filter
+      parameters:
+      - in: query
+        name: employee
+        schema:
+          type: integer
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      - in: query
+        name: status
+        schema:
+          type: string
+          enum:
+          - attended
+          - cancelled
+          - registered
+        description: |-
+          Attendance status
+
+          * `registered` - Registered
+          * `attended` - Attended
+          * `cancelled` - Cancelled
+      - in: query
+        name: year
+        schema:
+          type: integer
+        description: Filter by year of registration date (e.g., 2026)
+      tags:
+      - Training & Development
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ConferenceCourseRegistrationList'
+          description: ''
+    post:
+      operationId: conference_course_registrations_create
+      description: |-
+        CRUD for conference and course registrations.
+
+        Employees manage their own registrations; HR/admins can manage and filter
+        by any employee via the ``employee`` query parameter.
+      tags:
+      - Training & Development
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConferenceCourseRegistrationCreateUpdateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ConferenceCourseRegistrationCreateUpdateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ConferenceCourseRegistrationCreateUpdateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConferenceCourseRegistrationCreateUpdate'
+          description: ''
+  /api/conference-course-registrations/{id}/:
+    get:
+      operationId: conference_course_registrations_retrieve
+      description: |-
+        CRUD for conference and course registrations.
+
+        Employees manage their own registrations; HR/admins can manage and filter
+        by any employee via the ``employee`` query parameter.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Conference / Course Registration.
+        required: true
+      tags:
+      - Training & Development
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConferenceCourseRegistrationList'
+          description: ''
+    put:
+      operationId: conference_course_registrations_update
+      description: |-
+        CRUD for conference and course registrations.
+
+        Employees manage their own registrations; HR/admins can manage and filter
+        by any employee via the ``employee`` query parameter.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Conference / Course Registration.
+        required: true
+      tags:
+      - Training & Development
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConferenceCourseRegistrationCreateUpdateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ConferenceCourseRegistrationCreateUpdateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ConferenceCourseRegistrationCreateUpdateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConferenceCourseRegistrationCreateUpdate'
+          description: ''
+    patch:
+      operationId: conference_course_registrations_partial_update
+      description: |-
+        CRUD for conference and course registrations.
+
+        Employees manage their own registrations; HR/admins can manage and filter
+        by any employee via the ``employee`` query parameter.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Conference / Course Registration.
+        required: true
+      tags:
+      - Training & Development
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedConferenceCourseRegistrationCreateUpdateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedConferenceCourseRegistrationCreateUpdateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedConferenceCourseRegistrationCreateUpdateRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConferenceCourseRegistrationCreateUpdate'
+          description: ''
+    delete:
+      operationId: conference_course_registrations_destroy
+      description: |-
+        CRUD for conference and course registrations.
+
+        Employees manage their own registrations; HR/admins can manage and filter
+        by any employee via the ``employee`` query parameter.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Conference / Course Registration.
+        required: true
+      tags:
+      - Training & Development
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
   /api/cpf-levels/:
     get:
       operationId: cpf_levels_retrieve
@@ -6420,6 +6623,115 @@ components:
         * `fair` - Fair
         * `poor` - Poor
         * `damaged` - Damaged
+    ConferenceCourseRegistrationCreateUpdate:
+      type: object
+      description: Writable serializer for conference / course registrations.
+      properties:
+        name:
+          type: string
+          description: Name of the conference or course
+          maxLength: 255
+        date:
+          type: string
+          format: date
+          description: Scheduled date of the conference or course
+        status:
+          allOf:
+          - $ref: '#/components/schemas/Status081Enum'
+          description: |-
+            Attendance status
+
+            * `registered` - Registered
+            * `attended` - Attended
+            * `cancelled` - Cancelled
+        notes:
+          type: string
+          description: Additional notes
+      required:
+      - date
+      - name
+    ConferenceCourseRegistrationCreateUpdateRequest:
+      type: object
+      description: Writable serializer for conference / course registrations.
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: Name of the conference or course
+          maxLength: 255
+        date:
+          type: string
+          format: date
+          description: Scheduled date of the conference or course
+        status:
+          allOf:
+          - $ref: '#/components/schemas/Status081Enum'
+          description: |-
+            Attendance status
+
+            * `registered` - Registered
+            * `attended` - Attended
+            * `cancelled` - Cancelled
+        notes:
+          type: string
+          description: Additional notes
+      required:
+      - date
+      - name
+    ConferenceCourseRegistrationList:
+      type: object
+      description: Serializer for conference / course registration list and detail
+        views.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        employee_id:
+          type: integer
+          readOnly: true
+        employee_name:
+          type: string
+          readOnly: true
+        name:
+          type: string
+          description: Name of the conference or course
+          maxLength: 255
+        date:
+          type: string
+          format: date
+          description: Scheduled date of the conference or course
+        status:
+          allOf:
+          - $ref: '#/components/schemas/Status081Enum'
+          description: |-
+            Attendance status
+
+            * `registered` - Registered
+            * `attended` - Attended
+            * `cancelled` - Cancelled
+        status_display:
+          type: string
+          readOnly: true
+        notes:
+          type: string
+          description: Additional notes
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - date
+      - employee_id
+      - employee_name
+      - id
+      - name
+      - status_display
+      - updated_at
     DepartmentListResponse:
       type: object
       properties:
@@ -7850,6 +8162,31 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/TaskTemplateRequest'
+    PatchedConferenceCourseRegistrationCreateUpdateRequest:
+      type: object
+      description: Writable serializer for conference / course registrations.
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: Name of the conference or course
+          maxLength: 255
+        date:
+          type: string
+          format: date
+          description: Scheduled date of the conference or course
+        status:
+          allOf:
+          - $ref: '#/components/schemas/Status081Enum'
+          description: |-
+            Attendance status
+
+            * `registered` - Registered
+            * `attended` - Attended
+            * `cancelled` - Cancelled
+        notes:
+          type: string
+          description: Additional notes
     PatchedDocumentCategoryDefaultUpdateRequest:
       type: object
       properties:
@@ -9263,6 +9600,16 @@ components:
       required:
       - email
       - name
+    Status081Enum:
+      enum:
+      - registered
+      - attended
+      - cancelled
+      type: string
+      description: |-
+        * `registered` - Registered
+        * `attended` - Attended
+        * `cancelled` - Cancelled
     Status58cEnum:
       enum:
       - draft
