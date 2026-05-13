@@ -2478,6 +2478,44 @@ class CertificateDetailSerializer(serializers.ModelSerializer):
         return None
 
 
+CERTIFICATE_MAX_FILE_BYTES = 10 * 1024 * 1024  # 10 MB
+CERTIFICATE_ALLOWED_CONTENT_TYPES = {
+    "application/pdf",
+    "image/png",
+    "image/jpeg",
+    "image/jpg",
+    "image/gif",
+    "image/webp",
+}
+
+
+class CertificateCreateUpdateSerializer(serializers.ModelSerializer):
+    """Writable serializer for certificate uploads."""
+
+    employee_id = serializers.IntegerField(write_only=True, required=False)
+
+    class Meta:
+        model = Certificate
+        fields = [
+            "title",
+            "file",
+            "issued_date",
+            "expiration_date",
+            "issuer",
+            "employee_id",
+        ]
+
+    def validate_file(self, value):
+        if value.size > CERTIFICATE_MAX_FILE_BYTES:
+            raise serializers.ValidationError("File size must not exceed 10 MB.")
+        content_type = getattr(value, "content_type", "") or ""
+        if content_type.lower() not in CERTIFICATE_ALLOWED_CONTENT_TYPES:
+            raise serializers.ValidationError(
+                "Unsupported file type. Allowed: pdf, png, jpg, gif, webp."
+            )
+        return value
+
+
 class PeerSessionListSerializer(serializers.ModelSerializer):
     """Simplified serializer for peer session lists."""
 

@@ -777,6 +777,245 @@ paths:
               schema:
                 $ref: '#/components/schemas/User'
           description: ''
+  /api/certificates/:
+    get:
+      operationId: certificates_list
+      description: |-
+        CRUD for employee certificates.
+
+        Employees can manage their own certificates; HR/admins can manage any
+        employee's certificates and filter by ``employee`` query parameter.
+
+        Files are uploaded to the configured default storage (R2 in production).
+        Download endpoint returns a short-lived presigned URL.
+      parameters:
+      - in: query
+        name: employee
+        schema:
+          type: integer
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - Training & Development
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CertificateList'
+          description: ''
+    post:
+      operationId: certificates_create
+      description: |-
+        CRUD for employee certificates.
+
+        Employees can manage their own certificates; HR/admins can manage any
+        employee's certificates and filter by ``employee`` query parameter.
+
+        Files are uploaded to the configured default storage (R2 in production).
+        Download endpoint returns a short-lived presigned URL.
+      tags:
+      - Training & Development
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CertificateCreateUpdateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CertificateCreateUpdateRequest'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CertificateCreateUpdateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertificateCreateUpdate'
+          description: ''
+  /api/certificates/{id}/:
+    get:
+      operationId: certificates_retrieve
+      description: |-
+        CRUD for employee certificates.
+
+        Employees can manage their own certificates; HR/admins can manage any
+        employee's certificates and filter by ``employee`` query parameter.
+
+        Files are uploaded to the configured default storage (R2 in production).
+        Download endpoint returns a short-lived presigned URL.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Certificate.
+        required: true
+      tags:
+      - Training & Development
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertificateDetail'
+          description: ''
+    put:
+      operationId: certificates_update
+      description: |-
+        CRUD for employee certificates.
+
+        Employees can manage their own certificates; HR/admins can manage any
+        employee's certificates and filter by ``employee`` query parameter.
+
+        Files are uploaded to the configured default storage (R2 in production).
+        Download endpoint returns a short-lived presigned URL.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Certificate.
+        required: true
+      tags:
+      - Training & Development
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CertificateCreateUpdateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CertificateCreateUpdateRequest'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CertificateCreateUpdateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertificateCreateUpdate'
+          description: ''
+    patch:
+      operationId: certificates_partial_update
+      description: |-
+        CRUD for employee certificates.
+
+        Employees can manage their own certificates; HR/admins can manage any
+        employee's certificates and filter by ``employee`` query parameter.
+
+        Files are uploaded to the configured default storage (R2 in production).
+        Download endpoint returns a short-lived presigned URL.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Certificate.
+        required: true
+      tags:
+      - Training & Development
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedCertificateCreateUpdateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedCertificateCreateUpdateRequest'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedCertificateCreateUpdateRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertificateCreateUpdate'
+          description: ''
+    delete:
+      operationId: certificates_destroy
+      description: |-
+        CRUD for employee certificates.
+
+        Employees can manage their own certificates; HR/admins can manage any
+        employee's certificates and filter by ``employee`` query parameter.
+
+        Files are uploaded to the configured default storage (R2 in production).
+        Download endpoint returns a short-lived presigned URL.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Certificate.
+        required: true
+      tags:
+      - Training & Development
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/certificates/{id}/download/:
+    get:
+      operationId: certificates_download_retrieve
+      description: |-
+        CRUD for employee certificates.
+
+        Employees can manage their own certificates; HR/admins can manage any
+        employee's certificates and filter by ``employee`` query parameter.
+
+        Files are uploaded to the configured default storage (R2 in production).
+        Download endpoint returns a short-lived presigned URL.
+      summary: Get a signed download URL for a certificate file
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Certificate.
+        required: true
+      tags:
+      - Training & Development
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  signed_url:
+                    type: string
+          description: ''
   /api/conference-course-registrations/:
     get:
       operationId: conference_course_registrations_list
@@ -6686,6 +6925,176 @@ components:
         * `training` - Training
         * `benefits` - Benefits
         * `other` - Other
+    CertificateCreateUpdate:
+      type: object
+      description: Writable serializer for certificate uploads.
+      properties:
+        title:
+          type: string
+          description: Certificate title/name
+          maxLength: 255
+        file:
+          type: string
+          format: uri
+          description: Certificate file (PDF, image, etc.)
+        issued_date:
+          type: string
+          format: date
+          description: Date when certificate was issued
+        expiration_date:
+          type: string
+          format: date
+          nullable: true
+          description: Certificate expiration date (if applicable)
+        issuer:
+          type: string
+          nullable: true
+          description: Organization or body that issued the certificate
+          maxLength: 255
+      required:
+      - file
+      - issued_date
+      - title
+    CertificateCreateUpdateRequest:
+      type: object
+      description: Writable serializer for certificate uploads.
+      properties:
+        title:
+          type: string
+          minLength: 1
+          description: Certificate title/name
+          maxLength: 255
+        file:
+          type: string
+          format: binary
+          description: Certificate file (PDF, image, etc.)
+        issued_date:
+          type: string
+          format: date
+          description: Date when certificate was issued
+        expiration_date:
+          type: string
+          format: date
+          nullable: true
+          description: Certificate expiration date (if applicable)
+        issuer:
+          type: string
+          nullable: true
+          description: Organization or body that issued the certificate
+          maxLength: 255
+        employee_id:
+          type: integer
+          writeOnly: true
+      required:
+      - file
+      - issued_date
+      - title
+    CertificateDetail:
+      type: object
+      description: Detailed serializer for single certificate view.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        employee_id:
+          type: integer
+          readOnly: true
+        employee_name:
+          type: string
+          readOnly: true
+        title:
+          type: string
+          description: Certificate title/name
+          maxLength: 255
+        issuer:
+          type: string
+          nullable: true
+          description: Organization or body that issued the certificate
+          maxLength: 255
+        issued_date:
+          type: string
+          format: date
+          description: Date when certificate was issued
+        expiration_date:
+          type: string
+          format: date
+          nullable: true
+          description: Certificate expiration date (if applicable)
+        is_expired:
+          type: string
+          readOnly: true
+        file:
+          type: string
+          format: uri
+          description: Certificate file (PDF, image, etc.)
+        file_url:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - employee_id
+      - employee_name
+      - file
+      - file_url
+      - id
+      - is_expired
+      - issued_date
+      - title
+      - updated_at
+    CertificateList:
+      type: object
+      description: Simplified serializer for certificate lists.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        employee_id:
+          type: integer
+          readOnly: true
+        employee_name:
+          type: string
+          readOnly: true
+        title:
+          type: string
+          description: Certificate title/name
+          maxLength: 255
+        issuer:
+          type: string
+          nullable: true
+          description: Organization or body that issued the certificate
+          maxLength: 255
+        issued_date:
+          type: string
+          format: date
+          description: Date when certificate was issued
+        expiration_date:
+          type: string
+          format: date
+          nullable: true
+          description: Certificate expiration date (if applicable)
+        is_expired:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - employee_id
+      - employee_name
+      - id
+      - is_expired
+      - issued_date
+      - title
     ChecklistInstance:
       type: object
       properties:
@@ -8481,6 +8890,36 @@ components:
           type: string
           nullable: true
           description: Additional description or notes
+    PatchedCertificateCreateUpdateRequest:
+      type: object
+      description: Writable serializer for certificate uploads.
+      properties:
+        title:
+          type: string
+          minLength: 1
+          description: Certificate title/name
+          maxLength: 255
+        file:
+          type: string
+          format: binary
+          description: Certificate file (PDF, image, etc.)
+        issued_date:
+          type: string
+          format: date
+          description: Date when certificate was issued
+        expiration_date:
+          type: string
+          format: date
+          nullable: true
+          description: Certificate expiration date (if applicable)
+        issuer:
+          type: string
+          nullable: true
+          description: Organization or body that issued the certificate
+          maxLength: 255
+        employee_id:
+          type: integer
+          writeOnly: true
     PatchedChecklistTaskRequest:
       type: object
       properties:

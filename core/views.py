@@ -46,6 +46,7 @@ from .models import (
     Asset,
     AssetStatus,
     Assignment,
+    Certificate,
     ChecklistInstance,
     ChecklistTask,
     ChecklistTemplate,
@@ -110,6 +111,9 @@ from .serializers import (
     AssignmentSerializer,
     AvatarUploadSerializer,
     BulkIdsSerializer,
+    CertificateCreateUpdateSerializer,
+    CertificateDetailSerializer,
+    CertificateListSerializer,
     ChecklistInstanceCreateSerializer,
     ChecklistInstanceSerializer,
     ChecklistTaskSerializer,
@@ -5081,6 +5085,98 @@ class ConferenceCourseRegistrationViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
+
+
+@extend_schema(tags=["Training & Development"])
+class CertificateViewSet(viewsets.ModelViewSet):
+    """
+    CRUD for employee certificates.
+
+    Employees can manage their own certificates; HR/admins can manage any
+    employee's certificates and filter by ``employee`` query parameter.
+
+    Files are uploaded to the configured default storage (R2 in production).
+    Download endpoint returns a short-lived presigned URL.
+    """
+
+    permission_classes = [IsAuthenticated]
+    parser_classes = [parsers.MultiPartParser, parsers.FormParser, parsers.JSONParser]
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.SearchFilter,
+        filters.OrderingFilter,
+    ]
+    filterset_fields = ["employee"]
+    search_fields = [
+        "title",
+        "issuer",
+        "employee__user__first_name",
+        "employee__user__last_name",
+    ]
+    ordering_fields = ["issued_date", "expiration_date", "created_at"]
+    ordering = ["-issued_date"]
+
+    def get_queryset(self):
+        user = self.request.user
+        base = Certificate.objects.select_related("employee__user")
+        if user.is_staff or user.is_superuser:
+            return base
+        try:
+            return base.filter(employee=user.profile)
+        except Exception:
+            return Certificate.objects.none()
+
+    def get_serializer_class(self):
+        if self.action == "list":
+            return CertificateListSerializer
+        if self.action == "retrieve":
+            return CertificateDetailSerializer
+        return CertificateCreateUpdateSerializer
+
+    def _resolve_target_employee(self) -> UserProfile:
+        user = self.request.user
+        employee = user.profile
+        if user.is_staff or user.is_superuser:
+            employee_id = self.request.data.get("employee_id")
+            if employee_id:
+                try:
+                    employee = UserProfile.objects.get(id=int(employee_id))
+                except (UserProfile.DoesNotExist, ValueError, TypeError):
+                    pass
+        return employee
+
+    def perform_create(self, serializer):
+        self.created_instance = serializer.save(
+            employee=self._resolve_target_employee()
+        )
+
+    def create(self, request, *args, **kwargs):
+        response = super().create(request, *args, **kwargs)
+        if response.status_code == status.HTTP_201_CREATED and hasattr(
+            self, "created_instance"
+        ):
+            response.data = CertificateDetailSerializer(
+                self.created_instance, context={"request": request}
+            ).data
+        return response
+
+    @extend_schema(
+        summary="Get a signed download URL for a certificate file",
+        responses={
+            200: {"type": "object", "properties": {"signed_url": {"type": "string"}}}
+        },
+    )
+    @action(detail=True, methods=["get"], url_path="download")
+    def download(self, request, pk=None):
+        certificate = self.get_object()
+        if not certificate.file:
+            return Response(
+                {"detail": "Certificate has no file attached."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        signed_url = generate_presigned_url(certificate.file.name, expiry_seconds=600)
+        return Response({"signed_url": signed_url}, status=status.HTTP_200_OK)
 
 
 # ──────────────────────────────────────────────────────────────────────────────

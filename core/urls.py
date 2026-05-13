@@ -13,6 +13,7 @@ from .views import (
     AssignmentRequestReturnView,
     AssignmentReturnView,
     AvatarUploadView,
+    CertificateViewSet,
     ChecklistInstanceViewSet,
     ChecklistTaskViewSet,
     ChecklistTemplateViewSet,
@@ -86,6 +87,7 @@ router.register(
     basename="performance-review-reminder",
 )
 router.register(r"training-entries", TrainingEntryViewSet, basename="training-entry")
+router.register(r"certificates", CertificateViewSet, basename="certificate")
 router.register(
     r"conference-course-registrations",
     ConferenceCourseRegistrationViewSet,
