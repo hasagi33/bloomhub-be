@@ -5,6 +5,7 @@ from io import StringIO
 
 import django
 from django.contrib.auth.models import User
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -20,6 +21,7 @@ from core.models import (
     Permission,
     ReplacementLog,
     Role,
+    ScheduledMaintenance,
 )
 
 django.setup()
@@ -49,6 +51,7 @@ class AssetManagementAPITest(APITestCase):
             "export_inventory",
             "view_asset_history",
             "log_asset_lost",
+            "log_asset_replacement",
             "update_asset_condition",
         ]:
             self.profile.add_permission(self._permission(action))
@@ -209,6 +212,63 @@ class AssetManagementAPITest(APITestCase):
         asset.refresh_from_db()
         self.assertEqual(asset.status, AssetStatus.DAMAGED)
 
+    def test_asset_status_can_be_changed_to_maintenance(self):
+        """Asset status should accept Maintenance as a valid enum value."""
+        asset = Asset.objects.create(
+            asset_id="STATUS003",
+            name="Maintenance Status Asset",
+            condition=AssetCondition.GOOD,
+            purchase_date=date.today() - timedelta(days=10),
+            status=AssetStatus.ACTIVE,
+        )
+
+        response = self.client.patch(
+            f"/api/assets/{asset.id}/",
+            {"status": AssetStatus.MAINTENANCE},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], AssetStatus.MAINTENANCE)
+
+        asset.refresh_from_db()
+        self.assertEqual(asset.status, AssetStatus.MAINTENANCE)
+
+    def test_asset_status_can_be_created_and_changed_to_retired(self):
+        """Asset status should accept Retired for create and edit flows."""
+        create_response = self.client.post(
+            "/api/assets/",
+            {
+                "asset_id": "STATUS004",
+                "name": "Retired Status Asset",
+                "condition": AssetCondition.GOOD,
+                "purchase_date": str(date.today() - timedelta(days=10)),
+                "status": AssetStatus.RETIRED,
+            },
+            format="json",
+        )
+        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(create_response.data["status"], AssetStatus.RETIRED)
+
+        asset = Asset.objects.get(id=create_response.data["id"])
+        patch_response = self.client.patch(
+            f"/api/assets/{asset.id}/",
+            {"status": AssetStatus.ACTIVE},
+            format="json",
+        )
+        self.assertEqual(patch_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(patch_response.data["status"], AssetStatus.ACTIVE)
+
+        patch_response = self.client.patch(
+            f"/api/assets/{asset.id}/",
+            {"status": AssetStatus.RETIRED},
+            format="json",
+        )
+        self.assertEqual(patch_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(patch_response.data["status"], AssetStatus.RETIRED)
+
+        asset.refresh_from_db()
+        self.assertEqual(asset.status, AssetStatus.RETIRED)
+
     def test_asset_status_patch_rejects_invalid_status(self):
         """Asset status update should reject invalid enum values."""
         asset = Asset.objects.create(
@@ -295,6 +355,7 @@ class AssetManagementAPITest(APITestCase):
         replacement_data = {
             "asset": asset.id,
             "reason": "Screen damage due to coffee spill",
+            "date": str(date.today() - timedelta(days=3)),
             "replaced_by": self.profile.id,
             "cost": "150.00",
         }
@@ -304,6 +365,14 @@ class AssetManagementAPITest(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         log_id = response.data["id"]
+        self.assertEqual(response.data["date"], str(date.today() - timedelta(days=3)))
+        self.assertEqual(response.data["replaced_by"], self.profile.id)
+        self.assertEqual(response.data["asset_status_before"], AssetStatus.DAMAGED)
+        self.assertEqual(
+            response.data["asset_condition_before"], AssetCondition.DAMAGED
+        )
+        self.assertIsNone(response.data["asset_status_after"])
+        self.assertIsNone(response.data["asset_condition_after"])
 
         # Test getting replacement log list
         response = self.client.get("/api/replacement-logs/")
@@ -314,6 +383,822 @@ class AssetManagementAPITest(APITestCase):
         response = self.client.get(f"/api/replacement-logs/?asset={asset.id}")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue(ReplacementLog.objects.filter(id=log_id).exists())
+
+    def test_replacement_log_requires_manual_date(self):
+        asset = self._create_asset(prefix="REPL")
+
+        response = self.client.post(
+            "/api/replacement-logs/",
+            {
+                "asset": asset.id,
+                "reason": "Battery failed and laptop was replaced",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("date", response.data)
+
+    def test_replacement_log_accepts_asset_state_after_snapshots(self):
+        asset = self._create_asset(prefix="REPL")
+        asset.status = AssetStatus.DAMAGED
+        asset.condition = AssetCondition.DAMAGED
+        asset.save(update_fields=["status", "condition"])
+
+        response = self.client.post(
+            "/api/replacement-logs/",
+            {
+                "asset": asset.id,
+                "reason": "Device was replaced after damage assessment",
+                "date": str(date.today()),
+                "asset_status_after": AssetStatus.RETIRED,
+                "asset_condition_after": AssetCondition.POOR,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["asset_status_before"], AssetStatus.DAMAGED)
+        self.assertEqual(response.data["asset_status_after"], AssetStatus.RETIRED)
+        self.assertEqual(
+            response.data["asset_condition_before"], AssetCondition.DAMAGED
+        )
+        self.assertEqual(response.data["asset_condition_after"], AssetCondition.POOR)
+
+        asset.refresh_from_db()
+        self.assertEqual(asset.status, AssetStatus.DAMAGED)
+        self.assertEqual(asset.condition, AssetCondition.DAMAGED)
+
+    def test_replacement_log_uses_authenticated_user_as_replaced_by(self):
+        asset = self._create_asset(prefix="REPL")
+        spoofed_user = User.objects.create_user(
+            username="spoofed",
+            email="spoofed@example.com",
+            password="pass123",
+        )
+
+        response = self.client.post(
+            "/api/replacement-logs/",
+            {
+                "asset": asset.id,
+                "reason": "Keyboard failed and device was replaced",
+                "date": str(date.today()),
+                "replaced_by": spoofed_user.profile.id,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["replaced_by"], self.profile.id)
+        self.assertEqual(response.data["replaced_by_details"]["id"], self.profile.id)
+
+        replacement_log = ReplacementLog.objects.get(id=response.data["id"])
+        self.assertEqual(replacement_log.replaced_by, self.profile)
+
+    def test_replacement_log_mutations_require_replacement_permission(self):
+        asset = self._create_asset(prefix="REPL")
+        replacement_log = ReplacementLog.objects.create(
+            asset=asset,
+            reason="Existing replacement record",
+            date=date.today(),
+            replaced_by=self.profile,
+        )
+        viewer = self._create_role_user(
+            "replacement_viewer",
+            "Replacement Viewer",
+            ["view_all_assets", "view_asset_history"],
+        )
+        self._auth_as(viewer)
+
+        list_response = self.client.get("/api/replacement-logs/")
+        self.assertEqual(list_response.status_code, status.HTTP_200_OK)
+
+        detail_response = self.client.get(
+            f"/api/replacement-logs/{replacement_log.id}/"
+        )
+        self.assertEqual(detail_response.status_code, status.HTTP_200_OK)
+
+        create_response = self.client.post(
+            "/api/replacement-logs/",
+            {
+                "asset": asset.id,
+                "reason": "Attempted replacement",
+                "date": str(date.today()),
+            },
+            format="json",
+        )
+        self.assertEqual(create_response.status_code, status.HTTP_403_FORBIDDEN)
+
+        update_response = self.client.put(
+            f"/api/replacement-logs/{replacement_log.id}/",
+            {
+                "asset": asset.id,
+                "reason": "Attempted update",
+                "date": str(date.today()),
+            },
+            format="json",
+        )
+        self.assertEqual(update_response.status_code, status.HTTP_403_FORBIDDEN)
+
+        delete_response = self.client.delete(
+            f"/api/replacement-logs/{replacement_log.id}/"
+        )
+        self.assertEqual(delete_response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_log_asset_lost_does_not_allow_replacement_log_mutation(self):
+        asset = self._create_asset(prefix="REPL")
+        legacy_user = self._create_role_user(
+            "legacy_asset_logger",
+            "Legacy Asset Logger",
+            ["view_asset_history", "log_asset_lost"],
+        )
+        self._auth_as(legacy_user)
+
+        response = self.client.post(
+            "/api/replacement-logs/",
+            {
+                "asset": asset.id,
+                "reason": "Attempted replacement with legacy permission",
+                "date": str(date.today()),
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_replacement_log_patch_updates_fields_without_changing_replaced_by(self):
+        asset = self._create_asset(prefix="REPL")
+        replacement_log = ReplacementLog.objects.create(
+            asset=asset,
+            reason="Initial replacement reason",
+            date=date.today() - timedelta(days=5),
+            replaced_by=self.profile,
+        )
+        spoofed_user = User.objects.create_user(
+            username="patch_spoofed",
+            email="patch_spoofed@example.com",
+            password="pass123",
+        )
+
+        response = self.client.patch(
+            f"/api/replacement-logs/{replacement_log.id}/",
+            {
+                "reason": "Updated replacement reason",
+                "date": str(date.today() - timedelta(days=2)),
+                "replaced_by": spoofed_user.profile.id,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["reason"], "Updated replacement reason")
+        self.assertEqual(response.data["date"], str(date.today() - timedelta(days=2)))
+        self.assertEqual(response.data["replaced_by"], self.profile.id)
+
+        replacement_log.refresh_from_db()
+        self.assertEqual(replacement_log.replaced_by, self.profile)
+
+    def test_replacement_log_patch_updates_asset_state_snapshots(self):
+        asset = self._create_asset(prefix="REPL")
+        replacement_log = ReplacementLog.objects.create(
+            asset=asset,
+            reason="Initial replacement reason",
+            date=date.today(),
+            replaced_by=self.profile,
+            asset_status_before=AssetStatus.ACTIVE,
+            asset_condition_before=AssetCondition.GOOD,
+        )
+
+        response = self.client.patch(
+            f"/api/replacement-logs/{replacement_log.id}/",
+            {
+                "asset_status_after": AssetStatus.RETIRED,
+                "asset_condition_after": AssetCondition.POOR,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["asset_status_before"], AssetStatus.ACTIVE)
+        self.assertEqual(response.data["asset_status_after"], AssetStatus.RETIRED)
+        self.assertEqual(response.data["asset_condition_before"], AssetCondition.GOOD)
+        self.assertEqual(response.data["asset_condition_after"], AssetCondition.POOR)
+
+        asset.refresh_from_db()
+        self.assertEqual(asset.status, AssetStatus.ACTIVE)
+        self.assertEqual(asset.condition, AssetCondition.GOOD)
+
+    def test_replacement_log_creation_has_no_inventory_side_effects(self):
+        asset = self._create_asset(prefix="REPL")
+        assignment = Assignment.objects.create(
+            asset=asset,
+            employee=self.profile,
+            assigned_by=self.profile,
+            notes="Original assigned device",
+        )
+        asset.condition = AssetCondition.DAMAGED
+        asset.status = AssetStatus.DAMAGED
+        asset.save(update_fields=["condition", "status"])
+        replacement_asset = self._create_asset(prefix="NEW")
+
+        response = self.client.post(
+            "/api/replacement-logs/",
+            {
+                "asset": asset.id,
+                "reason": "Original device damaged beyond repair",
+                "date": str(date.today()),
+                "replacement_asset": replacement_asset.id,
+                "cost": "900.00",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        asset.refresh_from_db()
+        assignment.refresh_from_db()
+        replacement_asset.refresh_from_db()
+
+        self.assertEqual(asset.status, AssetStatus.DAMAGED)
+        self.assertEqual(asset.condition, AssetCondition.DAMAGED)
+        self.assertIsNone(assignment.returned_at)
+        self.assertTrue(assignment.is_active)
+        self.assertEqual(asset.assignments.filter(returned_at__isnull=True).count(), 1)
+        self.assertFalse(asset.is_available)
+        self.assertEqual(replacement_asset.status, AssetStatus.ACTIVE)
+        self.assertEqual(replacement_asset.condition, AssetCondition.GOOD)
+        self.assertEqual(replacement_asset.assignments.count(), 0)
+        self.assertTrue(replacement_asset.is_available)
+
+    def test_replacement_log_filters_by_replaced_by_and_delete_removes_record(self):
+        asset = self._create_asset(prefix="REPL")
+        other_user = User.objects.create_user(
+            username="other_replacer",
+            email="other_replacer@example.com",
+            password="pass123",
+        )
+        own_log = ReplacementLog.objects.create(
+            asset=asset,
+            reason="Logged by authenticated user's profile",
+            date=date.today(),
+            replaced_by=self.profile,
+        )
+        other_log = ReplacementLog.objects.create(
+            asset=asset,
+            reason="Logged by someone else",
+            date=date.today() - timedelta(days=1),
+            replaced_by=other_user.profile,
+        )
+
+        response = self.client.get(
+            f"/api/replacement-logs/?replaced_by={self.profile.id}"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual([item["id"] for item in response.data], [own_log.id])
+        self.assertNotEqual(own_log.id, other_log.id)
+
+        delete_response = self.client.delete(f"/api/replacement-logs/{own_log.id}/")
+
+        self.assertEqual(delete_response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(ReplacementLog.objects.filter(id=own_log.id).exists())
+        self.assertTrue(ReplacementLog.objects.filter(id=other_log.id).exists())
+
+    def test_scheduled_maintenance_create_and_due_state_filters(self):
+        asset = self._create_asset(prefix="SCHED")
+        overdue_asset = self._create_asset(prefix="SCHED")
+
+        create_response = self.client.post(
+            "/api/scheduled-maintenance/",
+            {
+                "asset": asset.id,
+                "due_date": str(date.today() + timedelta(days=5)),
+                "reason": "Quarterly device inspection",
+                "maintenance_type": ScheduledMaintenance.MaintenanceType.INSPECTION,
+                "owner": self.profile.id,
+                "estimated_cost": "75.00",
+                "vendor": "Local repair shop",
+            },
+            format="json",
+        )
+
+        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(
+            create_response.data["status"], ScheduledMaintenance.Status.SCHEDULED
+        )
+        self.assertEqual(create_response.data["due_state"], "upcoming")
+        self.assertEqual(create_response.data["created_by"], self.profile.id)
+        self.assertEqual(create_response.data["owner"], self.profile.id)
+
+        ScheduledMaintenance.objects.create(
+            asset=overdue_asset,
+            due_date=date.today() - timedelta(days=1),
+            reason="Overdue battery check",
+            maintenance_type=ScheduledMaintenance.MaintenanceType.PREVENTIVE,
+            created_by=self.profile,
+        )
+
+        overdue_response = self.client.get(
+            "/api/scheduled-maintenance/?due_state=overdue"
+        )
+        self.assertEqual(overdue_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(overdue_response.data), 1)
+        self.assertEqual(overdue_response.data[0]["asset"], overdue_asset.id)
+
+        asset_response = self.client.get(
+            f"/api/scheduled-maintenance/?asset={asset.id}"
+        )
+        self.assertEqual(asset_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(asset_response.data), 1)
+        self.assertEqual(asset_response.data[0]["id"], create_response.data["id"])
+
+    def test_scheduled_maintenance_filters_status_owner_type_and_date_range(self):
+        asset = self._create_asset(prefix="SCHED")
+        owner_user = User.objects.create_user(
+            username="maintenance_owner",
+            email="maintenance_owner@example.com",
+            password="pass123",
+        )
+        target = ScheduledMaintenance.objects.create(
+            asset=asset,
+            due_date=date.today() + timedelta(days=5),
+            reason="Target warranty visit",
+            maintenance_type=ScheduledMaintenance.MaintenanceType.WARRANTY,
+            owner=owner_user.profile,
+            created_by=self.profile,
+        )
+        ScheduledMaintenance.objects.create(
+            asset=self._create_asset(prefix="SCHED"),
+            due_date=date.today() + timedelta(days=8),
+            reason="Different owner",
+            maintenance_type=ScheduledMaintenance.MaintenanceType.WARRANTY,
+            owner=self.profile,
+            created_by=self.profile,
+        )
+        ScheduledMaintenance.objects.create(
+            asset=self._create_asset(prefix="SCHED"),
+            due_date=date.today() + timedelta(days=5),
+            reason="Different type",
+            maintenance_type=ScheduledMaintenance.MaintenanceType.REPAIR,
+            owner=owner_user.profile,
+            created_by=self.profile,
+        )
+        ScheduledMaintenance.objects.create(
+            asset=self._create_asset(prefix="SCHED"),
+            due_date=date.today() + timedelta(days=5),
+            reason="Completed target-like item",
+            maintenance_type=ScheduledMaintenance.MaintenanceType.WARRANTY,
+            owner=owner_user.profile,
+            status=ScheduledMaintenance.Status.COMPLETED,
+            created_by=self.profile,
+        )
+
+        response = self.client.get(
+            "/api/scheduled-maintenance/"
+            f"?status={ScheduledMaintenance.Status.SCHEDULED}"
+            f"&owner={owner_user.profile.id}"
+            f"&maintenance_type={ScheduledMaintenance.MaintenanceType.WARRANTY}"
+            f"&due_from={date.today() + timedelta(days=4)}"
+            f"&due_to={date.today() + timedelta(days=6)}"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual([item["id"] for item in response.data], [target.id])
+
+    def test_scheduled_maintenance_rejects_invalid_due_state_filter(self):
+        response = self.client.get("/api/scheduled-maintenance/?due_state=soon")
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("due_state", response.data)
+
+    def test_scheduled_maintenance_requires_required_fields(self):
+        asset = self._create_asset(prefix="SCHED")
+
+        response = self.client.post(
+            "/api/scheduled-maintenance/",
+            {
+                "asset": asset.id,
+                "reason": "Missing due date and type",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("due_date", response.data)
+        self.assertIn("maintenance_type", response.data)
+
+    def test_scheduled_maintenance_permissions_match_maintenance_logging(self):
+        asset = self._create_asset(prefix="SCHED")
+        scheduled = ScheduledMaintenance.objects.create(
+            asset=asset,
+            due_date=date.today(),
+            reason="Scheduled inspection",
+            maintenance_type=ScheduledMaintenance.MaintenanceType.INSPECTION,
+            created_by=self.profile,
+        )
+        viewer = self._create_role_user(
+            "scheduled_viewer",
+            "Scheduled Viewer",
+            ["view_all_assets", "view_asset_history"],
+        )
+        self._auth_as(viewer)
+
+        list_response = self.client.get("/api/scheduled-maintenance/")
+        self.assertEqual(list_response.status_code, status.HTTP_200_OK)
+
+        detail_response = self.client.get(f"/api/scheduled-maintenance/{scheduled.id}/")
+        self.assertEqual(detail_response.status_code, status.HTTP_200_OK)
+
+        create_response = self.client.post(
+            "/api/scheduled-maintenance/",
+            {
+                "asset": asset.id,
+                "due_date": str(date.today()),
+                "reason": "Attempted maintenance",
+                "maintenance_type": ScheduledMaintenance.MaintenanceType.REPAIR,
+            },
+            format="json",
+        )
+        self.assertEqual(create_response.status_code, status.HTTP_403_FORBIDDEN)
+
+        complete_response = self.client.post(
+            f"/api/scheduled-maintenance/{scheduled.id}/complete/",
+            {
+                "date": str(date.today()),
+                "reason": "Attempted completion",
+            },
+            format="json",
+        )
+        self.assertEqual(complete_response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_user_can_view_scheduled_maintenance_for_own_active_asset(self):
+        employee_user = User.objects.create_user(
+            username="scheduled_owner",
+            email="scheduled_owner@example.com",
+            password="pass123",
+        )
+        history_perm = self._permission("view_asset_history")
+        employee_user.profile.add_permission(history_perm)
+        own_asset = self._create_asset(prefix="SCHEDOWN")
+        other_asset = self._create_asset(prefix="SCHEDOTHER")
+        Assignment.objects.create(
+            asset=own_asset,
+            employee=employee_user.profile,
+            assigned_by=self.profile,
+            notes="Active owner schedule visibility",
+        )
+        own_schedule = ScheduledMaintenance.objects.create(
+            asset=own_asset,
+            due_date=date.today() + timedelta(days=3),
+            reason="Own assigned asset inspection",
+            maintenance_type=ScheduledMaintenance.MaintenanceType.INSPECTION,
+            created_by=self.profile,
+        )
+        other_schedule = ScheduledMaintenance.objects.create(
+            asset=other_asset,
+            due_date=date.today() + timedelta(days=3),
+            reason="Other asset inspection",
+            maintenance_type=ScheduledMaintenance.MaintenanceType.INSPECTION,
+            created_by=self.profile,
+        )
+        own_log = ReplacementLog.objects.create(
+            asset=own_asset,
+            reason="Own asset historical maintenance",
+            date=date.today(),
+            replaced_by=self.profile,
+        )
+        ReplacementLog.objects.create(
+            asset=other_asset,
+            reason="Other asset historical maintenance",
+            date=date.today(),
+            replaced_by=self.profile,
+        )
+
+        self._auth_as(employee_user)
+        list_response = self.client.get("/api/scheduled-maintenance/")
+
+        self.assertEqual(list_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            [item["id"] for item in list_response.data],
+            [own_schedule.id],
+        )
+
+        own_detail = self.client.get(f"/api/scheduled-maintenance/{own_schedule.id}/")
+        self.assertEqual(own_detail.status_code, status.HTTP_200_OK)
+        self.assertEqual(own_detail.data["id"], own_schedule.id)
+
+        other_detail = self.client.get(
+            f"/api/scheduled-maintenance/{other_schedule.id}/"
+        )
+        self.assertEqual(other_detail.status_code, status.HTTP_403_FORBIDDEN)
+
+        logs_response = self.client.get("/api/replacement-logs/")
+        self.assertEqual(logs_response.status_code, status.HTTP_403_FORBIDDEN)
+
+        log_detail_response = self.client.get(f"/api/replacement-logs/{own_log.id}/")
+        self.assertEqual(log_detail_response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_returned_asset_scheduled_maintenance_hidden_from_owner(self):
+        employee_user = User.objects.create_user(
+            username="returned_scheduled_owner",
+            email="returned_scheduled_owner@example.com",
+            password="pass123",
+        )
+        asset = self._create_asset(prefix="SCHEDRET")
+        Assignment.objects.create(
+            asset=asset,
+            employee=employee_user.profile,
+            assigned_by=self.profile,
+            returned_at=timezone.now(),
+            notes="Returned owner schedule visibility",
+        )
+        scheduled = ScheduledMaintenance.objects.create(
+            asset=asset,
+            due_date=date.today() + timedelta(days=3),
+            reason="Returned asset inspection",
+            maintenance_type=ScheduledMaintenance.MaintenanceType.INSPECTION,
+            created_by=self.profile,
+        )
+
+        self._auth_as(employee_user)
+        list_response = self.client.get("/api/scheduled-maintenance/")
+        detail_response = self.client.get(f"/api/scheduled-maintenance/{scheduled.id}/")
+
+        self.assertEqual(list_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(list_response.data, [])
+        self.assertEqual(detail_response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_completed_or_cancelled_maintenance_hidden_from_owner(self):
+        employee_user = User.objects.create_user(
+            username="finished_scheduled_owner",
+            email="finished_scheduled_owner@example.com",
+            password="pass123",
+        )
+        asset = self._create_asset(prefix="SCHEDFIN")
+        Assignment.objects.create(
+            asset=asset,
+            employee=employee_user.profile,
+            assigned_by=self.profile,
+            notes="Finished owner schedule visibility",
+        )
+        completed = ScheduledMaintenance.objects.create(
+            asset=asset,
+            due_date=date.today() - timedelta(days=1),
+            reason="Completed inspection",
+            maintenance_type=ScheduledMaintenance.MaintenanceType.INSPECTION,
+            status=ScheduledMaintenance.Status.COMPLETED,
+            created_by=self.profile,
+        )
+        cancelled = ScheduledMaintenance.objects.create(
+            asset=asset,
+            due_date=date.today() - timedelta(days=1),
+            reason="Cancelled repair",
+            maintenance_type=ScheduledMaintenance.MaintenanceType.REPAIR,
+            status=ScheduledMaintenance.Status.CANCELLED,
+            created_by=self.profile,
+        )
+
+        self._auth_as(employee_user)
+        list_response = self.client.get("/api/scheduled-maintenance/")
+        completed_detail = self.client.get(
+            f"/api/scheduled-maintenance/{completed.id}/"
+        )
+        cancelled_detail = self.client.get(
+            f"/api/scheduled-maintenance/{cancelled.id}/"
+        )
+
+        self.assertEqual(list_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(list_response.data, [])
+        self.assertEqual(completed_detail.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(cancelled_detail.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_scheduled_maintenance_patch_updates_fields_and_ignores_read_only_fields(
+        self,
+    ):
+        asset = self._create_asset(prefix="SCHED")
+        owner_user = User.objects.create_user(
+            username="patch_owner",
+            email="patch_owner@example.com",
+            password="pass123",
+        )
+        spoofed_creator = User.objects.create_user(
+            username="spoofed_creator",
+            email="spoofed_creator@example.com",
+            password="pass123",
+        )
+        scheduled = ScheduledMaintenance.objects.create(
+            asset=asset,
+            due_date=date.today() + timedelta(days=3),
+            reason="Initial maintenance plan",
+            maintenance_type=ScheduledMaintenance.MaintenanceType.INSPECTION,
+            created_by=self.profile,
+        )
+
+        response = self.client.patch(
+            f"/api/scheduled-maintenance/{scheduled.id}/",
+            {
+                "due_date": str(date.today() + timedelta(days=10)),
+                "reason": "Updated maintenance plan",
+                "maintenance_type": ScheduledMaintenance.MaintenanceType.REPAIR,
+                "owner": owner_user.profile.id,
+                "estimated_cost": "95.00",
+                "vendor": "Updated vendor",
+                "status": ScheduledMaintenance.Status.COMPLETED,
+                "cancelled_reason": "Client attempted to cancel",
+                "created_by": spoofed_creator.profile.id,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["reason"], "Updated maintenance plan")
+        self.assertEqual(response.data["owner"], owner_user.profile.id)
+        self.assertEqual(response.data["vendor"], "Updated vendor")
+        self.assertEqual(response.data["status"], ScheduledMaintenance.Status.SCHEDULED)
+        self.assertEqual(response.data["cancelled_reason"], "")
+        self.assertEqual(response.data["created_by"], self.profile.id)
+
+        scheduled.refresh_from_db()
+        self.assertEqual(scheduled.created_by, self.profile)
+        self.assertEqual(scheduled.status, ScheduledMaintenance.Status.SCHEDULED)
+
+    def test_scheduled_maintenance_completion_creates_historical_log(self):
+        asset = self._create_asset(prefix="SCHED")
+        asset.status = AssetStatus.DAMAGED
+        asset.condition = AssetCondition.DAMAGED
+        asset.save(update_fields=["status", "condition"])
+        replacement_asset = self._create_asset(prefix="NEWSCHED")
+        scheduled = ScheduledMaintenance.objects.create(
+            asset=asset,
+            due_date=date.today() - timedelta(days=1),
+            reason="Repair damaged laptop",
+            maintenance_type=ScheduledMaintenance.MaintenanceType.REPAIR,
+            owner=self.profile,
+            estimated_cost="125.00",
+            vendor="Local repair shop",
+            created_by=self.profile,
+        )
+
+        response = self.client.post(
+            f"/api/scheduled-maintenance/{scheduled.id}/complete/",
+            {
+                "date": str(date.today()),
+                "reason": "Repair completed and replacement issued",
+                "cost": "150.00",
+                "asset_status_after": AssetStatus.RETIRED,
+                "asset_condition_after": AssetCondition.POOR,
+                "replacement_asset": replacement_asset.id,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], ScheduledMaintenance.Status.COMPLETED)
+        self.assertIsNotNone(response.data["completed_log"])
+
+        scheduled.refresh_from_db()
+        replacement_log = scheduled.completed_log
+        self.assertEqual(replacement_log.asset, asset)
+        self.assertEqual(
+            replacement_log.reason, "Repair completed and replacement issued"
+        )
+        self.assertEqual(replacement_log.replaced_by, self.profile)
+        self.assertEqual(replacement_log.asset_status_before, AssetStatus.DAMAGED)
+        self.assertEqual(replacement_log.asset_condition_before, AssetCondition.DAMAGED)
+        self.assertEqual(replacement_log.asset_status_after, AssetStatus.RETIRED)
+        self.assertEqual(replacement_log.asset_condition_after, AssetCondition.POOR)
+        self.assertEqual(replacement_log.replacement_asset, replacement_asset)
+
+        asset.refresh_from_db()
+        self.assertEqual(asset.status, AssetStatus.RETIRED)
+        self.assertEqual(asset.condition, AssetCondition.POOR)
+
+        second_response = self.client.post(
+            f"/api/scheduled-maintenance/{scheduled.id}/complete/",
+            {
+                "date": str(date.today()),
+                "reason": "Second completion attempt",
+            },
+            format="json",
+        )
+        self.assertEqual(second_response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_scheduled_maintenance_completion_requires_date_and_reason_then_defaults_snapshots(
+        self,
+    ):
+        asset = self._create_asset(prefix="SCHED")
+        asset.status = AssetStatus.DAMAGED
+        asset.condition = AssetCondition.FAIR
+        asset.save(update_fields=["status", "condition"])
+        scheduled = ScheduledMaintenance.objects.create(
+            asset=asset,
+            due_date=date.today(),
+            reason="Inspect damaged laptop",
+            maintenance_type=ScheduledMaintenance.MaintenanceType.INSPECTION,
+            created_by=self.profile,
+        )
+
+        invalid_response = self.client.post(
+            f"/api/scheduled-maintenance/{scheduled.id}/complete/",
+            {},
+            format="json",
+        )
+
+        self.assertEqual(invalid_response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("date", invalid_response.data)
+        self.assertIn("reason", invalid_response.data)
+
+        response = self.client.post(
+            f"/api/scheduled-maintenance/{scheduled.id}/complete/",
+            {
+                "date": str(date.today()),
+                "reason": "Inspection completed",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], ScheduledMaintenance.Status.COMPLETED)
+        self.assertIsNotNone(response.data["completed_log_details"])
+
+        scheduled.refresh_from_db()
+        replacement_log = scheduled.completed_log
+        self.assertEqual(replacement_log.asset_status_before, AssetStatus.DAMAGED)
+        self.assertEqual(replacement_log.asset_condition_before, AssetCondition.FAIR)
+        self.assertIsNone(replacement_log.asset_status_after)
+        self.assertIsNone(replacement_log.asset_condition_after)
+        self.assertIsNone(replacement_log.replacement_asset)
+        self.assertIsNone(replacement_log.cost)
+
+        asset.refresh_from_db()
+        self.assertEqual(asset.status, AssetStatus.DAMAGED)
+        self.assertEqual(asset.condition, AssetCondition.FAIR)
+
+    def test_scheduled_maintenance_cancel_and_lock_edits(self):
+        asset = self._create_asset(prefix="SCHED")
+        scheduled = ScheduledMaintenance.objects.create(
+            asset=asset,
+            due_date=date.today() + timedelta(days=3),
+            reason="Warranty inspection",
+            maintenance_type=ScheduledMaintenance.MaintenanceType.WARRANTY,
+            created_by=self.profile,
+        )
+
+        response = self.client.post(
+            f"/api/scheduled-maintenance/{scheduled.id}/cancel/",
+            {"cancelled_reason": "Vendor unavailable"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], ScheduledMaintenance.Status.CANCELLED)
+        self.assertEqual(response.data["cancelled_reason"], "Vendor unavailable")
+
+        patch_response = self.client.patch(
+            f"/api/scheduled-maintenance/{scheduled.id}/",
+            {"reason": "Changed after cancellation"},
+            format="json",
+        )
+        self.assertEqual(patch_response.status_code, status.HTTP_400_BAD_REQUEST)
+
+        complete_response = self.client.post(
+            f"/api/scheduled-maintenance/{scheduled.id}/complete/",
+            {
+                "date": str(date.today()),
+                "reason": "Attempted completion after cancellation",
+            },
+            format="json",
+        )
+        self.assertEqual(complete_response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_scheduled_maintenance_cancel_completed_is_rejected(self):
+        asset = self._create_asset(prefix="SCHED")
+        replacement_log = ReplacementLog.objects.create(
+            asset=asset,
+            reason="Completed maintenance log",
+            date=date.today(),
+            replaced_by=self.profile,
+        )
+        scheduled = ScheduledMaintenance.objects.create(
+            asset=asset,
+            due_date=date.today() - timedelta(days=1),
+            reason="Already completed maintenance",
+            maintenance_type=ScheduledMaintenance.MaintenanceType.REPAIR,
+            status=ScheduledMaintenance.Status.COMPLETED,
+            completed_log=replacement_log,
+            created_by=self.profile,
+        )
+
+        response = self.client.post(
+            f"/api/scheduled-maintenance/{scheduled.id}/cancel/",
+            {"cancelled_reason": "Cancel completed item"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        scheduled.refresh_from_db()
+        self.assertEqual(scheduled.status, ScheduledMaintenance.Status.COMPLETED)
+        self.assertEqual(scheduled.cancelled_reason, "")
 
     def test_user_profile_operations(self):
         """Test UserProfile operations"""

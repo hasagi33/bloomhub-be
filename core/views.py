@@ -74,6 +74,7 @@ from .models import (
     ProjectAssignment,
     ReplacementLog,
     Role,
+    ScheduledMaintenance,
     TaskTemplate,
     TemplateField,
     TemplateGeneratedDocument,
@@ -92,6 +93,7 @@ from .permissions import (
     can_attach_review_documents,
     can_edit_review_note,
     can_view_asset,
+    can_view_asset_maintenance_logs,
     can_view_assignment,
     get_asset_capabilities,
     get_asset_permissions,
@@ -156,8 +158,12 @@ from .serializers import (
     PerformanceReviewReminderSerializer,
     RegisterSerializer,
     ReplacementLogSerializer,
+    ReplacementLogUpdateSerializer,
     RequestSignatureSerializer,
     ReturnRequestQueueSerializer,
+    ScheduledMaintenanceCancelSerializer,
+    ScheduledMaintenanceCompleteSerializer,
+    ScheduledMaintenanceSerializer,
     SignatureAuditLogSerializer,
     SignDocumentSerializer,
     TemplateGeneratedDocumentSerializer,
@@ -265,6 +271,8 @@ class APIRootView(APIView):
                     },
                     "assets": {
                         "capabilities": "GET /api/assets/capabilities/",
+                        "scheduled_maintenance": "GET/POST /api/scheduled-maintenance/",
+                        "maintenance_logs": "GET/POST /api/replacement-logs/",
                     },
                     "django_admin": "GET /admin/",
                 },
@@ -1879,7 +1887,9 @@ class AssetCapabilitiesView(APIView):
             name="status",
             type=OpenApiTypes.STR,
             location=OpenApiParameter.QUERY,
-            description="Filter by asset status (active, lost, returned, damaged)",
+            description=(
+                "Filter by asset status (active, maintenance, retired, lost, returned, damaged)"
+            ),
             required=False,
         ),
         OpenApiParameter(
@@ -2575,29 +2585,33 @@ class AssignmentRejectReturnView(APIView):
     tags=["Asset Management"],
     responses={200: ReplacementLogSerializer(many=True)},
     description="Get list of all replacement logs with filtering options",
-    parameters=[
-        OpenApiParameter(
-            name="asset",
-            type=OpenApiTypes.INT,
-            location=OpenApiParameter.QUERY,
-            description="Filter by asset ID",
-            required=False,
-        ),
-        OpenApiParameter(
-            name="replaced_by",
-            type=OpenApiTypes.INT,
-            location=OpenApiParameter.QUERY,
-            description="Filter by user who performed replacement",
-            required=False,
-        ),
-    ],
 )
 class ReplacementLogListView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="asset",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description="Filter by asset ID",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="replaced_by",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description="Filter by user who logged or performed replacement",
+                required=False,
+            ),
+        ],
+        responses={200: ReplacementLogSerializer(many=True)},
+        description="Get list of all replacement logs with filtering options",
+    )
     def get(self, request):
         """Get list of replacement logs with optional filtering"""
-        if not has_asset_permission(request.user, "view_asset_history"):
+        if not can_view_asset_maintenance_logs(request.user):
             return Response(
                 {"error": "You do not have permission to view asset history."},
                 status=status.HTTP_403_FORBIDDEN,
@@ -2619,18 +2633,21 @@ class ReplacementLogListView(APIView):
     @extend_schema(
         request=ReplacementLogSerializer,
         responses={201: ReplacementLogSerializer, 400: None},
-        description="Create a new replacement log",
+        description=(
+            "Create a new replacement log. Required fields are asset, reason, "
+            "and date. The replaced_by actor is set from the authenticated user."
+        ),
     )
     def post(self, request):
         """Create a new replacement log"""
-        if not has_asset_permission(request.user, "log_asset_lost"):
+        if not has_asset_permission(request.user, "log_asset_replacement"):
             return Response(
                 {"error": "You do not have permission to log asset changes."},
                 status=status.HTTP_403_FORBIDDEN,
             )
         serializer = ReplacementLogSerializer(data=request.data)
         if serializer.is_valid():
-            serializer.save()
+            serializer.save(replaced_by=request.user.profile)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -2661,7 +2678,7 @@ class ReplacementLogDetailView(APIView):
             return Response(
                 {"error": "Replacement log not found"}, status=status.HTTP_404_NOT_FOUND
             )
-        if not has_asset_permission(request.user, "view_asset_history"):
+        if not can_view_asset_maintenance_logs(request.user):
             return Response(
                 {"error": "You do not have permission to view asset history."},
                 status=status.HTTP_403_FORBIDDEN,
@@ -2671,18 +2688,36 @@ class ReplacementLogDetailView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     @extend_schema(
-        request=ReplacementLogSerializer,
+        request=ReplacementLogUpdateSerializer,
         responses={200: ReplacementLogSerializer, 400: None, 404: None},
-        description="Update a replacement log",
+        description=(
+            "Update a replacement log. The replaced_by actor remains "
+            "server-controlled and cannot be changed by clients."
+        ),
     )
     def put(self, request, pk):
         """Update replacement log"""
+        return self._update(request, pk)
+
+    @extend_schema(
+        request=ReplacementLogUpdateSerializer,
+        responses={200: ReplacementLogSerializer, 400: None, 404: None},
+        description=(
+            "Partially update a replacement log. The replaced_by actor remains "
+            "server-controlled and cannot be changed by clients."
+        ),
+    )
+    def patch(self, request, pk):
+        """Partially update replacement log"""
+        return self._update(request, pk)
+
+    def _update(self, request, pk):
         log = self.get_object(pk)
         if not log:
             return Response(
                 {"error": "Replacement log not found"}, status=status.HTTP_404_NOT_FOUND
             )
-        if not has_asset_permission(request.user, "log_asset_lost"):
+        if not has_asset_permission(request.user, "log_asset_replacement"):
             return Response(
                 {"error": "You do not have permission to update asset history."},
                 status=status.HTTP_403_FORBIDDEN,
@@ -2690,7 +2725,7 @@ class ReplacementLogDetailView(APIView):
 
         serializer = ReplacementLogSerializer(log, data=request.data, partial=True)
         if serializer.is_valid():
-            log = serializer.save()
+            serializer.save()
             return Response(serializer.data, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -2705,7 +2740,7 @@ class ReplacementLogDetailView(APIView):
             return Response(
                 {"error": "Replacement log not found"}, status=status.HTTP_404_NOT_FOUND
             )
-        if not has_asset_permission(request.user, "log_asset_lost"):
+        if not has_asset_permission(request.user, "log_asset_replacement"):
             return Response(
                 {"error": "You do not have permission to delete asset history."},
                 status=status.HTTP_403_FORBIDDEN,
@@ -2713,6 +2748,381 @@ class ReplacementLogDetailView(APIView):
 
         log.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@extend_schema(
+    tags=["Asset Management"],
+    responses={200: ScheduledMaintenanceSerializer(many=True)},
+    description="List or create one-off scheduled asset maintenance",
+)
+class ScheduledMaintenanceListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def _base_queryset(self):
+        return ScheduledMaintenance.objects.select_related(
+            "asset",
+            "owner__user",
+            "created_by__user",
+            "completed_log",
+            "completed_log__asset",
+            "completed_log__replacement_asset",
+            "completed_log__replaced_by__user",
+        )
+
+    def _visible_queryset(self, request):
+        schedules = self._base_queryset()
+        if can_view_asset_maintenance_logs(request.user):
+            return schedules
+
+        if not has_asset_permission(request.user, "view_own_assets"):
+            return None
+
+        try:
+            profile = request.user.profile
+        except Exception:
+            return ScheduledMaintenance.objects.none()
+
+        return schedules.filter(
+            status=ScheduledMaintenance.Status.SCHEDULED,
+            asset__assignments__employee=profile,
+            asset__assignments__returned_at__isnull=True,
+        ).distinct()
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="asset",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description="Filter by asset ID",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="owner",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description="Filter by responsible user profile ID",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="status",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="Filter by status: scheduled, completed, or cancelled",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="due_from",
+                type=OpenApiTypes.DATE,
+                location=OpenApiParameter.QUERY,
+                description="Filter by due date on or after this date",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="due_to",
+                type=OpenApiTypes.DATE,
+                location=OpenApiParameter.QUERY,
+                description="Filter by due date on or before this date",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="due_state",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="Filter scheduled items by upcoming, due_today, or overdue",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="maintenance_type",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description=(
+                    "Filter by maintenance type: preventive, repair, inspection, "
+                    "warranty, replacement, or other"
+                ),
+                required=False,
+            ),
+        ],
+        responses={200: ScheduledMaintenanceSerializer(many=True)},
+    )
+    def get(self, request):
+        schedules = self._visible_queryset(request)
+        if schedules is None:
+            return Response(
+                {"error": "You do not have permission to view asset history."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        asset_filter = request.query_params.get("asset")
+        if asset_filter:
+            schedules = schedules.filter(asset_id=asset_filter)
+
+        owner_filter = request.query_params.get("owner")
+        if owner_filter:
+            schedules = schedules.filter(owner_id=owner_filter)
+
+        status_filter = request.query_params.get("status")
+        if status_filter:
+            schedules = schedules.filter(status=status_filter)
+
+        due_from = request.query_params.get("due_from")
+        if due_from:
+            schedules = schedules.filter(due_date__gte=due_from)
+
+        due_to = request.query_params.get("due_to")
+        if due_to:
+            schedules = schedules.filter(due_date__lte=due_to)
+
+        maintenance_type = request.query_params.get("maintenance_type")
+        if maintenance_type:
+            schedules = schedules.filter(maintenance_type=maintenance_type)
+
+        due_state = request.query_params.get("due_state")
+        if due_state:
+            today = timezone.localdate()
+            schedules = schedules.filter(status=ScheduledMaintenance.Status.SCHEDULED)
+            if due_state == "overdue":
+                schedules = schedules.filter(due_date__lt=today)
+            elif due_state == "due_today":
+                schedules = schedules.filter(due_date=today)
+            elif due_state == "upcoming":
+                schedules = schedules.filter(due_date__gt=today)
+            else:
+                return Response(
+                    {"due_state": "Use upcoming, due_today, or overdue."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        serializer = ScheduledMaintenanceSerializer(schedules, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        request=ScheduledMaintenanceSerializer,
+        responses={201: ScheduledMaintenanceSerializer, 400: None},
+        description=(
+            "Create one-off scheduled maintenance. Required fields are asset, "
+            "due_date, reason, and maintenance_type."
+        ),
+    )
+    def post(self, request):
+        if not has_asset_permission(request.user, "log_asset_replacement"):
+            return Response(
+                {"error": "You do not have permission to log asset changes."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        serializer = ScheduledMaintenanceSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(created_by=request.user.profile)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@extend_schema(
+    tags=["Asset Management"],
+    responses={200: ScheduledMaintenanceSerializer, 404: None},
+    description="Get, update, complete, or cancel scheduled asset maintenance",
+)
+class ScheduledMaintenanceDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self, pk):
+        try:
+            return ScheduledMaintenance.objects.select_related(
+                "asset",
+                "owner__user",
+                "created_by__user",
+                "completed_log",
+                "completed_log__asset",
+                "completed_log__replacement_asset",
+                "completed_log__replaced_by__user",
+            ).get(pk=pk)
+        except ScheduledMaintenance.DoesNotExist:
+            return None
+
+    def _can_view_schedule(self, user, schedule):
+        if can_view_asset_maintenance_logs(user):
+            return True
+        if not has_asset_permission(user, "view_own_assets"):
+            return False
+        try:
+            profile = user.profile
+        except Exception:
+            return False
+        if schedule.status != ScheduledMaintenance.Status.SCHEDULED:
+            return False
+        return schedule.asset.assignments.filter(
+            employee=profile,
+            returned_at__isnull=True,
+        ).exists()
+
+    @extend_schema(responses={200: ScheduledMaintenanceSerializer, 404: None})
+    def get(self, request, pk):
+        schedule = self.get_object(pk)
+        if not schedule:
+            return Response(
+                {"error": "Scheduled maintenance not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if not self._can_view_schedule(request.user, schedule):
+            return Response(
+                {"error": "You do not have permission to view asset history."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        serializer = ScheduledMaintenanceSerializer(schedule)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        request=ScheduledMaintenanceSerializer,
+        responses={200: ScheduledMaintenanceSerializer, 400: None, 404: None},
+        description="Partially update scheduled maintenance while it is scheduled.",
+    )
+    def patch(self, request, pk):
+        schedule = self.get_object(pk)
+        if not schedule:
+            return Response(
+                {"error": "Scheduled maintenance not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if not has_asset_permission(request.user, "log_asset_replacement"):
+            return Response(
+                {"error": "You do not have permission to update asset history."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        serializer = ScheduledMaintenanceSerializer(
+            schedule, data=request.data, partial=True
+        )
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class ScheduledMaintenanceCompleteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["Asset Management"],
+        request=ScheduledMaintenanceCompleteSerializer,
+        responses={200: ScheduledMaintenanceSerializer, 400: None, 404: None},
+        description=(
+            "Complete scheduled maintenance and create the linked historical "
+            "maintenance log."
+        ),
+    )
+    def post(self, request, pk):
+        if not has_asset_permission(request.user, "log_asset_replacement"):
+            return Response(
+                {"error": "You do not have permission to log asset changes."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        serializer = ScheduledMaintenanceCompleteSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        data = serializer.validated_data
+        with transaction.atomic():
+            try:
+                schedule = (
+                    ScheduledMaintenance.objects.select_for_update()
+                    .select_related("asset")
+                    .get(pk=pk)
+                )
+            except ScheduledMaintenance.DoesNotExist:
+                return Response(
+                    {"error": "Scheduled maintenance not found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            if schedule.status == ScheduledMaintenance.Status.COMPLETED:
+                return Response(
+                    {"error": "Scheduled maintenance is already completed."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if schedule.status == ScheduledMaintenance.Status.CANCELLED:
+                return Response(
+                    {"error": "Cancelled scheduled maintenance cannot be completed."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            replacement_log = ReplacementLog.objects.create(
+                asset=schedule.asset,
+                reason=data["reason"],
+                date=data["date"],
+                asset_status_before=data.get(
+                    "asset_status_before", schedule.asset.status
+                ),
+                asset_status_after=data.get("asset_status_after"),
+                asset_condition_before=data.get(
+                    "asset_condition_before", schedule.asset.condition
+                ),
+                asset_condition_after=data.get("asset_condition_after"),
+                replacement_asset=data.get("replacement_asset"),
+                cost=data.get("cost"),
+                replaced_by=request.user.profile,
+            )
+            asset_update_fields = []
+            asset_status_after = data.get("asset_status_after")
+            if asset_status_after:
+                schedule.asset.status = asset_status_after
+                asset_update_fields.append("status")
+            asset_condition_after = data.get("asset_condition_after")
+            if asset_condition_after:
+                schedule.asset.condition = asset_condition_after
+                asset_update_fields.append("condition")
+            if asset_update_fields:
+                schedule.asset.save(update_fields=asset_update_fields)
+
+            schedule.status = ScheduledMaintenance.Status.COMPLETED
+            schedule.completed_log = replacement_log
+            schedule.save(update_fields=["status", "completed_log", "updated_at"])
+
+        response_serializer = ScheduledMaintenanceSerializer(schedule)
+        return Response(response_serializer.data, status=status.HTTP_200_OK)
+
+
+class ScheduledMaintenanceCancelView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["Asset Management"],
+        request=ScheduledMaintenanceCancelSerializer,
+        responses={200: ScheduledMaintenanceSerializer, 400: None, 404: None},
+        description="Cancel scheduled maintenance with an optional reason.",
+    )
+    def post(self, request, pk):
+        if not has_asset_permission(request.user, "log_asset_replacement"):
+            return Response(
+                {"error": "You do not have permission to update asset history."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        schedule = ScheduledMaintenance.objects.filter(pk=pk).first()
+        if not schedule:
+            return Response(
+                {"error": "Scheduled maintenance not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if schedule.status != ScheduledMaintenance.Status.SCHEDULED:
+            return Response(
+                {"error": "Only scheduled maintenance can be cancelled."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = ScheduledMaintenanceCancelSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        schedule.status = ScheduledMaintenance.Status.CANCELLED
+        schedule.cancelled_reason = serializer.validated_data.get(
+            "cancelled_reason", ""
+        )
+        schedule.save(update_fields=["status", "cancelled_reason", "updated_at"])
+
+        response_serializer = ScheduledMaintenanceSerializer(schedule)
+        return Response(response_serializer.data, status=status.HTTP_200_OK)
 
 
 @extend_schema(

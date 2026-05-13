@@ -133,6 +133,7 @@ Asset Management,track_warranty
 Asset Management,initiate_asset_return
 Asset Management,process_asset_return
 Asset Management,log_asset_lost
+Asset Management,log_asset_replacement
 Asset Management,generate_qr_codes
 Asset Management,view_asset_history
 Asset Management,configure_asset_types

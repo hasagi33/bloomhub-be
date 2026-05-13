@@ -13,6 +13,7 @@ from core.models import (
     AssetStatus,
     Assignment,
     ReplacementLog,
+    ScheduledMaintenance,
 )
 
 
@@ -249,6 +250,7 @@ class ReplacementLogModelTestCase(TestCase):
         replacement_log = ReplacementLog.objects.create(
             asset=self.asset,
             reason="Screen damage due to coffee spill",
+            date=date.today(),
             replaced_by=self.profile,
             replacement_asset=self.replacement_asset,
             cost=Decimal("150.00"),
@@ -259,27 +261,128 @@ class ReplacementLogModelTestCase(TestCase):
         self.assertEqual(replacement_log.replaced_by, self.profile)
         self.assertEqual(replacement_log.replacement_asset, self.replacement_asset)
         self.assertEqual(replacement_log.cost, Decimal("150.00"))
-        self.assertIsNotNone(replacement_log.date)
+        self.assertEqual(replacement_log.date, date.today())
+
+    def test_replacement_log_can_store_asset_state_snapshots(self):
+        """Test replacement log state snapshots"""
+        replacement_log = ReplacementLog.objects.create(
+            asset=self.asset,
+            reason="Screen damage due to coffee spill",
+            date=date.today(),
+            asset_status_before=AssetStatus.DAMAGED,
+            asset_status_after=AssetStatus.RETURNED,
+            asset_condition_before=AssetCondition.DAMAGED,
+            asset_condition_after=AssetCondition.POOR,
+        )
+
+        self.assertEqual(replacement_log.asset_status_before, AssetStatus.DAMAGED)
+        self.assertEqual(replacement_log.asset_status_after, AssetStatus.RETURNED)
+        self.assertEqual(replacement_log.asset_condition_before, AssetCondition.DAMAGED)
+        self.assertEqual(replacement_log.asset_condition_after, AssetCondition.POOR)
 
     def test_replacement_log_str_representation(self):
         """Test replacement log string representation"""
         replacement_log = ReplacementLog.objects.create(
-            asset=self.asset, reason="Screen damage due to coffee spill"
+            asset=self.asset,
+            reason="Screen damage due to coffee spill",
+            date=date.today(),
         )
 
-        expected_str = f"{self.asset.asset_id} replaced on {replacement_log.date.date()} - Screen damage due to coffee spill"
+        expected_str = f"{self.asset.asset_id} replaced on {replacement_log.date} - Screen damage due to coffee spill"
         self.assertEqual(str(replacement_log), expected_str)
 
     def test_replacement_log_reason_truncation(self):
         """Test reason truncation in string representation"""
         long_reason = "This is a very long reason that should be truncated in the string representation to ensure it doesn't become too long"
         replacement_log = ReplacementLog.objects.create(
-            asset=self.asset, reason=long_reason
+            asset=self.asset,
+            reason=long_reason,
+            date=date.today(),
         )
 
         str_repr = str(replacement_log)
         # Should contain truncated reason (first 50 characters)
         self.assertIn(long_reason[:50], str_repr)
+
+
+class ScheduledMaintenanceModelTestCase(TestCase):
+    """Test cases for the ScheduledMaintenance model"""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="maintenanceuser",
+            email="maintenance@example.com",
+            password="testpass123",
+        )
+        self.profile = self.user.profile
+        self.asset = Asset.objects.create(
+            asset_id="MAINT001",
+            name="Maintenance Laptop",
+            condition=AssetCondition.GOOD,
+            purchase_date=date.today() - timedelta(days=30),
+            status=AssetStatus.ACTIVE,
+        )
+
+    def test_scheduled_maintenance_due_state_tracks_scheduled_dates_only(self):
+        overdue = ScheduledMaintenance.objects.create(
+            asset=self.asset,
+            due_date=date.today() - timedelta(days=1),
+            reason="Overdue inspection",
+            maintenance_type=ScheduledMaintenance.MaintenanceType.INSPECTION,
+            created_by=self.profile,
+        )
+        due_today = ScheduledMaintenance.objects.create(
+            asset=self.asset,
+            due_date=date.today(),
+            reason="Due today inspection",
+            maintenance_type=ScheduledMaintenance.MaintenanceType.PREVENTIVE,
+            created_by=self.profile,
+        )
+        upcoming = ScheduledMaintenance.objects.create(
+            asset=self.asset,
+            due_date=date.today() + timedelta(days=1),
+            reason="Upcoming inspection",
+            maintenance_type=ScheduledMaintenance.MaintenanceType.REPAIR,
+            created_by=self.profile,
+        )
+        completed = ScheduledMaintenance.objects.create(
+            asset=self.asset,
+            due_date=date.today() - timedelta(days=1),
+            reason="Completed inspection",
+            maintenance_type=ScheduledMaintenance.MaintenanceType.WARRANTY,
+            status=ScheduledMaintenance.Status.COMPLETED,
+            created_by=self.profile,
+        )
+
+        self.assertEqual(overdue.due_state, "overdue")
+        self.assertEqual(due_today.due_state, "due_today")
+        self.assertEqual(upcoming.due_state, "upcoming")
+        self.assertIsNone(completed.due_state)
+
+    def test_scheduled_maintenance_str_representation(self):
+        scheduled = ScheduledMaintenance.objects.create(
+            asset=self.asset,
+            due_date=date.today() + timedelta(days=7),
+            reason="Warranty check",
+            maintenance_type=ScheduledMaintenance.MaintenanceType.WARRANTY,
+            created_by=self.profile,
+        )
+
+        self.assertEqual(
+            str(scheduled),
+            f"{self.asset.asset_id} maintenance due {scheduled.due_date}",
+        )
+
+    def test_scheduled_maintenance_estimated_cost_validation(self):
+        with self.assertRaises(ValidationError):
+            scheduled = ScheduledMaintenance(
+                asset=self.asset,
+                due_date=date.today(),
+                reason="Invalid estimate",
+                maintenance_type=ScheduledMaintenance.MaintenanceType.REPAIR,
+                estimated_cost=Decimal("0.00"),
+            )
+            scheduled.full_clean()
 
 
 class AssetManagementIntegrationTestCase(TestCase):
@@ -355,6 +458,7 @@ class AssetManagementIntegrationTestCase(TestCase):
         ReplacementLog.objects.create(
             asset=asset,
             reason="Original laptop damaged beyond repair",
+            date=date.today(),
             replaced_by=self.manager_profile,
             replacement_asset=replacement_asset,
             cost=Decimal("1300.00"),
@@ -439,6 +543,7 @@ class AssetManagementIntegrationTestCase(TestCase):
             replacement_log = ReplacementLog(
                 asset=asset,
                 reason="Test replacement",
+                date=date.today(),
                 cost=Decimal("0.00"),  # Should fail validation
             )
             replacement_log.full_clean()

@@ -281,7 +281,7 @@ file: <csv_file>
 ```bash
 python manage.py load_permissions permissions.csv
 ```
-- Loads 183 permissions from `permissions.csv`
+- Loads 184 permissions from `permissions.csv`
 - Creates Permission objects with auto-assigned bit positions
 
 #### Load Role Permissions

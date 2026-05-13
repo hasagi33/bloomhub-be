@@ -67,7 +67,8 @@ paths:
         name: status
         schema:
           type: string
-        description: Filter by asset status (active, lost, returned, damaged)
+        description: Filter by asset status (active, maintenance, retired, lost, returned,
+          damaged)
       tags:
       - Asset Management
       security:
@@ -105,7 +106,8 @@ paths:
         name: status
         schema:
           type: string
-        description: Filter by asset status (active, lost, returned, damaged)
+        description: Filter by asset status (active, maintenance, retired, lost, returned,
+          damaged)
       tags:
       - Asset Management
       requestBody:
@@ -5840,7 +5842,7 @@ paths:
         name: replaced_by
         schema:
           type: integer
-        description: Filter by user who performed replacement
+        description: Filter by user who logged or performed replacement
       tags:
       - Asset Management
       security:
@@ -5856,18 +5858,8 @@ paths:
           description: ''
     post:
       operationId: replacement_logs_create
-      description: Create a new replacement log
-      parameters:
-      - in: query
-        name: asset
-        schema:
-          type: integer
-        description: Filter by asset ID
-      - in: query
-        name: replaced_by
-        schema:
-          type: integer
-        description: Filter by user who performed replacement
+      description: Create a new replacement log. Required fields are asset, reason,
+        and date. The replaced_by actor is set from the authenticated user.
       tags:
       - Asset Management
       requestBody:
@@ -5918,7 +5910,8 @@ paths:
           description: No response body
     put:
       operationId: replacement_logs_update
-      description: Update a replacement log
+      description: Update a replacement log. The replaced_by actor remains server-controlled
+        and cannot be changed by clients.
       parameters:
       - in: path
         name: id
@@ -5931,14 +5924,49 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ReplacementLogRequest'
+              $ref: '#/components/schemas/ReplacementLogUpdateRequest'
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/ReplacementLogRequest'
+              $ref: '#/components/schemas/ReplacementLogUpdateRequest'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/ReplacementLogRequest'
+              $ref: '#/components/schemas/ReplacementLogUpdateRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReplacementLog'
+          description: ''
+        '400':
+          description: No response body
+        '404':
+          description: No response body
+    patch:
+      operationId: replacement_logs_partial_update
+      description: Partially update a replacement log. The replaced_by actor remains
+        server-controlled and cannot be changed by clients.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
         required: true
+      tags:
+      - Asset Management
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedReplacementLogUpdateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedReplacementLogUpdateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedReplacementLogUpdateRequest'
       security:
       - jwtAuth: []
       responses:
@@ -6011,6 +6039,223 @@ paths:
               schema:
                 $ref: '#/components/schemas/RoleListResponse'
           description: ''
+  /api/scheduled-maintenance/:
+    get:
+      operationId: scheduled_maintenance_list
+      description: List or create one-off scheduled asset maintenance
+      parameters:
+      - in: query
+        name: asset
+        schema:
+          type: integer
+        description: Filter by asset ID
+      - in: query
+        name: due_from
+        schema:
+          type: string
+          format: date
+        description: Filter by due date on or after this date
+      - in: query
+        name: due_state
+        schema:
+          type: string
+        description: Filter scheduled items by upcoming, due_today, or overdue
+      - in: query
+        name: due_to
+        schema:
+          type: string
+          format: date
+        description: Filter by due date on or before this date
+      - in: query
+        name: maintenance_type
+        schema:
+          type: string
+        description: 'Filter by maintenance type: preventive, repair, inspection,
+          warranty, replacement, or other'
+      - in: query
+        name: owner
+        schema:
+          type: integer
+        description: Filter by responsible user profile ID
+      - in: query
+        name: status
+        schema:
+          type: string
+        description: 'Filter by status: scheduled, completed, or cancelled'
+      tags:
+      - Asset Management
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ScheduledMaintenance'
+          description: ''
+    post:
+      operationId: scheduled_maintenance_create
+      description: Create one-off scheduled maintenance. Required fields are asset,
+        due_date, reason, and maintenance_type.
+      tags:
+      - Asset Management
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScheduledMaintenanceRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ScheduledMaintenanceRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ScheduledMaintenanceRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScheduledMaintenance'
+          description: ''
+        '400':
+          description: No response body
+  /api/scheduled-maintenance/{id}/:
+    get:
+      operationId: scheduled_maintenance_retrieve
+      description: Get, update, complete, or cancel scheduled asset maintenance
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Asset Management
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScheduledMaintenance'
+          description: ''
+        '404':
+          description: No response body
+    patch:
+      operationId: scheduled_maintenance_partial_update
+      description: Partially update scheduled maintenance while it is scheduled.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Asset Management
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedScheduledMaintenanceRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedScheduledMaintenanceRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedScheduledMaintenanceRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScheduledMaintenance'
+          description: ''
+        '400':
+          description: No response body
+        '404':
+          description: No response body
+  /api/scheduled-maintenance/{id}/cancel/:
+    post:
+      operationId: scheduled_maintenance_cancel_create
+      description: Cancel scheduled maintenance with an optional reason.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Asset Management
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScheduledMaintenanceCancelRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ScheduledMaintenanceCancelRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ScheduledMaintenanceCancelRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScheduledMaintenance'
+          description: ''
+        '400':
+          description: No response body
+        '404':
+          description: No response body
+  /api/scheduled-maintenance/{id}/complete/:
+    post:
+      operationId: scheduled_maintenance_complete_create
+      description: Complete scheduled maintenance and create the linked historical
+        maintenance log.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Asset Management
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScheduledMaintenanceCompleteRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ScheduledMaintenanceCompleteRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ScheduledMaintenanceCompleteRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScheduledMaintenance'
+          description: ''
+        '400':
+          description: No response body
+        '404':
+          description: No response body
   /api/training-entries/:
     get:
       operationId: training_entries_list
@@ -6306,6 +6551,8 @@ components:
             Current status of the asset
 
             * `active` - Active
+            * `maintenance` - Maintenance
+            * `retired` - Retired
             * `lost` - Lost
             * `returned` - Returned
             * `damaged` - Damaged
@@ -6423,6 +6670,8 @@ components:
             Current status of the asset
 
             * `active` - Active
+            * `maintenance` - Maintenance
+            * `retired` - Retired
             * `lost` - Lost
             * `returned` - Returned
             * `damaged` - Damaged
@@ -6543,6 +6792,8 @@ components:
             Current status of the asset
 
             * `active` - Active
+            * `maintenance` - Maintenance
+            * `retired` - Retired
             * `lost` - Lost
             * `returned` - Returned
             * `damaged` - Damaged
@@ -8622,6 +8873,22 @@ components:
       required:
       - email
       - password
+    MaintenanceTypeEnum:
+      enum:
+      - preventive
+      - repair
+      - inspection
+      - warranty
+      - replacement
+      - other
+      type: string
+      description: |-
+        * `preventive` - Preventive
+        * `repair` - Repair
+        * `inspection` - Inspection
+        * `warranty` - Warranty
+        * `replacement` - Replacement
+        * `other` - Other
     ModuleEnum:
       enum:
       - documents
@@ -8862,6 +9129,8 @@ components:
             Current status of the asset
 
             * `active` - Active
+            * `maintenance` - Maintenance
+            * `retired` - Retired
             * `lost` - Lost
             * `returned` - Returned
             * `damaged` - Damaged
@@ -9223,6 +9492,130 @@ components:
         content:
           type: string
           minLength: 1
+    PatchedReplacementLogUpdateRequest:
+      type: object
+      description: Request serializer for partial replacement-log updates.
+      properties:
+        asset:
+          type: integer
+          description: Asset that was replaced
+        reason:
+          type: string
+          minLength: 1
+          description: Reason for replacement
+        date:
+          type: string
+          format: date
+          description: Date when the replacement occurred
+        asset_status_before:
+          nullable: true
+          description: |-
+            Asset status before the replacement or maintenance event
+
+            * `active` - Active
+            * `maintenance` - Maintenance
+            * `retired` - Retired
+            * `lost` - Lost
+            * `returned` - Returned
+            * `damaged` - Damaged
+          oneOf:
+          - $ref: '#/components/schemas/StatusEnum'
+          - $ref: '#/components/schemas/BlankEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        asset_status_after:
+          nullable: true
+          description: |-
+            Asset status after the replacement or maintenance event
+
+            * `active` - Active
+            * `maintenance` - Maintenance
+            * `retired` - Retired
+            * `lost` - Lost
+            * `returned` - Returned
+            * `damaged` - Damaged
+          oneOf:
+          - $ref: '#/components/schemas/StatusEnum'
+          - $ref: '#/components/schemas/BlankEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        asset_condition_before:
+          nullable: true
+          description: |-
+            Asset condition before the replacement or maintenance event
+
+            * `excellent` - Excellent
+            * `good` - Good
+            * `fair` - Fair
+            * `poor` - Poor
+            * `damaged` - Damaged
+          oneOf:
+          - $ref: '#/components/schemas/ConditionEnum'
+          - $ref: '#/components/schemas/BlankEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        asset_condition_after:
+          nullable: true
+          description: |-
+            Asset condition after the replacement or maintenance event
+
+            * `excellent` - Excellent
+            * `good` - Good
+            * `fair` - Fair
+            * `poor` - Poor
+            * `damaged` - Damaged
+          oneOf:
+          - $ref: '#/components/schemas/ConditionEnum'
+          - $ref: '#/components/schemas/BlankEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        replacement_asset:
+          type: integer
+          nullable: true
+          description: New asset that replaced this one
+        cost:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+          description: Cost of replacement
+    PatchedScheduledMaintenanceRequest:
+      type: object
+      description: Serializer for one-off scheduled asset maintenance.
+      properties:
+        asset:
+          type: integer
+          description: Asset that needs maintenance
+        due_date:
+          type: string
+          format: date
+          description: Date when maintenance is due
+        reason:
+          type: string
+          minLength: 1
+          description: Reason maintenance is needed
+        maintenance_type:
+          allOf:
+          - $ref: '#/components/schemas/MaintenanceTypeEnum'
+          description: |-
+            Type of scheduled maintenance
+
+            * `preventive` - Preventive
+            * `repair` - Repair
+            * `inspection` - Inspection
+            * `warranty` - Warranty
+            * `replacement` - Replacement
+            * `other` - Other
+        owner:
+          type: integer
+          nullable: true
+          description: Optional person responsible for the maintenance
+        estimated_cost:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+          description: Estimated cost of the scheduled maintenance
+        vendor:
+          type: string
+          description: Optional external vendor or service provider
+          maxLength: 200
     PatchedTrainingEntryCreateUpdateRequest:
       type: object
       description: Serializer for creating and updating training entries with validation.
@@ -10180,11 +10573,69 @@ components:
           description: Reason for replacement
         date:
           type: string
-          format: date-time
-          readOnly: true
-          description: When the replacement occurred
+          format: date
+          description: Date when the replacement occurred
+        asset_status_before:
+          nullable: true
+          description: |-
+            Asset status before the replacement or maintenance event
+
+            * `active` - Active
+            * `maintenance` - Maintenance
+            * `retired` - Retired
+            * `lost` - Lost
+            * `returned` - Returned
+            * `damaged` - Damaged
+          oneOf:
+          - $ref: '#/components/schemas/StatusEnum'
+          - $ref: '#/components/schemas/BlankEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        asset_status_after:
+          nullable: true
+          description: |-
+            Asset status after the replacement or maintenance event
+
+            * `active` - Active
+            * `maintenance` - Maintenance
+            * `retired` - Retired
+            * `lost` - Lost
+            * `returned` - Returned
+            * `damaged` - Damaged
+          oneOf:
+          - $ref: '#/components/schemas/StatusEnum'
+          - $ref: '#/components/schemas/BlankEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        asset_condition_before:
+          nullable: true
+          description: |-
+            Asset condition before the replacement or maintenance event
+
+            * `excellent` - Excellent
+            * `good` - Good
+            * `fair` - Fair
+            * `poor` - Poor
+            * `damaged` - Damaged
+          oneOf:
+          - $ref: '#/components/schemas/ConditionEnum'
+          - $ref: '#/components/schemas/BlankEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        asset_condition_after:
+          nullable: true
+          description: |-
+            Asset condition after the replacement or maintenance event
+
+            * `excellent` - Excellent
+            * `good` - Good
+            * `fair` - Fair
+            * `poor` - Poor
+            * `damaged` - Damaged
+          oneOf:
+          - $ref: '#/components/schemas/ConditionEnum'
+          - $ref: '#/components/schemas/BlankEnum'
+          - $ref: '#/components/schemas/NullEnum'
         replaced_by:
           type: integer
+          readOnly: true
           nullable: true
           description: Who performed the replacement
         replacement_asset:
@@ -10205,16 +10656,19 @@ components:
           allOf:
           - $ref: '#/components/schemas/Asset'
           readOnly: true
+          nullable: true
         replaced_by_details:
           allOf:
           - $ref: '#/components/schemas/UserProfile'
           readOnly: true
+          nullable: true
       required:
       - asset
       - asset_details
       - date
       - id
       - reason
+      - replaced_by
       - replaced_by_details
       - replacement_asset_details
     ReplacementLogRequest:
@@ -10228,10 +10682,68 @@ components:
           type: string
           minLength: 1
           description: Reason for replacement
-        replaced_by:
-          type: integer
+        date:
+          type: string
+          format: date
+          description: Date when the replacement occurred
+        asset_status_before:
           nullable: true
-          description: Who performed the replacement
+          description: |-
+            Asset status before the replacement or maintenance event
+
+            * `active` - Active
+            * `maintenance` - Maintenance
+            * `retired` - Retired
+            * `lost` - Lost
+            * `returned` - Returned
+            * `damaged` - Damaged
+          oneOf:
+          - $ref: '#/components/schemas/StatusEnum'
+          - $ref: '#/components/schemas/BlankEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        asset_status_after:
+          nullable: true
+          description: |-
+            Asset status after the replacement or maintenance event
+
+            * `active` - Active
+            * `maintenance` - Maintenance
+            * `retired` - Retired
+            * `lost` - Lost
+            * `returned` - Returned
+            * `damaged` - Damaged
+          oneOf:
+          - $ref: '#/components/schemas/StatusEnum'
+          - $ref: '#/components/schemas/BlankEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        asset_condition_before:
+          nullable: true
+          description: |-
+            Asset condition before the replacement or maintenance event
+
+            * `excellent` - Excellent
+            * `good` - Good
+            * `fair` - Fair
+            * `poor` - Poor
+            * `damaged` - Damaged
+          oneOf:
+          - $ref: '#/components/schemas/ConditionEnum'
+          - $ref: '#/components/schemas/BlankEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        asset_condition_after:
+          nullable: true
+          description: |-
+            Asset condition after the replacement or maintenance event
+
+            * `excellent` - Excellent
+            * `good` - Good
+            * `fair` - Fair
+            * `poor` - Poor
+            * `damaged` - Damaged
+          oneOf:
+          - $ref: '#/components/schemas/ConditionEnum'
+          - $ref: '#/components/schemas/BlankEnum'
+          - $ref: '#/components/schemas/NullEnum'
         replacement_asset:
           type: integer
           nullable: true
@@ -10244,7 +10756,91 @@ components:
           description: Cost of replacement
       required:
       - asset
+      - date
       - reason
+    ReplacementLogUpdateRequest:
+      type: object
+      description: Request serializer for partial replacement-log updates.
+      properties:
+        asset:
+          type: integer
+          description: Asset that was replaced
+        reason:
+          type: string
+          minLength: 1
+          description: Reason for replacement
+        date:
+          type: string
+          format: date
+          description: Date when the replacement occurred
+        asset_status_before:
+          nullable: true
+          description: |-
+            Asset status before the replacement or maintenance event
+
+            * `active` - Active
+            * `maintenance` - Maintenance
+            * `retired` - Retired
+            * `lost` - Lost
+            * `returned` - Returned
+            * `damaged` - Damaged
+          oneOf:
+          - $ref: '#/components/schemas/StatusEnum'
+          - $ref: '#/components/schemas/BlankEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        asset_status_after:
+          nullable: true
+          description: |-
+            Asset status after the replacement or maintenance event
+
+            * `active` - Active
+            * `maintenance` - Maintenance
+            * `retired` - Retired
+            * `lost` - Lost
+            * `returned` - Returned
+            * `damaged` - Damaged
+          oneOf:
+          - $ref: '#/components/schemas/StatusEnum'
+          - $ref: '#/components/schemas/BlankEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        asset_condition_before:
+          nullable: true
+          description: |-
+            Asset condition before the replacement or maintenance event
+
+            * `excellent` - Excellent
+            * `good` - Good
+            * `fair` - Fair
+            * `poor` - Poor
+            * `damaged` - Damaged
+          oneOf:
+          - $ref: '#/components/schemas/ConditionEnum'
+          - $ref: '#/components/schemas/BlankEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        asset_condition_after:
+          nullable: true
+          description: |-
+            Asset condition after the replacement or maintenance event
+
+            * `excellent` - Excellent
+            * `good` - Good
+            * `fair` - Fair
+            * `poor` - Poor
+            * `damaged` - Damaged
+          oneOf:
+          - $ref: '#/components/schemas/ConditionEnum'
+          - $ref: '#/components/schemas/BlankEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        replacement_asset:
+          type: integer
+          nullable: true
+          description: New asset that replaced this one
+        cost:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+          description: Cost of replacement
     RequestSignatureRequest:
       type: object
       properties:
@@ -10362,6 +10958,228 @@ components:
       required:
       - id
       - name
+    ScheduledMaintenance:
+      type: object
+      description: Serializer for one-off scheduled asset maintenance.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        asset:
+          type: integer
+          description: Asset that needs maintenance
+        due_date:
+          type: string
+          format: date
+          description: Date when maintenance is due
+        due_state:
+          type: string
+          readOnly: true
+        reason:
+          type: string
+          description: Reason maintenance is needed
+        maintenance_type:
+          allOf:
+          - $ref: '#/components/schemas/MaintenanceTypeEnum'
+          description: |-
+            Type of scheduled maintenance
+
+            * `preventive` - Preventive
+            * `repair` - Repair
+            * `inspection` - Inspection
+            * `warranty` - Warranty
+            * `replacement` - Replacement
+            * `other` - Other
+        owner:
+          type: integer
+          nullable: true
+          description: Optional person responsible for the maintenance
+        estimated_cost:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+          description: Estimated cost of the scheduled maintenance
+        vendor:
+          type: string
+          description: Optional external vendor or service provider
+          maxLength: 200
+        status:
+          allOf:
+          - $ref: '#/components/schemas/ScheduledMaintenanceStatusEnum'
+          readOnly: true
+          description: |-
+            Scheduled maintenance lifecycle status
+
+            * `scheduled` - Scheduled
+            * `completed` - Completed
+            * `cancelled` - Cancelled
+        cancelled_reason:
+          type: string
+          readOnly: true
+          description: Optional reason the scheduled maintenance was cancelled
+        completed_log:
+          type: integer
+          readOnly: true
+          nullable: true
+          description: Historical maintenance log created when this schedule is completed
+        created_by:
+          type: integer
+          readOnly: true
+          nullable: true
+          description: User who created the scheduled maintenance
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        asset_details:
+          allOf:
+          - $ref: '#/components/schemas/Asset'
+          readOnly: true
+        owner_details:
+          allOf:
+          - $ref: '#/components/schemas/UserProfile'
+          readOnly: true
+          nullable: true
+        created_by_details:
+          allOf:
+          - $ref: '#/components/schemas/UserProfile'
+          readOnly: true
+          nullable: true
+        completed_log_details:
+          allOf:
+          - $ref: '#/components/schemas/ReplacementLog'
+          readOnly: true
+          nullable: true
+      required:
+      - asset
+      - asset_details
+      - cancelled_reason
+      - completed_log
+      - completed_log_details
+      - created_at
+      - created_by
+      - created_by_details
+      - due_date
+      - due_state
+      - id
+      - maintenance_type
+      - owner_details
+      - reason
+      - status
+      - updated_at
+    ScheduledMaintenanceCancelRequest:
+      type: object
+      description: Request serializer for cancelling scheduled maintenance.
+      properties:
+        cancelled_reason:
+          type: string
+          default: ''
+    ScheduledMaintenanceCompleteRequest:
+      type: object
+      description: Request serializer for completing scheduled maintenance.
+      properties:
+        date:
+          type: string
+          format: date
+        reason:
+          type: string
+          minLength: 1
+        cost:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+        asset_status_before:
+          nullable: true
+          oneOf:
+          - $ref: '#/components/schemas/StatusEnum'
+          - $ref: '#/components/schemas/BlankEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        asset_status_after:
+          nullable: true
+          oneOf:
+          - $ref: '#/components/schemas/StatusEnum'
+          - $ref: '#/components/schemas/BlankEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        asset_condition_before:
+          nullable: true
+          oneOf:
+          - $ref: '#/components/schemas/ConditionEnum'
+          - $ref: '#/components/schemas/BlankEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        asset_condition_after:
+          nullable: true
+          oneOf:
+          - $ref: '#/components/schemas/ConditionEnum'
+          - $ref: '#/components/schemas/BlankEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        replacement_asset:
+          type: integer
+          nullable: true
+      required:
+      - date
+      - reason
+    ScheduledMaintenanceRequest:
+      type: object
+      description: Serializer for one-off scheduled asset maintenance.
+      properties:
+        asset:
+          type: integer
+          description: Asset that needs maintenance
+        due_date:
+          type: string
+          format: date
+          description: Date when maintenance is due
+        reason:
+          type: string
+          minLength: 1
+          description: Reason maintenance is needed
+        maintenance_type:
+          allOf:
+          - $ref: '#/components/schemas/MaintenanceTypeEnum'
+          description: |-
+            Type of scheduled maintenance
+
+            * `preventive` - Preventive
+            * `repair` - Repair
+            * `inspection` - Inspection
+            * `warranty` - Warranty
+            * `replacement` - Replacement
+            * `other` - Other
+        owner:
+          type: integer
+          nullable: true
+          description: Optional person responsible for the maintenance
+        estimated_cost:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+          description: Estimated cost of the scheduled maintenance
+        vendor:
+          type: string
+          description: Optional external vendor or service provider
+          maxLength: 200
+      required:
+      - asset
+      - due_date
+      - maintenance_type
+      - reason
+    ScheduledMaintenanceStatusEnum:
+      enum:
+      - scheduled
+      - completed
+      - cancelled
+      type: string
+      description: |-
+        * `scheduled` - Scheduled
+        * `completed` - Completed
+        * `cancelled` - Cancelled
     SignDocumentRequest:
       type: object
       properties:
@@ -10452,12 +11270,16 @@ components:
     StatusEnum:
       enum:
       - active
+      - maintenance
+      - retired
       - lost
       - returned
       - damaged
       type: string
       description: |-
         * `active` - Active
+        * `maintenance` - Maintenance
+        * `retired` - Retired
         * `lost` - Lost
         * `returned` - Returned
         * `damaged` - Damaged

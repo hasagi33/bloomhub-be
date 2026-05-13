@@ -43,6 +43,10 @@ from .views import (
     ReplacementLogListView,
     ReturnRequestListView,
     RoleListView,
+    ScheduledMaintenanceCancelView,
+    ScheduledMaintenanceCompleteView,
+    ScheduledMaintenanceDetailView,
+    ScheduledMaintenanceListView,
     SessionView,
     TokenRefreshViewCustom,
     TrainingEntryViewSet,
@@ -155,6 +159,26 @@ urlpatterns = [
         "replacement-logs/<int:pk>/",
         ReplacementLogDetailView.as_view(),
         name="replacement_log_detail",
+    ),
+    path(
+        "scheduled-maintenance/",
+        ScheduledMaintenanceListView.as_view(),
+        name="scheduled_maintenance_list",
+    ),
+    path(
+        "scheduled-maintenance/<int:pk>/",
+        ScheduledMaintenanceDetailView.as_view(),
+        name="scheduled_maintenance_detail",
+    ),
+    path(
+        "scheduled-maintenance/<int:pk>/complete/",
+        ScheduledMaintenanceCompleteView.as_view(),
+        name="scheduled_maintenance_complete",
+    ),
+    path(
+        "scheduled-maintenance/<int:pk>/cancel/",
+        ScheduledMaintenanceCancelView.as_view(),
+        name="scheduled_maintenance_cancel",
     ),
     path("user-profiles/", UserProfileListView.as_view(), name="user_profile_list"),
     # Reference data endpoints

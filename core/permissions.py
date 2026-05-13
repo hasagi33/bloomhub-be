@@ -15,6 +15,7 @@ ASSET_PERMISSION_KEYS = [
     "initiate_asset_return",
     "process_asset_return",
     "log_asset_lost",
+    "log_asset_replacement",
     "generate_qr_codes",
     "view_asset_history",
     "configure_asset_types",
@@ -107,6 +108,15 @@ def get_asset_scope(user) -> str:
     return "none"
 
 
+def can_view_asset_maintenance_logs(user) -> bool:
+    """Allow historical maintenance logs only to asset history users above own scope."""
+    if not has_asset_permission(user, "view_asset_history"):
+        return False
+    return get_asset_scope(user) in {"all", "team"} or has_asset_permission(
+        user, "log_asset_replacement"
+    )
+
+
 def get_asset_capabilities(user) -> dict[str, bool]:
     return {
         "can_view_any_assets": get_asset_scope(user) != "none",
@@ -117,7 +127,10 @@ def get_asset_capabilities(user) -> dict[str, bool]:
         "can_request_return": has_asset_permission(user, "initiate_asset_return"),
         "can_process_return": has_asset_permission(user, "process_asset_return"),
         "can_export_inventory": has_asset_permission(user, "export_inventory"),
-        "can_view_asset_history": has_asset_permission(user, "view_asset_history"),
+        "can_view_asset_history": can_view_asset_maintenance_logs(user),
+        "can_log_asset_replacement": has_asset_permission(
+            user, "log_asset_replacement"
+        ),
         "can_update_asset_condition": has_asset_permission(
             user, "update_asset_condition"
         )
@@ -186,7 +199,8 @@ def get_asset_object_capabilities(user, asset) -> dict[str, bool]:
         "can_assign": can_assign and asset.is_available,
         "can_request_return": can_request_return,
         "can_process_return": can_process_return,
-        "can_view_history": has_asset_permission(user, "view_asset_history"),
+        "can_view_history": can_view_asset_maintenance_logs(user),
+        "can_log_replacement": has_asset_permission(user, "log_asset_replacement"),
         "can_update_condition": can_update_condition,
     }
 

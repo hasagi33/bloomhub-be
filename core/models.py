@@ -1081,8 +1081,34 @@ class ReplacementLog(models.Model):
         help_text="Asset that was replaced",
     )
     reason = models.TextField(help_text="Reason for replacement")
-    date = models.DateTimeField(
-        auto_now_add=True, help_text="When the replacement occurred"
+    date = models.DateField(help_text="Date when the replacement occurred")
+    asset_status_before = models.CharField(
+        max_length=20,
+        choices=AssetStatus.choices,
+        null=True,
+        blank=True,
+        help_text="Asset status before the replacement or maintenance event",
+    )
+    asset_status_after = models.CharField(
+        max_length=20,
+        choices=AssetStatus.choices,
+        null=True,
+        blank=True,
+        help_text="Asset status after the replacement or maintenance event",
+    )
+    asset_condition_before = models.CharField(
+        max_length=20,
+        choices=AssetCondition.choices,
+        null=True,
+        blank=True,
+        help_text="Asset condition before the replacement or maintenance event",
+    )
+    asset_condition_after = models.CharField(
+        max_length=20,
+        choices=AssetCondition.choices,
+        null=True,
+        blank=True,
+        help_text="Asset condition after the replacement or maintenance event",
     )
 
     # Additional useful fields
@@ -1117,9 +1143,114 @@ class ReplacementLog(models.Model):
         ordering = ["-date"]
 
     def __str__(self):
-        return (
-            f"{self.asset.asset_id} replaced on {self.date.date()} - {self.reason[:50]}"
-        )
+        return f"{self.asset.asset_id} replaced on {self.date} - {self.reason[:50]}"
+
+
+class ScheduledMaintenance(models.Model):
+    """One-off planned maintenance event for an asset."""
+
+    class MaintenanceType(models.TextChoices):
+        PREVENTIVE = "preventive", "Preventive"
+        REPAIR = "repair", "Repair"
+        INSPECTION = "inspection", "Inspection"
+        WARRANTY = "warranty", "Warranty"
+        REPLACEMENT = "replacement", "Replacement"
+        OTHER = "other", "Other"
+
+    class Status(models.TextChoices):
+        SCHEDULED = "scheduled", "Scheduled"
+        COMPLETED = "completed", "Completed"
+        CANCELLED = "cancelled", "Cancelled"
+
+    asset = models.ForeignKey(
+        Asset,
+        on_delete=models.CASCADE,
+        related_name="scheduled_maintenance",
+        help_text="Asset that needs maintenance",
+    )
+    due_date = models.DateField(help_text="Date when maintenance is due")
+    reason = models.TextField(help_text="Reason maintenance is needed")
+    maintenance_type = models.CharField(
+        max_length=20,
+        choices=MaintenanceType.choices,
+        help_text="Type of scheduled maintenance",
+    )
+    owner = models.ForeignKey(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="owned_scheduled_maintenance",
+        help_text="Optional person responsible for the maintenance",
+    )
+    estimated_cost = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(Decimal("0.01"))],
+        help_text="Estimated cost of the scheduled maintenance",
+    )
+    vendor = models.CharField(
+        max_length=200,
+        blank=True,
+        default="",
+        help_text="Optional external vendor or service provider",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.SCHEDULED,
+        help_text="Scheduled maintenance lifecycle status",
+    )
+    cancelled_reason = models.TextField(
+        blank=True,
+        default="",
+        help_text="Optional reason the scheduled maintenance was cancelled",
+    )
+    completed_log = models.OneToOneField(
+        ReplacementLog,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="scheduled_maintenance",
+        help_text="Historical maintenance log created when this schedule is completed",
+    )
+    created_by = models.ForeignKey(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_scheduled_maintenance",
+        help_text="User who created the scheduled maintenance",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Scheduled Maintenance"
+        verbose_name_plural = "Scheduled Maintenance"
+        ordering = ["due_date", "-created_at"]
+        indexes = [
+            models.Index(fields=["status", "due_date"]),
+            models.Index(fields=["asset", "status"]),
+            models.Index(fields=["owner", "status"]),
+            models.Index(fields=["maintenance_type", "due_date"]),
+        ]
+
+    @property
+    def due_state(self):
+        if self.status != self.Status.SCHEDULED:
+            return None
+        today = timezone.localdate()
+        if self.due_date < today:
+            return "overdue"
+        if self.due_date == today:
+            return "due_today"
+        return "upcoming"
+
+    def __str__(self):
+        return f"{self.asset.asset_id} maintenance due {self.due_date}"
 
 
 @receiver(post_save, sender=User)

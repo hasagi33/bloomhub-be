@@ -16,6 +16,8 @@ class TestSuperuserPermissions:
 
     def test_superuser_gets_all_permissions(self):
         """When a superuser is created, their profile should have all permissions."""
+        initial_permission_count = Permission.objects.count()
+
         # Create some permissions first
         for i in range(5):
             Permission.objects.create(
@@ -24,7 +26,7 @@ class TestSuperuserPermissions:
             )
 
         total_permissions = Permission.objects.count()
-        assert total_permissions == 5 + len(DEFAULT_ASSET_PERMISSION_ACTIONS)
+        assert total_permissions == initial_permission_count + 5
 
         # Create a superuser
         superuser = User.objects.create_superuser(

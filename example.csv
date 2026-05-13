@@ -131,8 +131,9 @@ EMP,Asset Management,track_warranty,NO,override
 EMP,Asset Management,initiate_asset_return,YES,override
 EMP,Asset Management,process_asset_return,NO,override
 EMP,Asset Management,log_asset_lost,YES,override
+EMP,Asset Management,log_asset_replacement,NO,override
 EMP,Asset Management,generate_qr_codes,NO,override
-EMP,Asset Management,view_asset_history,YES,override
+EMP,Asset Management,view_asset_history,NO,override
 EMP,Asset Management,configure_asset_types,NO,override
 EMP,Asset Management,export_inventory,NO,override
 EMP,Org Chart,view_org_chart,YES,override

@@ -103,6 +103,8 @@ class DocumentSignerStatus(models.TextChoices):
 
 class AssetStatus(models.TextChoices):
     ACTIVE = "active", "Active"
+    MAINTENANCE = "maintenance", "Maintenance"
+    RETIRED = "retired", "Retired"
     LOST = "lost", "Lost"
     RETURNED = "returned", "Returned"
     DAMAGED = "damaged", "Damaged"

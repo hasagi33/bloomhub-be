@@ -133,8 +133,9 @@ EMP,Asset Management,track_warranty,NO,override
 EMP,Asset Management,initiate_asset_return,YES,override
 EMP,Asset Management,process_asset_return,NO,override
 EMP,Asset Management,log_asset_lost,YES,override
+EMP,Asset Management,log_asset_replacement,NO,override
 EMP,Asset Management,generate_qr_codes,NO,override
-EMP,Asset Management,view_asset_history,YES,override
+EMP,Asset Management,view_asset_history,NO,override
 EMP,Asset Management,configure_asset_types,NO,override
 EMP,Asset Management,export_inventory,NO,override
 EMP,Org Chart,view_org_chart,YES,override
@@ -318,6 +319,7 @@ MGR,Asset Management,track_warranty,NO,override
 MGR,Asset Management,initiate_asset_return,YES,override
 MGR,Asset Management,process_asset_return,NO,override
 MGR,Asset Management,log_asset_lost,YES,override
+MGR,Asset Management,log_asset_replacement,NO,override
 MGR,Asset Management,generate_qr_codes,NO,override
 MGR,Asset Management,view_asset_history,YES,override
 MGR,Asset Management,configure_asset_types,NO,override
@@ -503,6 +505,7 @@ HR,Asset Management,track_warranty,YES,override
 HR,Asset Management,initiate_asset_return,YES,override
 HR,Asset Management,process_asset_return,YES,override
 HR,Asset Management,log_asset_lost,YES,override
+HR,Asset Management,log_asset_replacement,YES,override
 HR,Asset Management,generate_qr_codes,YES,override
 HR,Asset Management,view_asset_history,YES,override
 HR,Asset Management,configure_asset_types,YES,override
@@ -688,6 +691,7 @@ HR-MGR,Asset Management,track_warranty,YES,override
 HR-MGR,Asset Management,initiate_asset_return,YES,override
 HR-MGR,Asset Management,process_asset_return,YES,override
 HR-MGR,Asset Management,log_asset_lost,YES,override
+HR-MGR,Asset Management,log_asset_replacement,YES,override
 HR-MGR,Asset Management,generate_qr_codes,YES,override
 HR-MGR,Asset Management,view_asset_history,YES,override
 HR-MGR,Asset Management,configure_asset_types,YES,override
@@ -873,6 +877,7 @@ ADMIN,Asset Management,track_warranty,YES,override
 ADMIN,Asset Management,initiate_asset_return,YES,override
 ADMIN,Asset Management,process_asset_return,YES,override
 ADMIN,Asset Management,log_asset_lost,YES,override
+ADMIN,Asset Management,log_asset_replacement,YES,override
 ADMIN,Asset Management,generate_qr_codes,YES,override
 ADMIN,Asset Management,view_asset_history,YES,override
 ADMIN,Asset Management,configure_asset_types,YES,override

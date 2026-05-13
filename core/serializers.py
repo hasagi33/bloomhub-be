@@ -1,3 +1,4 @@
+from decimal import Decimal
 from typing import Any
 
 from django.contrib.auth.models import User
@@ -47,6 +48,7 @@ from core.models import (
     ProjectAssignment,
     ReplacementLog,
     SalaryRecord,
+    ScheduledMaintenance,
     TaskTemplate,
     TechnologyTag,
     TemplateField,
@@ -875,9 +877,11 @@ class ReplacementLogSerializer(serializers.ModelSerializer):
 
     asset_details = AssetSerializer(source="asset", read_only=True)
     replacement_asset_details = AssetSerializer(
-        source="replacement_asset", read_only=True
+        source="replacement_asset", read_only=True, allow_null=True
     )
-    replaced_by_details = UserProfileSerializer(source="replaced_by", read_only=True)
+    replaced_by_details = UserProfileSerializer(
+        source="replaced_by", read_only=True, allow_null=True
+    )
 
     class Meta:
         model = ReplacementLog
@@ -886,6 +890,10 @@ class ReplacementLogSerializer(serializers.ModelSerializer):
             "asset",
             "reason",
             "date",
+            "asset_status_before",
+            "asset_status_after",
+            "asset_condition_before",
+            "asset_condition_after",
             "replaced_by",
             "replacement_asset",
             "cost",
@@ -893,7 +901,142 @@ class ReplacementLogSerializer(serializers.ModelSerializer):
             "replacement_asset_details",
             "replaced_by_details",
         ]
-        read_only_fields = ["date"]
+        read_only_fields = ["replaced_by"]
+
+    def create(self, validated_data):
+        asset = validated_data.get("asset")
+        if asset:
+            validated_data.setdefault("asset_status_before", asset.status)
+            validated_data.setdefault("asset_condition_before", asset.condition)
+        return super().create(validated_data)
+
+
+class ReplacementLogUpdateSerializer(serializers.ModelSerializer):
+    """Request serializer for partial replacement-log updates."""
+
+    class Meta:
+        model = ReplacementLog
+        fields = [
+            "asset",
+            "reason",
+            "date",
+            "asset_status_before",
+            "asset_status_after",
+            "asset_condition_before",
+            "asset_condition_after",
+            "replacement_asset",
+            "cost",
+        ]
+        extra_kwargs = {
+            "asset": {"required": False},
+            "reason": {"required": False},
+            "date": {"required": False},
+            "asset_status_before": {"required": False},
+            "asset_status_after": {"required": False},
+            "asset_condition_before": {"required": False},
+            "asset_condition_after": {"required": False},
+            "replacement_asset": {"required": False},
+            "cost": {"required": False},
+        }
+
+
+class ScheduledMaintenanceSerializer(serializers.ModelSerializer):
+    """Serializer for one-off scheduled asset maintenance."""
+
+    asset_details = AssetSerializer(source="asset", read_only=True)
+    owner_details = UserProfileSerializer(
+        source="owner", read_only=True, allow_null=True
+    )
+    created_by_details = UserProfileSerializer(
+        source="created_by", read_only=True, allow_null=True
+    )
+    completed_log_details = ReplacementLogSerializer(
+        source="completed_log", read_only=True, allow_null=True
+    )
+    due_state = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = ScheduledMaintenance
+        fields = [
+            "id",
+            "asset",
+            "due_date",
+            "due_state",
+            "reason",
+            "maintenance_type",
+            "owner",
+            "estimated_cost",
+            "vendor",
+            "status",
+            "cancelled_reason",
+            "completed_log",
+            "created_by",
+            "created_at",
+            "updated_at",
+            "asset_details",
+            "owner_details",
+            "created_by_details",
+            "completed_log_details",
+        ]
+        read_only_fields = [
+            "status",
+            "cancelled_reason",
+            "completed_log",
+            "created_by",
+            "created_at",
+            "updated_at",
+        ]
+
+    def validate(self, attrs):
+        instance = getattr(self, "instance", None)
+        if instance and instance.status != ScheduledMaintenance.Status.SCHEDULED:
+            raise serializers.ValidationError(
+                "Completed or cancelled scheduled maintenance cannot be edited."
+            )
+        return attrs
+
+
+class ScheduledMaintenanceCompleteSerializer(serializers.Serializer):
+    """Request serializer for completing scheduled maintenance."""
+
+    date = serializers.DateField()
+    reason = serializers.CharField()
+    cost = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        min_value=Decimal("0.01"),
+        required=False,
+        allow_null=True,
+    )
+    asset_status_before = serializers.ChoiceField(
+        choices=AssetStatus.choices, required=False, allow_null=True, allow_blank=True
+    )
+    asset_status_after = serializers.ChoiceField(
+        choices=AssetStatus.choices, required=False, allow_null=True, allow_blank=True
+    )
+    asset_condition_before = serializers.ChoiceField(
+        choices=AssetCondition.choices,
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+    )
+    asset_condition_after = serializers.ChoiceField(
+        choices=AssetCondition.choices,
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+    )
+    replacement_asset = serializers.PrimaryKeyRelatedField(
+        queryset=Asset.objects.all(), required=False, allow_null=True
+    )
+
+
+class ScheduledMaintenanceCancelSerializer(serializers.Serializer):
+    """Request serializer for cancelling scheduled maintenance."""
+
+    cancelled_reason = serializers.CharField(
+        required=False, allow_blank=True, default=""
+    )
 
 
 class AssetCreateSerializer(serializers.ModelSerializer):
