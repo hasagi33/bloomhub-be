@@ -63,6 +63,7 @@ from .models import (
     LeavePolicy,
     LeaveRequest,
     Notification,
+    PeerSession,
     PerformanceReview,
     PerformanceReviewActionPoint,
     PerformanceReviewAttachment,
@@ -148,6 +149,9 @@ from .serializers import (
     LeaveTeamMemberSerializer,
     LoginSerializer,
     NotificationSerializer,
+    PeerSessionCreateUpdateSerializer,
+    PeerSessionDetailSerializer,
+    PeerSessionListSerializer,
     PerformanceReviewActionPointSerializer,
     PerformanceReviewAttachmentSerializer,
     PerformanceReviewCreateUpdateSerializer,
@@ -5390,6 +5394,106 @@ class TrainingEntryViewSet(viewsets.ModelViewSet):
             serializer = self.get_serializer(page, many=True)
             return self.get_paginated_response(serializer.data)
 
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+
+@extend_schema(tags=["Training & Development"])
+class PeerSessionViewSet(viewsets.ModelViewSet):
+    """
+    CRUD for peer-to-peer learning sessions.
+
+    Employees can log/view their own sessions; HR/admins can manage any
+    employee's sessions and filter by employee via the ``employee`` query
+    parameter.
+    """
+
+    permission_classes = [IsAuthenticated]
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.SearchFilter,
+        filters.OrderingFilter,
+    ]
+    filterset_fields = ["employee"]
+    search_fields = [
+        "topic",
+        "description",
+        "employee__user__first_name",
+        "employee__user__last_name",
+    ]
+    ordering_fields = ["session_date", "created_at"]
+    ordering = ["-session_date"]
+
+    def get_queryset(self):
+        user = self.request.user
+        base = PeerSession.objects.select_related("employee__user")
+        if user.is_staff or user.is_superuser:
+            return base
+        try:
+            return base.filter(employee=user.profile)
+        except Exception:
+            return PeerSession.objects.none()
+
+    def get_serializer_class(self):
+        if self.action == "list":
+            return PeerSessionListSerializer
+        if self.action == "retrieve":
+            return PeerSessionDetailSerializer
+        return PeerSessionCreateUpdateSerializer
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        employee = user.profile
+        if user.is_staff or user.is_superuser:
+            employee_id = self.request.data.get("employee_id")
+            if employee_id:
+                try:
+                    employee = UserProfile.objects.get(id=employee_id)
+                except UserProfile.DoesNotExist:
+                    pass
+        self.created_instance = serializer.save(employee=employee)
+
+    def create(self, request, *args, **kwargs):
+        response = super().create(request, *args, **kwargs)
+        if response.status_code == status.HTTP_201_CREATED and hasattr(
+            self, "created_instance"
+        ):
+            response.data = PeerSessionDetailSerializer(self.created_instance).data
+        return response
+
+    def update(self, request, *args, **kwargs):
+        response = super().update(request, *args, **kwargs)
+        if response.status_code == status.HTTP_200_OK:
+            response.data = PeerSessionDetailSerializer(self.get_object()).data
+        return response
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="year",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description="Filter by year of session_date (e.g., 2024)",
+                required=False,
+            ),
+        ],
+        responses={200: PeerSessionListSerializer(many=True)},
+        description="List peer sessions with optional year filter",
+    )
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        year_filter = request.query_params.get("year")
+        if year_filter:
+            try:
+                year = int(year_filter)
+                queryset = queryset.filter(session_date__year=year)
+            except (ValueError, TypeError):
+                pass
+        queryset = self.filter_queryset(queryset)
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 

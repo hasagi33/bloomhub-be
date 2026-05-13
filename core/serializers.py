@@ -2676,13 +2676,17 @@ class PeerSessionListSerializer(serializers.ModelSerializer):
             "topic",
             "session_date",
             "duration_minutes",
+            "incentive_id",
+            "description",
             "created_at",
+            "updated_at",
         ]
         read_only_fields = [
             "id",
             "employee_id",
             "employee_name",
             "created_at",
+            "updated_at",
         ]
 
 
@@ -2715,6 +2719,33 @@ class PeerSessionDetailSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+
+
+class PeerSessionCreateUpdateSerializer(serializers.ModelSerializer):
+    """Serializer used for creating/updating peer sessions."""
+
+    class Meta:
+        model = PeerSession
+        fields = [
+            "topic",
+            "session_date",
+            "duration_minutes",
+            "incentive_id",
+            "description",
+        ]
+
+    def validate_topic(self, value):
+        value = (value or "").strip()
+        if not value:
+            raise serializers.ValidationError("Topic is required.")
+        return value
+
+    def validate_duration_minutes(self, value):
+        if value is not None and value <= 0:
+            raise serializers.ValidationError(
+                "Duration must be a positive number of minutes."
+            )
+        return value
 
 
 # ──────────────────────────────────────────────────────────────────────────────

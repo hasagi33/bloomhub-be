@@ -34,6 +34,7 @@ from .views import (
     LoginView,
     LogoutView,
     NotificationViewSet,
+    PeerSessionViewSet,
     PerformanceReviewReminderViewSet,
     PerformanceReviewViewSet,
     PermissionsView,
@@ -91,6 +92,7 @@ router.register(
     basename="performance-review-reminder",
 )
 router.register(r"training-entries", TrainingEntryViewSet, basename="training-entry")
+router.register(r"peer-sessions", PeerSessionViewSet, basename="peer-session")
 router.register(r"certificates", CertificateViewSet, basename="certificate")
 router.register(
     r"conference-course-registrations",

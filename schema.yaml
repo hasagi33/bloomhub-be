@@ -4691,6 +4691,200 @@ paths:
               schema:
                 $ref: '#/components/schemas/ChecklistTemplate'
           description: ''
+  /api/peer-sessions/:
+    get:
+      operationId: peer_sessions_list
+      description: List peer sessions with optional year filter
+      parameters:
+      - in: query
+        name: employee
+        schema:
+          type: integer
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      - in: query
+        name: year
+        schema:
+          type: integer
+        description: Filter by year of session_date (e.g., 2024)
+      tags:
+      - Training & Development
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PeerSessionList'
+          description: ''
+    post:
+      operationId: peer_sessions_create
+      description: |-
+        CRUD for peer-to-peer learning sessions.
+
+        Employees can log/view their own sessions; HR/admins can manage any
+        employee's sessions and filter by employee via the ``employee`` query
+        parameter.
+      tags:
+      - Training & Development
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PeerSessionCreateUpdateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PeerSessionCreateUpdateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PeerSessionCreateUpdateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PeerSessionCreateUpdate'
+          description: ''
+  /api/peer-sessions/{id}/:
+    get:
+      operationId: peer_sessions_retrieve
+      description: |-
+        CRUD for peer-to-peer learning sessions.
+
+        Employees can log/view their own sessions; HR/admins can manage any
+        employee's sessions and filter by employee via the ``employee`` query
+        parameter.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Peer Session.
+        required: true
+      tags:
+      - Training & Development
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PeerSessionDetail'
+          description: ''
+    put:
+      operationId: peer_sessions_update
+      description: |-
+        CRUD for peer-to-peer learning sessions.
+
+        Employees can log/view their own sessions; HR/admins can manage any
+        employee's sessions and filter by employee via the ``employee`` query
+        parameter.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Peer Session.
+        required: true
+      tags:
+      - Training & Development
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PeerSessionCreateUpdateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PeerSessionCreateUpdateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PeerSessionCreateUpdateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PeerSessionCreateUpdate'
+          description: ''
+    patch:
+      operationId: peer_sessions_partial_update
+      description: |-
+        CRUD for peer-to-peer learning sessions.
+
+        Employees can log/view their own sessions; HR/admins can manage any
+        employee's sessions and filter by employee via the ``employee`` query
+        parameter.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Peer Session.
+        required: true
+      tags:
+      - Training & Development
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedPeerSessionCreateUpdateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedPeerSessionCreateUpdateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedPeerSessionCreateUpdateRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PeerSessionCreateUpdate'
+          description: ''
+    delete:
+      operationId: peer_sessions_destroy
+      description: |-
+        CRUD for peer-to-peer learning sessions.
+
+        Employees can log/view their own sessions; HR/admins can manage any
+        employee's sessions and filter by employee via the ``employee`` query
+        parameter.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Peer Session.
+        required: true
+      tags:
+      - Training & Development
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
   /api/performance-review-reminders/:
     get:
       operationId: performance_review_reminders_list
@@ -9384,6 +9578,37 @@ components:
           minLength: 1
         status:
           $ref: '#/components/schemas/Status5c0Enum'
+    PatchedPeerSessionCreateUpdateRequest:
+      type: object
+      description: Serializer used for creating/updating peer sessions.
+      properties:
+        topic:
+          type: string
+          minLength: 1
+          description: Topic or skill shared in the session
+          maxLength: 255
+        session_date:
+          type: string
+          format: date
+          description: Date when the peer session occurred
+        duration_minutes:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+          nullable: true
+          description: Duration of the session in minutes
+        incentive_id:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+          nullable: true
+          description: Reference to associated incentive (FK when model exists)
+        description:
+          type: string
+          nullable: true
+          description: Additional details about the session
     PatchedPerformanceReviewActionPointRequest:
       type: object
       properties:
@@ -9681,6 +9906,183 @@ components:
           type: integer
           maximum: 2147483647
           minimum: 0
+    PeerSessionCreateUpdate:
+      type: object
+      description: Serializer used for creating/updating peer sessions.
+      properties:
+        topic:
+          type: string
+          description: Topic or skill shared in the session
+          maxLength: 255
+        session_date:
+          type: string
+          format: date
+          description: Date when the peer session occurred
+        duration_minutes:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+          nullable: true
+          description: Duration of the session in minutes
+        incentive_id:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+          nullable: true
+          description: Reference to associated incentive (FK when model exists)
+        description:
+          type: string
+          nullable: true
+          description: Additional details about the session
+      required:
+      - session_date
+      - topic
+    PeerSessionCreateUpdateRequest:
+      type: object
+      description: Serializer used for creating/updating peer sessions.
+      properties:
+        topic:
+          type: string
+          minLength: 1
+          description: Topic or skill shared in the session
+          maxLength: 255
+        session_date:
+          type: string
+          format: date
+          description: Date when the peer session occurred
+        duration_minutes:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+          nullable: true
+          description: Duration of the session in minutes
+        incentive_id:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+          nullable: true
+          description: Reference to associated incentive (FK when model exists)
+        description:
+          type: string
+          nullable: true
+          description: Additional details about the session
+      required:
+      - session_date
+      - topic
+    PeerSessionDetail:
+      type: object
+      description: Detailed serializer for single peer session view.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        employee_id:
+          type: integer
+          readOnly: true
+        employee_name:
+          type: string
+          readOnly: true
+        topic:
+          type: string
+          description: Topic or skill shared in the session
+          maxLength: 255
+        session_date:
+          type: string
+          format: date
+          description: Date when the peer session occurred
+        duration_minutes:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+          nullable: true
+          description: Duration of the session in minutes
+        incentive_id:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+          nullable: true
+          description: Reference to associated incentive (FK when model exists)
+        description:
+          type: string
+          nullable: true
+          description: Additional details about the session
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - employee_id
+      - employee_name
+      - id
+      - session_date
+      - topic
+      - updated_at
+    PeerSessionList:
+      type: object
+      description: Simplified serializer for peer session lists.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        employee_id:
+          type: integer
+          readOnly: true
+        employee_name:
+          type: string
+          readOnly: true
+        topic:
+          type: string
+          description: Topic or skill shared in the session
+          maxLength: 255
+        session_date:
+          type: string
+          format: date
+          description: Date when the peer session occurred
+        duration_minutes:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+          nullable: true
+          description: Duration of the session in minutes
+        incentive_id:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+          nullable: true
+          description: Reference to associated incentive (FK when model exists)
+        description:
+          type: string
+          nullable: true
+          description: Additional details about the session
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - employee_id
+      - employee_name
+      - id
+      - session_date
+      - topic
+      - updated_at
     PerformanceReviewActionPoint:
       type: object
       properties:
