@@ -1,5 +1,7 @@
 # core/constants.py
 
+from decimal import Decimal
+
 REGISTER_FIELDS = [
     "username",
     "email",
@@ -72,6 +74,8 @@ DOCUMENT_ROLE_RANK_ADMIN = 4
 DOCUMENT_ROLE_RANK_HR = 3
 DOCUMENT_ROLE_RANK_MANAGER = 2
 DOCUMENT_ROLE_RANK_EMPLOYEE = 1
+
+TRAINING_BUDGET_WARNING_THRESHOLD = Decimal("0.80")
 
 DOCUMENT_CATEGORY_DEFAULT_VISIBILITY = {
     "contracts": ["hr"],

@@ -6476,6 +6476,230 @@ paths:
           description: No response body
         '404':
           description: No response body
+  /api/training-budgets/:
+    get:
+      operationId: training_budgets_list
+      description: |-
+        CRUD for per-employee annual training budgets.
+
+        HR (``Training.configure_budget``) can create/update/delete any budget.
+        Employees can view their own (``track_own_budget``); managers can view
+        direct reports (``track_team_budget``); HR roles can view all.
+        Includes ``?year=`` filter and a ``me`` action for the current employee's
+        current-year budget.
+      parameters:
+      - in: query
+        name: employee
+        schema:
+          type: integer
+      - in: query
+        name: fiscal_year
+        schema:
+          type: integer
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - in: query
+        name: year
+        schema:
+          type: integer
+        description: Filter by fiscal year
+      tags:
+      - Training & Development
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TrainingBudget'
+          description: ''
+    post:
+      operationId: training_budgets_create
+      description: |-
+        CRUD for per-employee annual training budgets.
+
+        HR (``Training.configure_budget``) can create/update/delete any budget.
+        Employees can view their own (``track_own_budget``); managers can view
+        direct reports (``track_team_budget``); HR roles can view all.
+        Includes ``?year=`` filter and a ``me`` action for the current employee's
+        current-year budget.
+      tags:
+      - Training & Development
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrainingBudgetRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TrainingBudgetRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TrainingBudgetRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainingBudget'
+          description: ''
+  /api/training-budgets/{id}/:
+    get:
+      operationId: training_budgets_retrieve
+      description: |-
+        CRUD for per-employee annual training budgets.
+
+        HR (``Training.configure_budget``) can create/update/delete any budget.
+        Employees can view their own (``track_own_budget``); managers can view
+        direct reports (``track_team_budget``); HR roles can view all.
+        Includes ``?year=`` filter and a ``me`` action for the current employee's
+        current-year budget.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Training Budget.
+        required: true
+      tags:
+      - Training & Development
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainingBudget'
+          description: ''
+    put:
+      operationId: training_budgets_update
+      description: |-
+        CRUD for per-employee annual training budgets.
+
+        HR (``Training.configure_budget``) can create/update/delete any budget.
+        Employees can view their own (``track_own_budget``); managers can view
+        direct reports (``track_team_budget``); HR roles can view all.
+        Includes ``?year=`` filter and a ``me`` action for the current employee's
+        current-year budget.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Training Budget.
+        required: true
+      tags:
+      - Training & Development
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrainingBudgetRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TrainingBudgetRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TrainingBudgetRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainingBudget'
+          description: ''
+    patch:
+      operationId: training_budgets_partial_update
+      description: |-
+        CRUD for per-employee annual training budgets.
+
+        HR (``Training.configure_budget``) can create/update/delete any budget.
+        Employees can view their own (``track_own_budget``); managers can view
+        direct reports (``track_team_budget``); HR roles can view all.
+        Includes ``?year=`` filter and a ``me`` action for the current employee's
+        current-year budget.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Training Budget.
+        required: true
+      tags:
+      - Training & Development
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedTrainingBudgetRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedTrainingBudgetRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedTrainingBudgetRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainingBudget'
+          description: ''
+    delete:
+      operationId: training_budgets_destroy
+      description: |-
+        CRUD for per-employee annual training budgets.
+
+        HR (``Training.configure_budget``) can create/update/delete any budget.
+        Employees can view their own (``track_own_budget``); managers can view
+        direct reports (``track_team_budget``); HR roles can view all.
+        Includes ``?year=`` filter and a ``me`` action for the current employee's
+        current-year budget.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Training Budget.
+        required: true
+      tags:
+      - Training & Development
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/training-budgets/me/:
+    get:
+      operationId: training_budgets_me_retrieve
+      description: Return the current user's training budget for the current year.
+      tags:
+      - Training & Development
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainingBudget'
+          description: ''
   /api/training-entries/:
     get:
       operationId: training_entries_list
@@ -6587,9 +6811,7 @@ paths:
           description: ''
     put:
       operationId: training_entries_update
-      description: |-
-        ViewSet for managing training entries.
-        Employees can manage their own entries, HR can manage all.
+      description: Override update to return response with Detail serializer shape.
       parameters:
       - in: path
         name: id
@@ -9128,6 +9350,7 @@ components:
       - reviews
       - onboarding
       - announcements
+      - training
       - general
       type: string
       description: |-
@@ -9136,6 +9359,7 @@ components:
         * `reviews` - Reviews
         * `onboarding` - Onboarding
         * `announcements` - Announcements
+        * `training` - Training
         * `general` - General
     Notification:
       type: object
@@ -9877,6 +10101,23 @@ components:
           type: string
           description: Optional external vendor or service provider
           maxLength: 200
+    PatchedTrainingBudgetRequest:
+      type: object
+      description: Serializer for training budget.
+      properties:
+        employee_id:
+          type: integer
+        fiscal_year:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+          description: Fiscal year for which budget is allocated
+        allocated_budget:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+          description: Total budget allocated for training this fiscal year
     PatchedTrainingEntryCreateUpdateRequest:
       type: object
       description: Serializer for creating and updating training entries with validation.
@@ -11967,6 +12208,90 @@ components:
       - access
       - refresh
       - user
+    TrainingBudget:
+      type: object
+      description: Serializer for training budget.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        employee_id:
+          type: integer
+        employee_name:
+          type: string
+          readOnly: true
+        fiscal_year:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+          description: Fiscal year for which budget is allocated
+        allocated_budget:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+          description: Total budget allocated for training this fiscal year
+        used_budget:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+          readOnly: true
+          description: Budget amount spent on training so far
+        remaining_budget:
+          type: string
+          readOnly: true
+        budget_percentage_used:
+          type: string
+          readOnly: true
+        threshold_reached:
+          type: boolean
+          readOnly: true
+        threshold_notified_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+          description: Timestamp when the 80% threshold alert was last sent
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - allocated_budget
+      - budget_percentage_used
+      - created_at
+      - employee_name
+      - fiscal_year
+      - id
+      - remaining_budget
+      - threshold_notified_at
+      - threshold_reached
+      - updated_at
+      - used_budget
+    TrainingBudgetRequest:
+      type: object
+      description: Serializer for training budget.
+      properties:
+        employee_id:
+          type: integer
+        fiscal_year:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+          description: Fiscal year for which budget is allocated
+        allocated_budget:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+          description: Total budget allocated for training this fiscal year
+      required:
+      - allocated_budget
+      - fiscal_year
     TrainingEntryCreateUpdate:
       type: object
       description: Serializer for creating and updating training entries with validation.

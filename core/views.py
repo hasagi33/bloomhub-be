@@ -79,6 +79,7 @@ from .models import (
     TaskTemplate,
     TemplateField,
     TemplateGeneratedDocument,
+    TrainingBudget,
     TrainingEntry,
     UserProfile,
     UserTemplateSnippet,
@@ -91,6 +92,7 @@ from .permissions import (
     IsReviewCreator,
     IsReviewEditor,
     IsReviewViewer,
+    IsTrainingBudgetEditor,
     can_attach_review_documents,
     can_edit_review_note,
     can_view_asset,
@@ -173,6 +175,7 @@ from .serializers import (
     TemplateGeneratedDocumentSerializer,
     TemplateUseSerializer,
     TokenSerializer,
+    TrainingBudgetSerializer,
     TrainingEntryCreateUpdateSerializer,
     TrainingEntryDetailSerializer,
     TrainingEntryListSerializer,
@@ -228,6 +231,7 @@ from .services.performance_review_service import (
     sync_performance_review_reminders_for_review,
 )
 from .services.profile_change_history import log_employee_profile_change, role_value
+from .services.training_budget_service import recalculate_budget
 from .shared.employee_utils import soft_delete_employee_profile
 from .utils import (
     clone_template,
@@ -5320,6 +5324,60 @@ class DocumentCategoryDefaultsView(APIView):
 # ──────────────────────────────────────────
 
 
+def _build_budget_warning(employee, fiscal_year):
+    """Return a warning dict when usage crosses 80% or exceeds the allocation."""
+    from decimal import Decimal
+
+    from .constants import TRAINING_BUDGET_WARNING_THRESHOLD
+
+    budget = TrainingBudget.objects.filter(
+        employee=employee, fiscal_year=fiscal_year
+    ).first()
+    if budget is None or not budget.allocated_budget:
+        return None
+
+    ratio = (budget.used_budget or Decimal("0.00")) / budget.allocated_budget
+    if ratio < TRAINING_BUDGET_WARNING_THRESHOLD:
+        return None
+
+    exceeded = budget.used_budget > budget.allocated_budget
+    return {
+        "level": "exceeded" if exceeded else "approaching_limit",
+        "fiscal_year": budget.fiscal_year,
+        "allocated_budget": str(budget.allocated_budget),
+        "used_budget": str(budget.used_budget),
+        "remaining_budget": str(budget.remaining_budget),
+        "percent_used": int(round(float(budget.budget_percentage_used))),
+    }
+
+
+def _build_budget_warning(employee, fiscal_year):
+    """Return a warning dict when usage crosses 80% or exceeds the allocation."""
+    from decimal import Decimal
+
+    from .constants import TRAINING_BUDGET_WARNING_THRESHOLD
+
+    budget = TrainingBudget.objects.filter(
+        employee=employee, fiscal_year=fiscal_year
+    ).first()
+    if budget is None or not budget.allocated_budget:
+        return None
+
+    ratio = (budget.used_budget or Decimal("0.00")) / budget.allocated_budget
+    if ratio < TRAINING_BUDGET_WARNING_THRESHOLD:
+        return None
+
+    exceeded = budget.used_budget > budget.allocated_budget
+    return {
+        "level": "exceeded" if exceeded else "approaching_limit",
+        "fiscal_year": budget.fiscal_year,
+        "allocated_budget": str(budget.allocated_budget),
+        "used_budget": str(budget.used_budget),
+        "remaining_budget": str(budget.remaining_budget),
+        "percent_used": int(round(float(budget.budget_percentage_used))),
+    }
+
+
 @extend_schema(tags=["Training & Development"])
 class TrainingEntryViewSet(viewsets.ModelViewSet):
     """
@@ -5386,6 +5444,8 @@ class TrainingEntryViewSet(viewsets.ModelViewSet):
         instance = serializer.save(employee=employee)
         # Store instance for use in create method
         self.created_instance = instance
+        recalculate_budget(instance.employee, instance.training_date.year)
+        recalculate_budget(instance.employee, instance.training_date.year)
 
     def create(self, request, *args, **kwargs):
         """Override create to return response with status field."""
@@ -5393,16 +5453,63 @@ class TrainingEntryViewSet(viewsets.ModelViewSet):
         # Re-serialize the created instance with DetailSerializer to include status
         if response.status_code == 201 and hasattr(self, "created_instance"):
             detail_serializer = TrainingEntryDetailSerializer(self.created_instance)
-            response.data = detail_serializer.data
+            data = detail_serializer.data
+            warning = _build_budget_warning(
+                self.created_instance.employee,
+                self.created_instance.training_date.year,
+            )
+            if warning is not None:
+                data["budget_warning"] = warning
+            response.data = data
+            data = detail_serializer.data
+            warning = _build_budget_warning(
+                self.created_instance.employee,
+                self.created_instance.training_date.year,
+            )
+            if warning is not None:
+                data["budget_warning"] = warning
+            response.data = data
         return response
 
     def perform_update(self, serializer):
         """Update entry (employee: own only, HR: any)."""
-        serializer.save()
+        previous = serializer.instance
+        previous_year = previous.training_date.year if previous else None
+        previous_employee = previous.employee if previous else None
+        instance = serializer.save()
+        self.updated_instance = instance
+        recalculate_budget(instance.employee, instance.training_date.year)
+        if previous_employee and (
+            previous_employee.pk != instance.employee_id
+            or previous_year != instance.training_date.year
+        ):
+            recalculate_budget(previous_employee, previous_year)
+
+    def update(self, request, *args, **kwargs):
+        """Override update to return response with Detail serializer shape."""
+        response = super().update(request, *args, **kwargs)
+        if response.status_code == status.HTTP_200_OK and hasattr(
+            self, "updated_instance"
+        ):
+            data = TrainingEntryDetailSerializer(self.updated_instance).data
+            warning = _build_budget_warning(
+                self.updated_instance.employee,
+                self.updated_instance.training_date.year,
+            )
+            if warning is not None:
+                data["budget_warning"] = warning
+            response.data = data
+        return response
 
     def perform_destroy(self, instance):
         """Delete entry (employee: own only, HR: any)."""
+        employee = instance.employee
+        year = instance.training_date.year
+        employee = instance.employee
+        year = instance.training_date.year
         instance.delete()
+        recalculate_budget(employee, year)
+        recalculate_budget(employee, year)
 
     @extend_schema(
         parameters=[
@@ -5540,6 +5647,116 @@ class PeerSessionViewSet(viewsets.ModelViewSet):
             return self.get_paginated_response(serializer.data)
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
+
+
+@extend_schema(tags=["Training & Development"])
+class TrainingBudgetViewSet(viewsets.ModelViewSet):
+    """CRUD for per-employee annual training budgets.
+
+    HR (``Training.configure_budget``) can create/update/delete any budget.
+    Employees can view their own (``track_own_budget``); managers can view
+    direct reports (``track_team_budget``); HR roles can view all.
+    Includes ``?year=`` filter and a ``me`` action for the current employee's
+    current-year budget.
+    """
+
+    serializer_class = TrainingBudgetSerializer
+    permission_classes = [IsAuthenticated, IsTrainingBudgetEditor]
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ["employee", "fiscal_year"]
+    ordering_fields = ["fiscal_year", "allocated_budget", "used_budget"]
+    ordering = ["-fiscal_year"]
+
+    def get_queryset(self):
+        user = self.request.user
+        base = TrainingBudget.objects.select_related("employee__user")
+
+        if user.is_staff or user.is_superuser:
+            return base
+
+        from .permissions import _get_user_profile, _has_permission
+
+        profile = _get_user_profile(user)
+        if profile is None:
+            return TrainingBudget.objects.none()
+
+        if _has_permission(user, "Training", ["configure_budget", "track_dept_budget"]):
+            return base
+
+        qs = base.filter(employee=profile)
+        if _has_permission(user, "Training", ["track_team_budget"]):
+            qs = base.filter(employee__managers=profile) | qs
+        return qs.distinct()
+
+    def perform_destroy(self, instance):
+        instance.delete()
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="year",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description="Filter by fiscal year",
+                required=False,
+            ),
+        ],
+        responses={200: TrainingBudgetSerializer(many=True)},
+    )
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        year = request.query_params.get("year")
+        if year:
+            try:
+                queryset = queryset.filter(fiscal_year=int(year))
+            except (ValueError, TypeError):
+                pass
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        return Response(self.get_serializer(queryset, many=True).data)
+
+    @extend_schema(
+        responses={200: TrainingBudgetSerializer},
+        description="Return the current user's training budget for the current year.",
+    )
+    @action(detail=False, methods=["get"], url_path="me")
+    def me(self, request):
+        from django.utils import timezone
+
+        from .permissions import _get_user_profile
+        from .services.training_budget_service import recalculate_budget
+
+        profile = _get_user_profile(request.user)
+        if profile is None:
+            return Response(
+                {"detail": "User profile not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        year = int(request.query_params.get("year") or timezone.now().year)
+        budget = recalculate_budget(profile, year)
+        if budget is None:
+            budget = TrainingBudget.objects.filter(
+                employee=profile, fiscal_year=year
+            ).first()
+        if budget is None:
+            return Response(
+                {
+                    "employee_id": profile.id,
+                    "employee_name": profile.user.get_full_name(),
+                    "fiscal_year": year,
+                    "allocated_budget": "0.00",
+                    "used_budget": "0.00",
+                    "remaining_budget": "0.00",
+                    "budget_percentage_used": 0,
+                    "threshold_reached": False,
+                    "threshold_notified_at": None,
+                },
+                status=status.HTTP_200_OK,
+            )
+        return Response(TrainingBudgetSerializer(budget).data)
 
 
 @extend_schema(tags=["Training & Development"])
@@ -5715,6 +5932,14 @@ class CertificateViewSet(viewsets.ModelViewSet):
         ):
             response.data = CertificateDetailSerializer(
                 self.created_instance, context={"request": request}
+            ).data
+        return response
+
+    def update(self, request, *args, **kwargs):
+        response = super().update(request, *args, **kwargs)
+        if response.status_code == status.HTTP_200_OK:
+            response.data = CertificateDetailSerializer(
+                self.get_object(), context={"request": request}
             ).data
         return response
 

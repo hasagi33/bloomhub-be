@@ -51,6 +51,7 @@ from .views import (
     ScheduledMaintenanceListView,
     SessionView,
     TokenRefreshViewCustom,
+    TrainingBudgetViewSet,
     TrainingEntryViewSet,
     UploadRolePermissionsView,
     UserProfileListView,
@@ -93,6 +94,7 @@ router.register(
     basename="performance-review-reminder",
 )
 router.register(r"training-entries", TrainingEntryViewSet, basename="training-entry")
+router.register(r"training-budgets", TrainingBudgetViewSet, basename="training-budget")
 router.register(r"peer-sessions", PeerSessionViewSet, basename="peer-session")
 router.register(r"certificates", CertificateViewSet, basename="certificate")
 router.register(

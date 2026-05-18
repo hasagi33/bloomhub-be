@@ -505,6 +505,60 @@ class IsReviewCreator(permissions.BasePermission):
         )
 
 
+def can_view_training_budget(user, budget) -> bool:
+    """Object-level visibility for a TrainingBudget row.
+
+    An employee can always view their own row; team/dept/all scopes are gated
+    by the corresponding Training.* permissions.
+    """
+    if not getattr(user, "is_authenticated", False):
+        return False
+    if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+        return True
+
+    profile = _get_user_profile(user)
+    if profile is None:
+        return False
+
+    if budget.employee_id == profile.id:
+        return True
+
+    if _has_permission(user, "Training", ["configure_budget", "track_dept_budget"]):
+        return True
+
+    if _has_permission(user, "Training", ["track_team_budget"]):
+        return budget.employee.managers.filter(pk=profile.pk).exists()
+
+    return False
+
+
+class IsTrainingBudgetEditor(permissions.BasePermission):
+    """Training budget access control.
+
+    Reads (list/retrieve/me): any authenticated user with a profile — the
+    viewset's ``get_queryset`` scopes the rows to own/team/all based on the
+    caller's Training.* permissions, and an employee must always be able to see
+    their own allocation.
+
+    Writes (create/update/delete): require ``Training.configure_budget`` (HR).
+    """
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not getattr(user, "is_authenticated", False):
+            return False
+        if request.method in permissions.SAFE_METHODS:
+            if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+                return True
+            return _get_user_profile(user) is not None
+        return _has_permission(user, "Training", ["configure_budget"])
+
+    def has_object_permission(self, request, view, obj):
+        if request.method in permissions.SAFE_METHODS:
+            return can_view_training_budget(request.user, obj)
+        return _has_permission(request.user, "Training", ["configure_budget"])
+
+
 class IsReviewEditor(permissions.BasePermission):
     """Allow users who can edit review records."""
 

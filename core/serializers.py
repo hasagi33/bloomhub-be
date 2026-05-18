@@ -71,6 +71,7 @@ from core.services.profile_change_history import (
 from core.utils import (
     apply_profile_updates_and_save,
     download_and_save_avatar,
+    generate_presigned_url,
     generate_secure_password,
     generate_unique_username,
     get_role_permissions_bitmap,
@@ -2567,11 +2568,14 @@ class TrainingEntryCreateUpdateSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self, data):
-        """Cross-field validation."""
-        training_date = data.get("training_date")
-        completed_at = data.get("completed_at")
+        """Cross-field validation, falling back to instance values on partial update."""
+        training_date = data.get("training_date") or getattr(
+            self.instance, "training_date", None
+        )
+        completed_at = data.get("completed_at") or getattr(
+            self.instance, "completed_at", None
+        )
 
-        # If both dates provided, ensure completed_at >= training_date
         if training_date and completed_at:
             if completed_at.date() < training_date:
                 raise serializers.ValidationError(
@@ -2703,13 +2707,13 @@ class CertificateDetailSerializer(serializers.ModelSerializer):
         ]
 
     def get_file_url(self, obj):
-        """Get certificate file URL."""
+        """Return a short-lived signed URL for the certificate file."""
+        if not obj.file:
+            return None
         try:
-            if obj.file:
-                return obj.file.url
+            return generate_presigned_url(obj.file.name, expiry_seconds=600)
         except Exception:
-            pass
-        return None
+            return None
 
 
 CERTIFICATE_MAX_FILE_BYTES = 10 * 1024 * 1024  # 10 MB
@@ -2748,6 +2752,17 @@ class CertificateCreateUpdateSerializer(serializers.ModelSerializer):
                 "Unsupported file type. Allowed: pdf, png, jpg, gif, webp."
             )
         return value
+
+    def validate(self, data):
+        issued = data.get("issued_date") or getattr(self.instance, "issued_date", None)
+        expiration = data.get("expiration_date") or getattr(
+            self.instance, "expiration_date", None
+        )
+        if issued and expiration and expiration < issued:
+            raise serializers.ValidationError(
+                {"expiration_date": "Expiration date cannot be before issued date."}
+            )
+        return data
 
 
 class PeerSessionListSerializer(serializers.ModelSerializer):
@@ -3086,12 +3101,13 @@ class TemplateGeneratedDocumentSerializer(serializers.ModelSerializer):
 class TrainingBudgetSerializer(serializers.ModelSerializer):
     """Serializer for training budget."""
 
-    employee_id = serializers.IntegerField(source="employee.id", read_only=True)
+    employee_id = serializers.IntegerField(write_only=False, required=False)
     employee_name = serializers.CharField(
         source="employee.user.get_full_name", read_only=True
     )
     remaining_budget = serializers.ReadOnlyField()
     budget_percentage_used = serializers.ReadOnlyField()
+    threshold_reached = serializers.SerializerMethodField()
 
     class Meta:
         model = TrainingBudget
@@ -3104,18 +3120,72 @@ class TrainingBudgetSerializer(serializers.ModelSerializer):
             "used_budget",
             "remaining_budget",
             "budget_percentage_used",
+            "threshold_reached",
+            "threshold_notified_at",
             "created_at",
             "updated_at",
         ]
         read_only_fields = [
             "id",
-            "employee_id",
             "employee_name",
+            "used_budget",
             "remaining_budget",
             "budget_percentage_used",
+            "threshold_reached",
+            "threshold_notified_at",
             "created_at",
             "updated_at",
         ]
+
+    @extend_schema_field(OpenApiTypes.BOOL)
+    def get_threshold_reached(self, obj) -> bool:
+        from core.constants import TRAINING_BUDGET_WARNING_THRESHOLD
+
+        if not obj.allocated_budget:
+            return False
+        return (
+            obj.used_budget / obj.allocated_budget
+        ) >= TRAINING_BUDGET_WARNING_THRESHOLD
+
+    def validate_employee_id(self, value):
+        from core.models import UserProfile
+
+        if not UserProfile.objects.filter(pk=value).exists():
+            raise serializers.ValidationError("Employee not found.")
+        return value
+
+    def create(self, validated_data):
+        from core.models import UserProfile
+        from core.services.training_budget_service import recalculate_budget
+
+        employee_id = validated_data.pop("employee_id", None)
+        if employee_id is None:
+            raise serializers.ValidationError(
+                {"employee_id": "This field is required."}
+            )
+        validated_data["employee"] = UserProfile.objects.get(pk=employee_id)
+        instance = super().create(validated_data)
+        # Sync used_budget from existing entries and evaluate threshold for the
+        # freshly-allocated budget.
+        refreshed = recalculate_budget(instance.employee, instance.fiscal_year)
+        return refreshed or instance
+
+    def update(self, instance, validated_data):
+        from core.services.training_budget_service import (
+            _maybe_notify_threshold,
+            recalculate_budget,
+        )
+
+        validated_data.pop("employee_id", None)
+        instance = super().update(instance, validated_data)
+        # If the allocation changed, the usage ratio may have crossed (or
+        # un-crossed) the 80% threshold even with no new entries. Re-check.
+        refreshed = recalculate_budget(instance.employee, instance.fiscal_year)
+        if refreshed is None:
+            instance.refresh_from_db()
+            _maybe_notify_threshold(instance)
+            return instance
+        return refreshed
 
 
 class UserTemplateSnippetSerializer(serializers.ModelSerializer):
