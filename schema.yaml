@@ -10839,6 +10839,11 @@ components:
           type: string
           nullable: true
           maxLength: 100
+        allocation_percentage:
+          type: integer
+          maximum: 100
+          minimum: 0
+          description: Percent of full-time allocation, 0–100.
         start_date:
           type: string
           format: date
@@ -10848,11 +10853,24 @@ components:
           nullable: true
         status:
           $ref: '#/components/schemas/ProjectAssignmentStatusEnum'
+        notes:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
       required:
+      - created_at
       - id
       - project_id
       - project_name
       - start_date
+      - updated_at
     ProjectAssignmentRequest:
       type: object
       properties:
@@ -10862,6 +10880,11 @@ components:
           type: string
           nullable: true
           maxLength: 100
+        allocation_percentage:
+          type: integer
+          maximum: 100
+          minimum: 0
+          description: Percent of full-time allocation, 0–100.
         start_date:
           type: string
           format: date
@@ -10871,6 +10894,9 @@ components:
           nullable: true
         status:
           $ref: '#/components/schemas/ProjectAssignmentStatusEnum'
+        notes:
+          type: string
+          nullable: true
       required:
       - project_id
       - start_date

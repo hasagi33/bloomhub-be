@@ -99,8 +99,17 @@ class CPFLevelAdmin(admin.ModelAdmin):
 
 @admin.register(Project)
 class ProjectAdmin(admin.ModelAdmin):
-    list_display = ("name",)
-    search_fields = ("name",)
+    list_display = (
+        "name",
+        "project_type",
+        "status",
+        "client",
+        "owner",
+        "start_date",
+        "end_date",
+    )
+    list_filter = ("project_type", "status")
+    search_fields = ("name", "client")
 
 
 @admin.register(Equipment)
@@ -144,8 +153,16 @@ class DocumentAdmin(admin.ModelAdmin):
 
 @admin.register(ProjectAssignment)
 class ProjectAssignmentAdmin(admin.ModelAdmin):
-    list_display = ("user_profile", "project", "role", "start_date", "end_date")
-    list_filter = ("project",)
+    list_display = (
+        "user_profile",
+        "project",
+        "role",
+        "allocation_percentage",
+        "status",
+        "start_date",
+        "end_date",
+    )
+    list_filter = ("project", "status")
     search_fields = ("user_profile__user__username", "project__name")
 
 

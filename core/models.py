@@ -32,6 +32,8 @@ from .enums import (
     LeaveType,
     LeaveWorkflowStatus,
     ProjectAssignmentStatus,
+    ProjectStatus,
+    ProjectType,
     ReminderType,
     ReviewEventType,
     ReviewNoteVisibility,
@@ -292,13 +294,48 @@ class Project(models.Model):
     app_stack = models.CharField(
         max_length=200, blank=True, null=True
     )  # e.g., "React, Django, PostgreSQL"
+    project_type = models.CharField(
+        max_length=20,
+        choices=ProjectType.choices,
+        default=ProjectType.CLIENT,
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=ProjectStatus.choices,
+        default=ProjectStatus.PLANNED,
+    )
+    start_date = models.DateField(blank=True, null=True)
+    end_date = models.DateField(blank=True, null=True)
+    owner = models.ForeignKey(
+        "UserProfile",
+        on_delete=models.SET_NULL,
+        related_name="owned_projects",
+        blank=True,
+        null=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return self.name
 
+    def clean(self):
+        from django.core.exceptions import ValidationError
+
+        errors = {}
+        if not self.name or not self.name.strip():
+            errors["name"] = "Name is required."
+        if self.project_type == ProjectType.CLIENT and not (self.client or "").strip():
+            errors["client"] = "Client is required for client projects."
+        if self.start_date and self.end_date and self.end_date < self.start_date:
+            errors["end_date"] = "End date cannot be before start date."
+        if errors:
+            raise ValidationError(errors)
+
     class Meta:
         verbose_name = "Project"
         verbose_name_plural = "Projects"
+        ordering = ["name"]
 
 
 class Equipment(models.Model):
@@ -712,6 +749,11 @@ class ProjectAssignment(models.Model):
         Project, on_delete=models.CASCADE, related_name="assignments"
     )
     role = models.CharField(max_length=100, blank=True, null=True)
+    allocation_percentage = models.PositiveSmallIntegerField(
+        default=100,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text="Percent of full-time allocation, 0–100.",
+    )
     start_date = models.DateField()
     end_date = models.DateField(blank=True, null=True)
     status = models.CharField(
@@ -719,11 +761,37 @@ class ProjectAssignment(models.Model):
         choices=ProjectAssignmentStatus.choices,
         default=ProjectAssignmentStatus.ACTIVE,
     )
+    notes = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         verbose_name = "Project Assignment"
         verbose_name_plural = "Project Assignments"
         ordering = ["-start_date"]
+        indexes = [
+            models.Index(fields=["user_profile", "project", "status"]),
+            models.Index(fields=["project", "end_date"]),
+        ]
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+
+        errors = {}
+        if not self.start_date:
+            errors["start_date"] = "Start date is required."
+        if self.start_date and self.end_date and self.end_date < self.start_date:
+            errors["end_date"] = "End date cannot be before start date."
+        if self.allocation_percentage is None or not (
+            0 <= int(self.allocation_percentage) <= 100
+        ):
+            errors["allocation_percentage"] = "Allocation must be between 0 and 100."
+        if errors:
+            raise ValidationError(errors)
+
+    @property
+    def is_current(self) -> bool:
+        return self.end_date is None and self.status == ProjectAssignmentStatus.ACTIVE
 
     def __str__(self):
         status = "current" if not self.end_date else f"until {self.end_date}"

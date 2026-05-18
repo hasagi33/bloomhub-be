@@ -145,6 +145,19 @@ class ProjectAssignmentStatus(models.TextChoices):
     ON_HOLD = "on_hold", "On Hold"
 
 
+class ProjectType(models.TextChoices):
+    CLIENT = "client", "Client"
+    INTERNAL = "internal", "Internal"
+
+
+class ProjectStatus(models.TextChoices):
+    PLANNED = "planned", "Planned"
+    ACTIVE = "active", "Active"
+    ON_HOLD = "on_hold", "On Hold"
+    COMPLETED = "completed", "Completed"
+    CANCELLED = "cancelled", "Cancelled"
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # 7. Leave Management
 # ──────────────────────────────────────────────────────────────────────────────
