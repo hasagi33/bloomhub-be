@@ -893,6 +893,17 @@ class Asset(models.Model):
     description = models.TextField(
         blank=True, null=True, help_text="Additional description or notes"
     )
+    qr_code_payload = models.URLField(
+        max_length=500,
+        unique=True,
+        null=True,
+        blank=True,
+        help_text="Stable frontend asset URL encoded in the asset QR code",
+    )
+    qr_code_image = models.FileField(
+        blank=True,
+        help_text="Persisted PNG QR image for the asset",
+    )
 
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
@@ -936,6 +947,19 @@ class Asset(models.Model):
             return self.status == AssetStatus.ACTIVE and not has_active_assignment
 
         return self.status == AssetStatus.ACTIVE and not self.current_assignment
+
+
+@receiver(post_save, sender=Asset)
+def ensure_asset_qr_code_after_save(sender, instance, created, **kwargs):
+    if kwargs.get("raw") or not instance.pk:
+        return
+
+    if instance.qr_code_payload and instance.qr_code_image:
+        return
+
+    from core.services.asset_qr import ensure_asset_qr_code as ensure_qr_code
+
+    ensure_qr_code(instance)
 
 
 class Assignment(models.Model):

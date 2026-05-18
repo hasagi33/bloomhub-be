@@ -9,6 +9,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import dj_database_url
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -247,5 +248,15 @@ RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
 DEFAULT_FROM_EMAIL = os.environ.get(
     "DEFAULT_FROM_EMAIL", "BloomHub <onboarding@resend.dev>"
 )
-# Public base URL used in email templates (e.g. for logo src). Set in production.
+# Public base URL used in email templates and QR payloads.
 SITE_URL = os.environ.get("SITE_URL", "").rstrip("/")
+if ENVIRONMENT == "local":
+    FRONTEND_URL = "http://localhost:3000"
+elif ENVIRONMENT == "dev":
+    FRONTEND_URL = "https://bloomhub-fe-dev.vercel.app"
+else:
+    FRONTEND_URL = os.environ.get("FRONTEND_URL", SITE_URL).rstrip("/")
+    if ENVIRONMENT == "prod" and not FRONTEND_URL:
+        raise ImproperlyConfigured(
+            "FRONTEND_URL or SITE_URL must be set when ENVIRONMENT=prod."
+        )

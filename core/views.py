@@ -184,6 +184,7 @@ from .serializers import (
     UserTemplateSnippetSerializer,
     VacationCapabilitiesSerializer,
 )
+from .services.asset_qr import ensure_asset_qr_code
 from .services.document_query_service import (
     DocumentFilterError,
     apply_document_list_filters,
@@ -2083,6 +2084,7 @@ class AssetDetailView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
+        ensure_asset_qr_code(asset)
         serializer = AssetSerializer(asset, context={"request": request})
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -2155,6 +2157,48 @@ class AssetDetailView(APIView):
 
         asset.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@extend_schema(
+    tags=["Asset Management"],
+    responses={200: OpenApiTypes.BINARY, 403: None, 404: None},
+    description="Download the stored PNG QR code for an asset.",
+)
+class AssetQRCodeView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self, pk):
+        try:
+            return Asset.objects.get(pk=pk)
+        except Asset.DoesNotExist:
+            return None
+
+    def get(self, request, pk):
+        asset = self.get_object(pk)
+        if not asset:
+            return Response(
+                {"error": "Asset not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+        if not can_view_asset(request.user, asset):
+            return Response(
+                {"error": "You do not have permission to view this asset."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        ensure_asset_qr_code(asset)
+        if not asset.qr_code_image or not default_storage.exists(
+            asset.qr_code_image.name
+        ):
+            return Response(
+                {"error": "Asset QR code image not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        with default_storage.open(asset.qr_code_image.name, "rb") as qr_file:
+            response = HttpResponse(qr_file.read(), content_type="image/png")
+        filename = asset.qr_code_image.name.rsplit("/", 1)[-1]
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return response
 
 
 @extend_schema(

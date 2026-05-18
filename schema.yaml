@@ -245,6 +245,32 @@ paths:
           description: No response body
         '404':
           description: No response body
+  /api/assets/{id}/qr-code/:
+    get:
+      operationId: assets_qr_code_retrieve
+      description: Download the stored PNG QR code for an asset.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Asset Management
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: string
+                format: binary
+          description: ''
+        '403':
+          description: No response body
+        '404':
+          description: No response body
   /api/assets/capabilities/:
     get:
       operationId: assets_capabilities_retrieve
@@ -6775,6 +6801,16 @@ components:
           type: string
           nullable: true
           description: Additional description or notes
+        qr_code_payload:
+          type: string
+          format: uri
+          readOnly: true
+          nullable: true
+          description: Stable frontend asset URL encoded in the asset QR code
+        qr_code_url:
+          type: string
+          nullable: true
+          readOnly: true
         created_at:
           type: string
           format: date-time
@@ -6808,6 +6844,8 @@ components:
       - is_under_warranty
       - name
       - purchase_date
+      - qr_code_payload
+      - qr_code_url
       - updated_at
     AssetCreateRequest:
       type: object
@@ -9593,16 +9631,14 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -9920,16 +9956,14 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -9954,16 +9988,14 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -9996,16 +10028,14 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -10051,16 +10081,14 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:

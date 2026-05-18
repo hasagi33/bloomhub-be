@@ -1,10 +1,17 @@
+import shutil
+import tempfile
 from datetime import date, timedelta
 from decimal import Decimal
+from io import StringIO
+from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
+from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
+from django.core.management import call_command
 from django.db import IntegrityError
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from core.models import (
@@ -14,6 +21,11 @@ from core.models import (
     Assignment,
     ReplacementLog,
     ScheduledMaintenance,
+)
+from core.services.asset_qr import (
+    build_asset_qr_image_path,
+    ensure_asset_qr_code,
+    generate_qr_png_bytes,
 )
 
 
@@ -130,6 +142,212 @@ class AssetModelTestCase(TestCase):
 
         # Should be None after return
         self.assertIsNone(asset.current_assignment)
+
+
+@override_settings(FRONTEND_URL="https://app.example.com")
+class AssetQRCodeTestCase(TestCase):
+    """Test cases for stable Asset QR code generation"""
+
+    def setUp(self):
+        self.media_root = tempfile.mkdtemp()
+        self.override_media_root = override_settings(MEDIA_ROOT=self.media_root)
+        self.override_media_root.enable()
+
+    def tearDown(self):
+        self.override_media_root.disable()
+        shutil.rmtree(self.media_root, ignore_errors=True)
+
+    def create_asset(self, asset_id="QR001"):
+        return Asset.objects.create(
+            asset_id=asset_id,
+            name="QR Laptop",
+            condition=AssetCondition.GOOD,
+            purchase_date=date.today() - timedelta(days=30),
+            status=AssetStatus.ACTIVE,
+        )
+
+    def test_asset_creation_generates_stable_qr_payload_and_image(self):
+        asset = self.create_asset()
+
+        self.assertEqual(
+            asset.qr_code_payload, f"https://app.example.com/assets/{asset.pk}"
+        )
+        self.assertEqual(
+            asset.qr_code_image.name,
+            f"asset_qr_codes/{asset.pk}/Asset-QR_Laptop-{asset.pk}-QR.png",
+        )
+        self.assertTrue(default_storage.exists(asset.qr_code_image.name))
+        with default_storage.open(asset.qr_code_image.name, "rb") as qr_file:
+            self.assertEqual(qr_file.read(8), b"\x89PNG\r\n\x1a\n")
+
+    def test_asset_qr_image_filename_uses_asset_name_and_id(self):
+        asset = Asset.objects.create(
+            asset_id="QR-NAME",
+            name="MacBook Pro / 16",
+            condition=AssetCondition.GOOD,
+            purchase_date=date.today() - timedelta(days=30),
+            status=AssetStatus.ACTIVE,
+        )
+
+        self.assertEqual(
+            asset.qr_code_image.name,
+            f"asset_qr_codes/{asset.pk}/Asset-MacBook_Pro__16-{asset.pk}-QR.png",
+        )
+
+    def test_two_assets_have_unique_payloads_and_image_paths(self):
+        first = self.create_asset("QR001")
+        second = self.create_asset("QR002")
+
+        self.assertNotEqual(first.qr_code_payload, second.qr_code_payload)
+        self.assertNotEqual(first.qr_code_image.name, second.qr_code_image.name)
+
+    def test_asset_updates_do_not_change_qr_payload_or_image_path(self):
+        asset = self.create_asset()
+        payload = asset.qr_code_payload
+        image_path = asset.qr_code_image.name
+
+        asset.status = AssetStatus.DAMAGED
+        asset.condition = AssetCondition.DAMAGED
+        asset.warranty_until = date.today() + timedelta(days=90)
+        asset.description = "Updated metadata"
+        asset.save()
+        asset.refresh_from_db()
+
+        self.assertEqual(asset.qr_code_payload, payload)
+        self.assertEqual(asset.qr_code_image.name, image_path)
+
+    def test_missing_qr_image_can_be_regenerated_from_stable_payload(self):
+        asset = self.create_asset()
+        payload = asset.qr_code_payload
+        image_path = asset.qr_code_image.name
+        default_storage.delete(image_path)
+
+        ensure_asset_qr_code(asset, regenerate_image=True)
+        asset.refresh_from_db()
+
+        self.assertEqual(asset.qr_code_payload, payload)
+        self.assertEqual(asset.qr_code_image.name, image_path)
+        self.assertTrue(default_storage.exists(image_path))
+
+    def test_path_only_qr_payload_is_replaced_with_frontend_url(self):
+        asset = self.create_asset()
+        image_path = asset.qr_code_image.name
+        Asset.objects.filter(pk=asset.pk).update(qr_code_payload=f"/asset/{asset.pk}")
+        asset.refresh_from_db()
+
+        ensure_asset_qr_code(asset)
+        asset.refresh_from_db()
+
+        self.assertEqual(
+            asset.qr_code_payload, f"https://app.example.com/assets/{asset.pk}"
+        )
+        self.assertEqual(asset.qr_code_image.name, image_path)
+        self.assertTrue(default_storage.exists(image_path))
+
+    def test_existing_qr_image_is_regenerated_with_frontend_url_payload(self):
+        asset = self.create_asset()
+        image_path = asset.qr_code_image.name
+        Asset.objects.filter(pk=asset.pk).update(qr_code_payload=f"/asset/{asset.pk}")
+        asset.refresh_from_db()
+
+        with patch(
+            "core.services.asset_qr.generate_qr_png_bytes",
+            wraps=generate_qr_png_bytes,
+        ) as mock_generate:
+            ensure_asset_qr_code(asset)
+
+        asset.refresh_from_db()
+        expected_payload = f"https://app.example.com/assets/{asset.pk}"
+
+        mock_generate.assert_called_once_with(expected_payload)
+        self.assertEqual(asset.qr_code_payload, expected_payload)
+        self.assertEqual(asset.qr_code_image.name, image_path)
+        self.assertTrue(default_storage.exists(image_path))
+
+    @override_settings(FRONTEND_URL="http://localhost:3000")
+    def test_existing_qr_payload_uses_local_frontend_prefix(self):
+        asset = self.create_asset()
+        Asset.objects.filter(pk=asset.pk).update(qr_code_payload=f"/asset/{asset.pk}")
+        asset.refresh_from_db()
+
+        ensure_asset_qr_code(asset)
+        asset.refresh_from_db()
+
+        self.assertEqual(
+            asset.qr_code_payload, f"http://localhost:3000/assets/{asset.pk}"
+        )
+
+    @override_settings(FRONTEND_URL="https://bloomhub-fe-dev.vercel.app")
+    def test_existing_qr_payload_uses_dev_frontend_prefix(self):
+        asset = self.create_asset()
+        Asset.objects.filter(pk=asset.pk).update(qr_code_payload=f"/asset/{asset.pk}")
+        asset.refresh_from_db()
+
+        ensure_asset_qr_code(asset)
+        asset.refresh_from_db()
+
+        self.assertEqual(
+            asset.qr_code_payload,
+            f"https://bloomhub-fe-dev.vercel.app/assets/{asset.pk}",
+        )
+
+    def test_existing_target_path_is_overwritten_without_suffix(self):
+        asset = self.create_asset()
+        image_path = asset.qr_code_image.name
+        Asset.objects.filter(pk=asset.pk).update(qr_code_image="")
+        asset.refresh_from_db()
+
+        ensure_asset_qr_code(asset)
+        asset.refresh_from_db()
+
+        self.assertEqual(asset.qr_code_image.name, image_path)
+        self.assertTrue(default_storage.exists(image_path))
+
+    def test_existing_old_qr_image_path_is_replaced_with_named_path(self):
+        asset = self.create_asset()
+        old_image_path = f"asset_qr_codes/{asset.pk}/qr.png"
+        expected_image_path = build_asset_qr_image_path(asset)
+        Asset.objects.filter(pk=asset.pk).update(qr_code_image=old_image_path)
+        asset.refresh_from_db()
+
+        ensure_asset_qr_code(asset)
+        asset.refresh_from_db()
+
+        self.assertEqual(asset.qr_code_image.name, expected_image_path)
+        self.assertTrue(default_storage.exists(expected_image_path))
+
+    def test_failed_qr_image_replacement_keeps_old_image(self):
+        asset = self.create_asset()
+        old_image_path = "asset_qr_codes/stale/qr.png"
+        with default_storage.open(asset.qr_code_image.name, "rb") as qr_file:
+            default_storage.save(old_image_path, ContentFile(qr_file.read()))
+        Asset.objects.filter(pk=asset.pk).update(qr_code_image=old_image_path)
+        asset.refresh_from_db()
+
+        with patch.object(asset.qr_code_image, "save", side_effect=RuntimeError):
+            with self.assertRaises(RuntimeError):
+                ensure_asset_qr_code(asset)
+
+        self.assertTrue(default_storage.exists(old_image_path))
+
+    def test_backfill_updates_existing_stale_qr_payload_and_image_path(self):
+        asset = self.create_asset()
+        Asset.objects.filter(pk=asset.pk).update(
+            qr_code_payload=f"/asset/{asset.pk}",
+            qr_code_image=f"asset_qr_codes/{asset.pk}/qr.png",
+        )
+
+        dry_run_output = StringIO()
+        call_command("backfill_asset_qr_codes", "--dry-run", stdout=dry_run_output)
+        self.assertIn("would update 1 asset QR codes", dry_run_output.getvalue())
+
+        call_command("backfill_asset_qr_codes", stdout=StringIO())
+        asset.refresh_from_db()
+
+        self.assertEqual(
+            asset.qr_code_payload, f"https://app.example.com/assets/{asset.pk}"
+        )
+        self.assertEqual(asset.qr_code_image.name, build_asset_qr_image_path(asset))
 
 
 class AssignmentModelTestCase(TestCase):

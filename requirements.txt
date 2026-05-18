@@ -17,6 +17,7 @@ django-cors-headers>=4.4
 
 # Avatar generation
 Pillow>=10.0.0
+qrcode[pil]>=8.0
 
 # Dev / test / tooling (optional in prod)
 black>=24.0

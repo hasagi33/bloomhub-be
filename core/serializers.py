@@ -670,6 +670,7 @@ class AssetSerializer(serializers.ModelSerializer):
     is_under_warranty = serializers.SerializerMethodField()
     is_available = serializers.SerializerMethodField()
     capabilities = serializers.SerializerMethodField()
+    qr_code_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Asset
@@ -687,6 +688,8 @@ class AssetSerializer(serializers.ModelSerializer):
             "manufacturer",
             "purchase_price",
             "description",
+            "qr_code_payload",
+            "qr_code_url",
             "created_at",
             "updated_at",
             "current_assignment",
@@ -694,7 +697,12 @@ class AssetSerializer(serializers.ModelSerializer):
             "is_available",
             "capabilities",
         ]
-        read_only_fields = ["created_at", "updated_at"]
+        read_only_fields = [
+            "created_at",
+            "updated_at",
+            "qr_code_payload",
+            "qr_code_url",
+        ]
 
     @extend_schema_field(serializers.DictField(allow_null=True))
     def get_current_assignment(self, obj) -> dict[str, Any] | None:
@@ -725,6 +733,17 @@ class AssetSerializer(serializers.ModelSerializer):
         if request is None:
             return {}
         return get_asset_object_capabilities(request.user, obj)
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_qr_code_url(self, obj) -> str | None:
+        request = self.context.get("request")
+        if not obj.pk:
+            return None
+
+        path = f"/api/assets/{obj.pk}/qr-code/"
+        if request is None:
+            return path
+        return request.build_absolute_uri(path)
 
 
 class AssignmentSerializer(serializers.ModelSerializer):

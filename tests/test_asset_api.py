@@ -1,10 +1,14 @@
 import os
+import shutil
+import tempfile
 from csv import DictReader
 from datetime import date, timedelta
 from io import StringIO
 
 import django
 from django.contrib.auth.models import User
+from django.core.files.storage import default_storage
+from django.test import override_settings
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
@@ -146,6 +150,168 @@ class AssetManagementAPITest(APITestCase):
         self.assertTrue(response.data["capabilities"]["can_update"])
         self.assertTrue(response.data["capabilities"]["can_delete"])
         self.assertTrue(response.data["capabilities"]["can_assign"])
+
+    @override_settings(FRONTEND_URL="https://app.example.com")
+    def test_asset_detail_includes_qr_payload_and_backend_url(self):
+        media_root = tempfile.mkdtemp()
+        with override_settings(MEDIA_ROOT=media_root):
+            try:
+                asset = self._create_asset(prefix="QRAPI")
+
+                response = self.client.get(f"/api/assets/{asset.id}/")
+
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
+                self.assertEqual(
+                    response.data["qr_code_payload"],
+                    f"https://app.example.com/assets/{asset.id}",
+                )
+                self.assertIn("qr_code_url", response.data)
+                self.assertTrue(
+                    response.data["qr_code_url"].endswith(
+                        f"/api/assets/{asset.id}/qr-code/"
+                    )
+                )
+            finally:
+                shutil.rmtree(media_root, ignore_errors=True)
+
+    @override_settings(FRONTEND_URL="https://app.example.com")
+    def test_asset_qr_download_returns_png_for_authorized_viewer(self):
+        media_root = tempfile.mkdtemp()
+        with override_settings(MEDIA_ROOT=media_root):
+            try:
+                asset = self._create_asset(prefix="QRAPI")
+
+                response = self.client.get(f"/api/assets/{asset.id}/qr-code/")
+
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
+                self.assertEqual(response["Content-Type"], "image/png")
+                filename = asset.qr_code_image.name.rsplit("/", 1)[-1]
+                self.assertEqual(
+                    response["Content-Disposition"],
+                    f'attachment; filename="{filename}"',
+                )
+                self.assertEqual(response.content[:8], b"\x89PNG\r\n\x1a\n")
+            finally:
+                shutil.rmtree(media_root, ignore_errors=True)
+
+    @override_settings(FRONTEND_URL="https://app.example.com")
+    def test_asset_qr_download_regenerates_missing_stored_image(self):
+        media_root = tempfile.mkdtemp()
+        with override_settings(MEDIA_ROOT=media_root):
+            try:
+                asset = self._create_asset(prefix="QRAPI")
+                image_path = asset.qr_code_image.name
+                default_storage.delete(image_path)
+                self.assertFalse(default_storage.exists(image_path))
+
+                response = self.client.get(f"/api/assets/{asset.id}/qr-code/")
+
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
+                asset.refresh_from_db()
+                self.assertEqual(asset.qr_code_image.name, image_path)
+                self.assertTrue(default_storage.exists(image_path))
+                self.assertEqual(response.content[:8], b"\x89PNG\r\n\x1a\n")
+            finally:
+                shutil.rmtree(media_root, ignore_errors=True)
+
+    def test_asset_qr_download_requires_asset_visibility(self):
+        asset = self._create_asset(prefix="QRAPI")
+        blocked_user = self._create_role_user("qr_blocked", "QR Blocked", [])
+        self._auth_as(blocked_user)
+
+        response = self.client.get(f"/api/assets/{asset.id}/qr-code/")
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_asset_qr_download_returns_404_for_missing_asset(self):
+        response = self.client.get("/api/assets/999999/qr-code/")
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    @override_settings(FRONTEND_URL="https://app.example.com")
+    def test_asset_list_includes_qr_fields_with_backend_proxy_url(self):
+        media_root = tempfile.mkdtemp()
+        with override_settings(MEDIA_ROOT=media_root):
+            try:
+                asset = self._create_asset(prefix="QRLIST")
+
+                response = self.client.get("/api/assets/")
+
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
+                asset_data = next(
+                    item for item in response.data if item["id"] == asset.id
+                )
+                self.assertEqual(
+                    asset_data["qr_code_payload"],
+                    f"https://app.example.com/assets/{asset.id}",
+                )
+                self.assertTrue(
+                    asset_data["qr_code_url"].endswith(
+                        f"/api/assets/{asset.id}/qr-code/"
+                    )
+                )
+                self.assertNotIn("asset_qr_codes", asset_data["qr_code_url"])
+            finally:
+                shutil.rmtree(media_root, ignore_errors=True)
+
+    @override_settings(FRONTEND_URL="https://app.example.com")
+    def test_asset_qr_download_stays_stable_after_lifecycle_updates(self):
+        media_root = tempfile.mkdtemp()
+        with override_settings(MEDIA_ROOT=media_root):
+            try:
+                asset = self._create_asset(prefix="QRLIFE")
+                payload = asset.qr_code_payload
+                image_path = asset.qr_code_image.name
+
+                assignment_response = self.client.post(
+                    "/api/assignments/",
+                    {
+                        "asset": asset.id,
+                        "employee": self.profile.id,
+                        "notes": "QR lifecycle assignment",
+                    },
+                    format="json",
+                )
+                self.assertEqual(
+                    assignment_response.status_code, status.HTTP_201_CREATED
+                )
+                assignment_id = assignment_response.data["id"]
+
+                request_return_response = self.client.post(
+                    f"/api/assignments/{assignment_id}/request-return/",
+                    {"notes": "QR lifecycle return"},
+                    format="json",
+                )
+                self.assertEqual(
+                    request_return_response.status_code, status.HTTP_200_OK
+                )
+
+                return_response = self.client.post(
+                    f"/api/assignments/{assignment_id}/return/",
+                    {"return_condition": AssetCondition.FAIR},
+                    format="json",
+                )
+                self.assertEqual(return_response.status_code, status.HTTP_200_OK)
+
+                patch_response = self.client.patch(
+                    f"/api/assets/{asset.id}/",
+                    {
+                        "status": AssetStatus.MAINTENANCE,
+                        "condition": AssetCondition.FAIR,
+                    },
+                    format="json",
+                )
+                self.assertEqual(patch_response.status_code, status.HTTP_200_OK)
+
+                download_response = self.client.get(f"/api/assets/{asset.id}/qr-code/")
+                self.assertEqual(download_response.status_code, status.HTTP_200_OK)
+                self.assertEqual(download_response.content[:8], b"\x89PNG\r\n\x1a\n")
+
+                asset.refresh_from_db()
+                self.assertEqual(asset.qr_code_payload, payload)
+                self.assertEqual(asset.qr_code_image.name, image_path)
+            finally:
+                shutil.rmtree(media_root, ignore_errors=True)
 
     def test_asset_crud_operations(self):
         """Test Asset CRUD operations"""

@@ -7,6 +7,7 @@ from .views import (
     AssetDetailView,
     AssetExportView,
     AssetListView,
+    AssetQRCodeView,
     AssignmentDetailView,
     AssignmentListView,
     AssignmentRejectReturnView,
@@ -125,6 +126,7 @@ urlpatterns = [
         name="asset_capabilities",
     ),
     path("assets/export/", AssetExportView.as_view(), name="asset_export"),
+    path("assets/<int:pk>/qr-code/", AssetQRCodeView.as_view(), name="asset_qr_code"),
     path("assets/<int:pk>/", AssetDetailView.as_view(), name="asset_detail"),
     path("assignments/", AssignmentListView.as_view(), name="assignment_list"),
     path(

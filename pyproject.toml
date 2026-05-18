@@ -12,6 +12,7 @@ dependencies = [
     "google-auth>=2.30.0",
     "requests>=2.32.3",
     "django-cors-headers>=4.7.0",
+    "qrcode[pil]>=8.0",
 ]
 
 [project.optional-dependencies]
