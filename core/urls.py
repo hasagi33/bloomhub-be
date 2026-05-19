@@ -28,6 +28,8 @@ from .views import (
     EmployeeProfileViewSet,
     EmployeeTechLeadsView,
     GoogleExchangeView,
+    JobApplicationViewSet,
+    JobListingViewSet,
     LeaveAdjustmentViewSet,
     LeaveBalanceViewSet,
     LeavePolicyViewSet,
@@ -110,6 +112,8 @@ router.register(
     basename="conference-course-registration",
 )
 router.register(r"notifications", NotificationViewSet, basename="notification")
+router.register(r"job-listings", JobListingViewSet, basename="job-listing")
+router.register(r"job-applications", JobApplicationViewSet, basename="job-application")
 
 urlpatterns = [
     path("", APIRootView.as_view(), name="api_root"),

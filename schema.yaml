@@ -3413,6 +3413,468 @@ paths:
           description: No response body
         '403':
           description: No response body
+  /api/job-applications/{id}/:
+    get:
+      operationId: job_applications_retrieve
+      description: HR/admin endpoints to advance an application's status.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Job Application.
+        required: true
+      tags:
+      - Internal Mobility
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Application'
+          description: ''
+    put:
+      operationId: job_applications_update
+      description: HR/admin endpoints to advance an application's status.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Job Application.
+        required: true
+      tags:
+      - Internal Mobility
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplicationStatusUpdateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ApplicationStatusUpdateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ApplicationStatusUpdateRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationStatusUpdate'
+          description: ''
+    patch:
+      operationId: job_applications_partial_update
+      description: HR/admin endpoints to advance an application's status.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Job Application.
+        required: true
+      tags:
+      - Internal Mobility
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedApplicationStatusUpdateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedApplicationStatusUpdateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedApplicationStatusUpdateRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationStatusUpdate'
+          description: ''
+  /api/job-listings/:
+    get:
+      operationId: job_listings_list
+      description: |-
+        Internal job board.
+
+        Employees see only *active* listings (status ``open`` within the
+        ``open_at`` / ``close_at`` window) and can apply via the ``apply`` action.
+
+        HR / admin users have full access: they can list every listing regardless
+        of status, create new listings, update existing ones, and review the
+        applicant roster via the ``applications`` action.
+      parameters:
+      - in: query
+        name: department
+        schema:
+          type: integer
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      - in: query
+        name: status
+        schema:
+          type: string
+          enum:
+          - cancelled
+          - closed
+          - draft
+          - open
+        description: |-
+          Current status of the listing
+
+          * `draft` - Draft
+          * `open` - Open
+          * `closed` - Closed
+          * `cancelled` - Cancelled
+      tags:
+      - Internal Mobility
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/JobListingList'
+          description: ''
+    post:
+      operationId: job_listings_create
+      description: |-
+        Internal job board.
+
+        Employees see only *active* listings (status ``open`` within the
+        ``open_at`` / ``close_at`` window) and can apply via the ``apply`` action.
+
+        HR / admin users have full access: they can list every listing regardless
+        of status, create new listings, update existing ones, and review the
+        applicant roster via the ``applications`` action.
+      tags:
+      - Internal Mobility
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JobListingWriteRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/JobListingWriteRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/JobListingWriteRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobListingWrite'
+          description: ''
+  /api/job-listings/{id}/:
+    get:
+      operationId: job_listings_retrieve
+      description: |-
+        Internal job board.
+
+        Employees see only *active* listings (status ``open`` within the
+        ``open_at`` / ``close_at`` window) and can apply via the ``apply`` action.
+
+        HR / admin users have full access: they can list every listing regardless
+        of status, create new listings, update existing ones, and review the
+        applicant roster via the ``applications`` action.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Job Listing.
+        required: true
+      tags:
+      - Internal Mobility
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobListingDetail'
+          description: ''
+    put:
+      operationId: job_listings_update
+      description: |-
+        Internal job board.
+
+        Employees see only *active* listings (status ``open`` within the
+        ``open_at`` / ``close_at`` window) and can apply via the ``apply`` action.
+
+        HR / admin users have full access: they can list every listing regardless
+        of status, create new listings, update existing ones, and review the
+        applicant roster via the ``applications`` action.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Job Listing.
+        required: true
+      tags:
+      - Internal Mobility
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JobListingWriteRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/JobListingWriteRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/JobListingWriteRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobListingWrite'
+          description: ''
+    patch:
+      operationId: job_listings_partial_update
+      description: |-
+        Internal job board.
+
+        Employees see only *active* listings (status ``open`` within the
+        ``open_at`` / ``close_at`` window) and can apply via the ``apply`` action.
+
+        HR / admin users have full access: they can list every listing regardless
+        of status, create new listings, update existing ones, and review the
+        applicant roster via the ``applications`` action.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Job Listing.
+        required: true
+      tags:
+      - Internal Mobility
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedJobListingWriteRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedJobListingWriteRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedJobListingWriteRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobListingWrite'
+          description: ''
+  /api/job-listings/{id}/applications/:
+    get:
+      operationId: job_listings_applications_list
+      description: |-
+        Internal job board.
+
+        Employees see only *active* listings (status ``open`` within the
+        ``open_at`` / ``close_at`` window) and can apply via the ``apply`` action.
+
+        HR / admin users have full access: they can list every listing regardless
+        of status, create new listings, update existing ones, and review the
+        applicant roster via the ``applications`` action.
+      summary: List applications for a listing (HR/admin only)
+      parameters:
+      - in: query
+        name: department
+        schema:
+          type: integer
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Job Listing.
+        required: true
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      - in: query
+        name: status
+        schema:
+          type: string
+          enum:
+          - cancelled
+          - closed
+          - draft
+          - open
+        description: |-
+          Current status of the listing
+
+          * `draft` - Draft
+          * `open` - Open
+          * `closed` - Closed
+          * `cancelled` - Cancelled
+      tags:
+      - Internal Mobility
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Application'
+          description: ''
+  /api/job-listings/{id}/apply/:
+    post:
+      operationId: job_listings_apply_create
+      description: |-
+        Internal job board.
+
+        Employees see only *active* listings (status ``open`` within the
+        ``open_at`` / ``close_at`` window) and can apply via the ``apply`` action.
+
+        HR / admin users have full access: they can list every listing regardless
+        of status, create new listings, update existing ones, and review the
+        applicant roster via the ``applications`` action.
+      summary: Apply to an internal job listing
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Job Listing.
+        required: true
+      tags:
+      - Internal Mobility
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplicationCreateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ApplicationCreateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ApplicationCreateRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Application'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/job-listings/my-applications/:
+    get:
+      operationId: job_listings_my_applications_list
+      description: |-
+        Internal job board.
+
+        Employees see only *active* listings (status ``open`` within the
+        ``open_at`` / ``close_at`` window) and can apply via the ``apply`` action.
+
+        HR / admin users have full access: they can list every listing regardless
+        of status, create new listings, update existing ones, and review the
+        applicant roster via the ``applications`` action.
+      summary: List the current user's applications
+      parameters:
+      - in: query
+        name: department
+        schema:
+          type: integer
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      - in: query
+        name: status
+        schema:
+          type: string
+          enum:
+          - cancelled
+          - closed
+          - draft
+          - open
+        description: |-
+          Current status of the listing
+
+          * `draft` - Draft
+          * `open` - Open
+          * `closed` - Closed
+          * `cancelled` - Cancelled
+      tags:
+      - Internal Mobility
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Application'
+          description: ''
   /api/leave-adjustments/:
     get:
       operationId: leave_adjustments_list
@@ -7365,6 +7827,110 @@ components:
         * `manager` - Manager
         * `hr` - HR
         * `admin` - Admin
+    Application:
+      type: object
+      description: Read serialiser for an Application row (list/retrieve).
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        listing_id:
+          type: integer
+          readOnly: true
+        listing_title:
+          type: string
+          readOnly: true
+        applicant_id:
+          type: integer
+          readOnly: true
+        applicant_name:
+          type: string
+          readOnly: true
+          default: ''
+        status:
+          allOf:
+          - $ref: '#/components/schemas/StatusA44Enum'
+          readOnly: true
+          description: |-
+            Current status of the application
+
+            * `submitted` - Submitted
+            * `under_review` - Under Review
+            * `shortlisted` - Shortlisted
+            * `rejected` - Rejected
+            * `withdrawn` - Withdrawn
+            * `accepted` - Accepted
+        status_display:
+          type: string
+          readOnly: true
+        applied_at:
+          type: string
+          format: date-time
+          readOnly: true
+          description: When the application was submitted
+        cover_note:
+          type: string
+          readOnly: true
+          description: Optional note from the applicant
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - applicant_id
+      - applicant_name
+      - applied_at
+      - cover_note
+      - created_at
+      - id
+      - listing_id
+      - listing_title
+      - status
+      - status_display
+      - updated_at
+    ApplicationCreateRequest:
+      type: object
+      description: Write serialiser used by the listing ``apply`` action.
+      properties:
+        cover_note:
+          type: string
+          description: Optional note from the applicant
+    ApplicationStatusUpdate:
+      type: object
+      description: Write serialiser for HR/admin to advance an application status.
+      properties:
+        status:
+          allOf:
+          - $ref: '#/components/schemas/StatusA44Enum'
+          description: |-
+            Current status of the application
+
+            * `submitted` - Submitted
+            * `under_review` - Under Review
+            * `shortlisted` - Shortlisted
+            * `rejected` - Rejected
+            * `withdrawn` - Withdrawn
+            * `accepted` - Accepted
+    ApplicationStatusUpdateRequest:
+      type: object
+      description: Write serialiser for HR/admin to advance an application status.
+      properties:
+        status:
+          allOf:
+          - $ref: '#/components/schemas/StatusA44Enum'
+          description: |-
+            Current status of the application
+
+            * `submitted` - Submitted
+            * `under_review` - Under Review
+            * `shortlisted` - Shortlisted
+            * `rejected` - Rejected
+            * `withdrawn` - Withdrawn
+            * `accepted` - Accepted
     Asset:
       type: object
       description: Serializer for Asset model
@@ -9288,6 +9854,230 @@ components:
           minLength: 1
       required:
       - id_token
+    JobListingDetail:
+      type: object
+      description: Full listing payload for the role drawer.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        title:
+          type: string
+          readOnly: true
+          description: Title of the internal role
+        department_id:
+          type: integer
+          readOnly: true
+          nullable: true
+        department_name:
+          type: string
+          readOnly: true
+          default: ''
+        open_at:
+          type: string
+          format: date-time
+          readOnly: true
+          description: When the listing opens for applications
+        close_at:
+          type: string
+          format: date-time
+          readOnly: true
+          description: When the listing closes for applications
+        status:
+          allOf:
+          - $ref: '#/components/schemas/Status776Enum'
+          readOnly: true
+          description: |-
+            Current status of the listing
+
+            * `draft` - Draft
+            * `open` - Open
+            * `closed` - Closed
+            * `cancelled` - Cancelled
+        status_display:
+          type: string
+          readOnly: true
+        application_count:
+          type: integer
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        description:
+          type: string
+          readOnly: true
+          description: Detailed description of the role
+        created_by_id:
+          type: integer
+          readOnly: true
+          nullable: true
+        created_by_name:
+          type: string
+          readOnly: true
+          default: ''
+        has_applied:
+          type: boolean
+          readOnly: true
+      required:
+      - application_count
+      - close_at
+      - created_at
+      - created_by_id
+      - created_by_name
+      - department_id
+      - department_name
+      - description
+      - has_applied
+      - id
+      - open_at
+      - status
+      - status_display
+      - title
+      - updated_at
+    JobListingList:
+      type: object
+      description: Slim serialiser for the job board grid.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        title:
+          type: string
+          readOnly: true
+          description: Title of the internal role
+        department_id:
+          type: integer
+          readOnly: true
+          nullable: true
+        department_name:
+          type: string
+          readOnly: true
+          default: ''
+        open_at:
+          type: string
+          format: date-time
+          readOnly: true
+          description: When the listing opens for applications
+        close_at:
+          type: string
+          format: date-time
+          readOnly: true
+          description: When the listing closes for applications
+        status:
+          allOf:
+          - $ref: '#/components/schemas/Status776Enum'
+          readOnly: true
+          description: |-
+            Current status of the listing
+
+            * `draft` - Draft
+            * `open` - Open
+            * `closed` - Closed
+            * `cancelled` - Cancelled
+        status_display:
+          type: string
+          readOnly: true
+        application_count:
+          type: integer
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - application_count
+      - close_at
+      - created_at
+      - department_id
+      - department_name
+      - id
+      - open_at
+      - status
+      - status_display
+      - title
+      - updated_at
+    JobListingWrite:
+      type: object
+      description: Write serialiser used by HR/admin to create or update a listing.
+      properties:
+        title:
+          type: string
+          description: Title of the internal role
+          maxLength: 255
+        description:
+          type: string
+          description: Detailed description of the role
+        department_id:
+          type: integer
+          nullable: true
+        open_at:
+          type: string
+          format: date-time
+          description: When the listing opens for applications
+        close_at:
+          type: string
+          format: date-time
+          description: When the listing closes for applications
+        status:
+          allOf:
+          - $ref: '#/components/schemas/Status776Enum'
+          description: |-
+            Current status of the listing
+
+            * `draft` - Draft
+            * `open` - Open
+            * `closed` - Closed
+            * `cancelled` - Cancelled
+      required:
+      - close_at
+      - open_at
+      - title
+    JobListingWriteRequest:
+      type: object
+      description: Write serialiser used by HR/admin to create or update a listing.
+      properties:
+        title:
+          type: string
+          minLength: 1
+          description: Title of the internal role
+          maxLength: 255
+        description:
+          type: string
+          description: Detailed description of the role
+        department_id:
+          type: integer
+          nullable: true
+        open_at:
+          type: string
+          format: date-time
+          description: When the listing opens for applications
+        close_at:
+          type: string
+          format: date-time
+          description: When the listing closes for applications
+        status:
+          allOf:
+          - $ref: '#/components/schemas/Status776Enum'
+          description: |-
+            Current status of the listing
+
+            * `draft` - Draft
+            * `open` - Open
+            * `closed` - Closed
+            * `cancelled` - Cancelled
+      required:
+      - close_at
+      - open_at
+      - title
     LeaveAdjustment:
       type: object
       description: Serializer for leave adjustments.
@@ -9981,6 +10771,22 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/TemplateGeneratedDocument'
+    PatchedApplicationStatusUpdateRequest:
+      type: object
+      description: Write serialiser for HR/admin to advance an application status.
+      properties:
+        status:
+          allOf:
+          - $ref: '#/components/schemas/StatusA44Enum'
+          description: |-
+            Current status of the application
+
+            * `submitted` - Submitted
+            * `under_review` - Under Review
+            * `shortlisted` - Shortlisted
+            * `rejected` - Rejected
+            * `withdrawn` - Withdrawn
+            * `accepted` - Accepted
     PatchedAssetCreateRequest:
       type: object
       description: Simplified serializer for creating assets
@@ -10274,6 +11080,39 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ProjectAssignmentRequest'
+    PatchedJobListingWriteRequest:
+      type: object
+      description: Write serialiser used by HR/admin to create or update a listing.
+      properties:
+        title:
+          type: string
+          minLength: 1
+          description: Title of the internal role
+          maxLength: 255
+        description:
+          type: string
+          description: Detailed description of the role
+        department_id:
+          type: integer
+          nullable: true
+        open_at:
+          type: string
+          format: date-time
+          description: When the listing opens for applications
+        close_at:
+          type: string
+          format: date-time
+          description: When the listing closes for applications
+        status:
+          allOf:
+          - $ref: '#/components/schemas/Status776Enum'
+          description: |-
+            Current status of the listing
+
+            * `draft` - Draft
+            * `open` - Open
+            * `closed` - Closed
+            * `cancelled` - Cancelled
     PatchedLeaveRequestListRequest:
       type: object
       description: Minimal serializer for listing leave requests.
@@ -12619,6 +13458,34 @@ components:
         * `approved` - Approved
         * `rejected` - Rejected
         * `cancelled` - Cancelled
+    Status776Enum:
+      enum:
+      - draft
+      - open
+      - closed
+      - cancelled
+      type: string
+      description: |-
+        * `draft` - Draft
+        * `open` - Open
+        * `closed` - Closed
+        * `cancelled` - Cancelled
+    StatusA44Enum:
+      enum:
+      - submitted
+      - under_review
+      - shortlisted
+      - rejected
+      - withdrawn
+      - accepted
+      type: string
+      description: |-
+        * `submitted` - Submitted
+        * `under_review` - Under Review
+        * `shortlisted` - Shortlisted
+        * `rejected` - Rejected
+        * `withdrawn` - Withdrawn
+        * `accepted` - Accepted
     StatusC59Enum:
       enum:
       - scheduled

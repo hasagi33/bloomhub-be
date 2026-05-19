@@ -14,6 +14,7 @@ from core.constants import (
     REGISTER_FIELDS,
 )
 from core.models import (
+    Application,
     Asset,
     AssetCategory,
     AssetCondition,
@@ -24,6 +25,7 @@ from core.models import (
     ChecklistTask,
     ChecklistTemplate,
     ConferenceCourseRegistration,
+    Department,
     Document,
     DocumentSignatureAuditLog,
     DocumentSigner,
@@ -31,6 +33,7 @@ from core.models import (
     DocumentVersion,
     EmployeeDocument,
     EmployeeProfileChangeHistory,
+    JobListing,
     LeaveAdjustment,
     LeaveApprovalWorkflow,
     LeaveBalance,
@@ -2955,6 +2958,157 @@ class PeerSessionCreateUpdateSerializer(serializers.ModelSerializer):
                 "Duration must be a positive number of minutes."
             )
         return value
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Internal Mobility — Job Listings & Applications
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class JobListingListSerializer(serializers.ModelSerializer):
+    """Slim serialiser for the job board grid."""
+
+    department_id = serializers.IntegerField(
+        source="department.id", read_only=True, allow_null=True
+    )
+    department_name = serializers.CharField(
+        source="department.name", read_only=True, default=""
+    )
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+    application_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = JobListing
+        fields = [
+            "id",
+            "title",
+            "department_id",
+            "department_name",
+            "open_at",
+            "close_at",
+            "status",
+            "status_display",
+            "application_count",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
+
+    def get_application_count(self, obj) -> int:
+        # Annotated by the viewset when available; fall back to a lazy count.
+        count = getattr(obj, "application_count", None)
+        if count is not None:
+            return int(count)
+        return obj.applications.count()
+
+
+class JobListingDetailSerializer(JobListingListSerializer):
+    """Full listing payload for the role drawer."""
+
+    created_by_id = serializers.IntegerField(
+        source="created_by.id", read_only=True, allow_null=True
+    )
+    created_by_name = serializers.CharField(
+        source="created_by.user.get_full_name", read_only=True, default=""
+    )
+    has_applied = serializers.SerializerMethodField()
+
+    class Meta(JobListingListSerializer.Meta):
+        fields = JobListingListSerializer.Meta.fields + [
+            "description",
+            "created_by_id",
+            "created_by_name",
+            "has_applied",
+        ]
+        read_only_fields = fields
+
+    def get_has_applied(self, obj) -> bool:
+        request = self.context.get("request") if hasattr(self, "context") else None
+        if not request or not getattr(request, "user", None):
+            return False
+        user = request.user
+        if not user.is_authenticated:
+            return False
+        profile = getattr(user, "profile", None)
+        if profile is None:
+            return False
+        return obj.applications.filter(applicant=profile).exists()
+
+
+class ApplicationSerializer(serializers.ModelSerializer):
+    """Read serialiser for an Application row (list/retrieve)."""
+
+    applicant_id = serializers.IntegerField(source="applicant.id", read_only=True)
+    applicant_name = serializers.CharField(
+        source="applicant.user.get_full_name", read_only=True, default=""
+    )
+    listing_id = serializers.IntegerField(source="listing.id", read_only=True)
+    listing_title = serializers.CharField(source="listing.title", read_only=True)
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+
+    class Meta:
+        model = Application
+        fields = [
+            "id",
+            "listing_id",
+            "listing_title",
+            "applicant_id",
+            "applicant_name",
+            "status",
+            "status_display",
+            "applied_at",
+            "cover_note",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
+
+
+class ApplicationCreateSerializer(serializers.ModelSerializer):
+    """Write serialiser used by the listing ``apply`` action."""
+
+    class Meta:
+        model = Application
+        fields = ["cover_note"]
+
+
+class JobListingWriteSerializer(serializers.ModelSerializer):
+    """Write serialiser used by HR/admin to create or update a listing."""
+
+    department_id = serializers.PrimaryKeyRelatedField(
+        source="department",
+        queryset=Department.objects.all(),
+        allow_null=True,
+        required=False,
+    )
+
+    class Meta:
+        model = JobListing
+        fields = [
+            "title",
+            "description",
+            "department_id",
+            "open_at",
+            "close_at",
+            "status",
+        ]
+
+    def validate(self, attrs):
+        open_at = attrs.get("open_at") or getattr(self.instance, "open_at", None)
+        close_at = attrs.get("close_at") or getattr(self.instance, "close_at", None)
+        if open_at and close_at and close_at <= open_at:
+            raise serializers.ValidationError(
+                {"close_at": "Close date must be after open date."}
+            )
+        return attrs
+
+
+class ApplicationStatusUpdateSerializer(serializers.ModelSerializer):
+    """Write serialiser for HR/admin to advance an application status."""
+
+    class Meta:
+        model = Application
+        fields = ["status"]
 
 
 # ──────────────────────────────────────────────────────────────────────────────
