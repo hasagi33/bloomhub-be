@@ -15,6 +15,7 @@ from django.utils.text import slugify
 from .avatar_utils import generate_initials_avatar_png, get_initials
 from .enums import (
     ActionPointStatus,
+    ApplicationStatus,
     AssetCondition,
     AssetStatus,
     ChecklistInstanceStatus,
@@ -28,6 +29,7 @@ from .enums import (
     EmployeeDocumentSourceType,
     EmployeeDocumentType,
     EmploymentStatus,
+    JobListingStatus,
     LeaveRequestStatus,
     LeaveType,
     LeaveWorkflowStatus,
@@ -2778,3 +2780,166 @@ class Notification(models.Model):
 
     def __str__(self):
         return f"Notification({self.recipient_id}, {self.title})"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Internal Mobility & Promotions
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class JobListing(models.Model):
+    """Internal job opening that employees can apply for."""
+
+    title = models.CharField(max_length=255, help_text="Title of the internal role")
+    description = models.TextField(
+        blank=True, default="", help_text="Detailed description of the role"
+    )
+    department = models.ForeignKey(
+        Department,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="job_listings",
+        help_text="Department offering the position",
+    )
+    open_at = models.DateTimeField(help_text="When the listing opens for applications")
+    close_at = models.DateTimeField(
+        help_text="When the listing closes for applications"
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=JobListingStatus.choices,
+        default=JobListingStatus.DRAFT,
+        help_text="Current status of the listing",
+    )
+    created_by = models.ForeignKey(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_job_listings",
+        help_text="User who created the listing",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Job Listing"
+        verbose_name_plural = "Job Listings"
+        ordering = ["-open_at"]
+        indexes = [
+            models.Index(fields=["status", "-open_at"]),
+            models.Index(fields=["department", "status"]),
+        ]
+
+    def __str__(self):
+        return f"{self.title} ({self.status})"
+
+
+class Application(models.Model):
+    """An employee's application to a JobListing."""
+
+    listing = models.ForeignKey(
+        JobListing,
+        on_delete=models.CASCADE,
+        related_name="applications",
+        help_text="The job listing being applied to",
+    )
+    applicant = models.ForeignKey(
+        UserProfile,
+        on_delete=models.CASCADE,
+        related_name="job_applications",
+        help_text="Employee submitting the application",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=ApplicationStatus.choices,
+        default=ApplicationStatus.SUBMITTED,
+        help_text="Current status of the application",
+    )
+    applied_at = models.DateTimeField(
+        default=timezone.now, help_text="When the application was submitted"
+    )
+    cover_note = models.TextField(
+        blank=True, default="", help_text="Optional note from the applicant"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Job Application"
+        verbose_name_plural = "Job Applications"
+        ordering = ["-applied_at"]
+        unique_together = ("listing", "applicant")
+        indexes = [
+            models.Index(fields=["listing", "status"]),
+            models.Index(fields=["applicant", "-applied_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.applicant} → {self.listing} ({self.status})"
+
+
+class PromotionHistory(models.Model):
+    """Records an employee's promotion / role change with an optional CPF snapshot."""
+
+    employee = models.ForeignKey(
+        UserProfile,
+        on_delete=models.CASCADE,
+        related_name="promotion_history",
+        help_text="Employee being promoted",
+    )
+    previous_role = models.ForeignKey(
+        Role,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="promotion_history_previous",
+        help_text="Role held before the promotion",
+    )
+    new_role = models.ForeignKey(
+        Role,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="promotion_history_new",
+        help_text="Role held after the promotion",
+    )
+    date = models.DateField(help_text="Effective date of the promotion")
+    notes = models.TextField(
+        blank=True, default="", help_text="Additional context about the promotion"
+    )
+    # Optional CPF snapshot — captures the employee's CPF level at promotion time.
+    previous_cpf_level = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        help_text="Snapshot of CPF level prior to promotion",
+    )
+    new_cpf_level = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        help_text="Snapshot of CPF level after promotion",
+    )
+    related_listing = models.ForeignKey(
+        JobListing,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="promotions",
+        help_text="Internal listing that led to the promotion, if any",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Promotion History"
+        verbose_name_plural = "Promotion Histories"
+        ordering = ["-date"]
+        indexes = [
+            models.Index(fields=["employee", "-date"]),
+        ]
+
+    def __str__(self):
+        return f"{self.employee} promoted on {self.date}"

@@ -291,6 +291,27 @@ class ConferenceCourseRegistrationStatus(models.TextChoices):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# 9.6 Internal Mobility & Promotions
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class JobListingStatus(models.TextChoices):
+    DRAFT = "draft", "Draft"
+    OPEN = "open", "Open"
+    CLOSED = "closed", "Closed"
+    CANCELLED = "cancelled", "Cancelled"
+
+
+class ApplicationStatus(models.TextChoices):
+    SUBMITTED = "submitted", "Submitted"
+    UNDER_REVIEW = "under_review", "Under Review"
+    SHORTLISTED = "shortlisted", "Shortlisted"
+    REJECTED = "rejected", "Rejected"
+    WITHDRAWN = "withdrawn", "Withdrawn"
+    ACCEPTED = "accepted", "Accepted"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # 10. Document Templates
 # ──────────────────────────────────────────────────────────────────────────────
 
