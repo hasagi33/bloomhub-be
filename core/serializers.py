@@ -266,6 +266,19 @@ class ProjectAssignmentSerializer(serializers.ModelSerializer):
         source="project", queryset=Project.objects.all()
     )
     project_name = serializers.CharField(source="project.name", read_only=True)
+    user_profile_id = serializers.PrimaryKeyRelatedField(
+        source="user_profile",
+        queryset=UserProfile.objects.all(),
+        required=False,
+    )
+    employee_name = serializers.SerializerMethodField()
+    # Count of distinct active projects the employee is currently assigned to,
+    # used by the FE to derive an even-split allocation (100 / N).
+    # TODO: Replace this even-split with a calculation backed by logged hours
+    # once the Time Tracking module persists TimeEntry rows linked to
+    # ProjectAssignment. The allocation would then be:
+    #   employee_active_hours_for_project / total_employee_active_hours * 100
+    active_projects_count = serializers.SerializerMethodField()
 
     class Meta:
         model = ProjectAssignment
@@ -273,8 +286,11 @@ class ProjectAssignmentSerializer(serializers.ModelSerializer):
             "id",
             "project_id",
             "project_name",
+            "user_profile_id",
+            "employee_name",
             "role",
             "allocation_percentage",
+            "active_projects_count",
             "start_date",
             "end_date",
             "status",
@@ -282,7 +298,34 @@ class ProjectAssignmentSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["created_at", "updated_at"]
+        read_only_fields = [
+            "created_at",
+            "updated_at",
+            "employee_name",
+            "active_projects_count",
+        ]
+
+    def get_employee_name(self, obj):
+        profile = obj.user_profile
+        if profile is None:
+            return ""
+        return profile.full_name or profile.user.username
+
+    def get_active_projects_count(self, obj):
+        from .enums import ProjectAssignmentStatus
+
+        if obj.user_profile_id is None:
+            return 0
+        return (
+            ProjectAssignment.objects.filter(
+                user_profile_id=obj.user_profile_id,
+                status=ProjectAssignmentStatus.ACTIVE,
+                end_date__isnull=True,
+            )
+            .values("project_id")
+            .distinct()
+            .count()
+        )
 
     def validate_allocation_percentage(self, value):
         if value is None or not (0 <= int(value) <= 100):
@@ -317,6 +360,8 @@ class ProjectSerializer(serializers.ModelSerializer):
             "app_stack",
             "project_type",
             "status",
+            "stage",
+            "stage_note",
             "start_date",
             "end_date",
             "owner_id",
@@ -350,6 +395,64 @@ class ProjectSerializer(serializers.ModelSerializer):
                 {"client": "Client is required for client projects."}
             )
         return attrs
+
+
+class ProjectAssignmentSummarySerializer(serializers.Serializer):
+    """Counts attached to a project for list/detail responses."""
+
+    total_assignments = serializers.IntegerField()
+    active_assignments = serializers.IntegerField()
+    active_members = serializers.IntegerField()
+
+
+class ProjectActiveMemberSerializer(serializers.Serializer):
+    """Minimal active-member shape, matches the leaders/members pattern of
+    the legacy projects payload."""
+
+    assignment_id = serializers.IntegerField(source="id")
+    user_profile_id = serializers.IntegerField()
+    user_id = serializers.IntegerField(source="user_profile.user_id")
+    name = serializers.SerializerMethodField()
+    role = serializers.CharField(allow_null=True)
+    allocation_percentage = serializers.IntegerField()
+    start_date = serializers.DateField()
+    end_date = serializers.DateField(allow_null=True)
+
+    def get_name(self, obj):
+        profile = obj.user_profile
+        return profile.full_name or profile.user.username
+
+
+class ProjectListItemSerializer(ProjectSerializer):
+    assignment_summary = serializers.SerializerMethodField()
+    active_members_count = serializers.IntegerField(read_only=True)
+
+    class Meta(ProjectSerializer.Meta):
+        fields = ProjectSerializer.Meta.fields + [
+            "assignment_summary",
+            "active_members_count",
+        ]
+
+    def get_assignment_summary(self, obj):
+        return ProjectAssignmentSummarySerializer(
+            {
+                "total_assignments": getattr(obj, "total_assignments_count", 0) or 0,
+                "active_assignments": getattr(obj, "active_assignments_count", 0) or 0,
+                "active_members": getattr(obj, "active_members_count", 0) or 0,
+            }
+        ).data
+
+
+class ProjectDetailSerializer(ProjectListItemSerializer):
+    active_members = serializers.SerializerMethodField()
+
+    class Meta(ProjectListItemSerializer.Meta):
+        fields = ProjectListItemSerializer.Meta.fields + ["active_members"]
+
+    def get_active_members(self, obj):
+        from .services.project_service import active_members_for
+
+        return ProjectActiveMemberSerializer(active_members_for(obj), many=True).data
 
 
 class TechnologyTagIdsField(serializers.Field):

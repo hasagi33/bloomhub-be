@@ -34,6 +34,7 @@ from .enums import (
     LeaveType,
     LeaveWorkflowStatus,
     ProjectAssignmentStatus,
+    ProjectStage,
     ProjectStatus,
     ProjectType,
     ReminderType,
@@ -306,6 +307,12 @@ class Project(models.Model):
         choices=ProjectStatus.choices,
         default=ProjectStatus.PLANNED,
     )
+    stage = models.CharField(
+        max_length=20,
+        choices=ProjectStage.choices,
+        default=ProjectStage.INTAKE,
+    )
+    stage_note = models.TextField(blank=True, default="")
     start_date = models.DateField(blank=True, null=True)
     end_date = models.DateField(blank=True, null=True)
     owner = models.ForeignKey(

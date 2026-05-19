@@ -156,6 +156,18 @@ class ProjectStatus(models.TextChoices):
     ON_HOLD = "on_hold", "On Hold"
     COMPLETED = "completed", "Completed"
     CANCELLED = "cancelled", "Cancelled"
+    ARCHIVED = "archived", "Archived"
+
+
+class ProjectStage(models.TextChoices):
+    INTAKE = "intake", "Proposal request"
+    SCOPING = "scoping", "Scoping"
+    TRIAGE = "triage", "Triage"
+    ESTIMATION = "estimation", "Estimation"
+    REVIEW_APPROVAL = "review_approval", "Review & approval"
+    PROPOSAL_SENT = "proposal_sent", "Proposal sent"
+    KICKOFF = "kickoff", "Team assembly & kick-off"
+    DELIVERY = "delivery", "Delivery"
 
 
 # ──────────────────────────────────────────────────────────────────────────────

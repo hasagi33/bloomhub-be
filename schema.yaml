@@ -6033,10 +6033,16 @@ paths:
                   average_rating:
                     type: number
           description: ''
-  /api/projects/:
+  /api/project-assignments/{id}/:
     get:
-      operationId: projects_retrieve
-      description: Get all projects with leaders and members
+      operationId: project_assignments_retrieve
+      description: Retrieve, update, or end a single project assignment.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
       tags:
       - projects
       security:
@@ -6046,8 +6052,430 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProjectListResponse'
+                $ref: '#/components/schemas/ProjectAssignment'
           description: ''
+        '404':
+          description: No response body
+    patch:
+      operationId: project_assignments_partial_update
+      description: Retrieve, update, or end a single project assignment.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - projects
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedProjectAssignmentRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedProjectAssignmentRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedProjectAssignmentRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectAssignment'
+          description: ''
+        '400':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+    delete:
+      operationId: project_assignments_destroy
+      description: Retrieve, update, or end a single project assignment.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - projects
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+  /api/project-assignments/{id}/end/:
+    post:
+      operationId: project_assignments_end_create
+      description: Set the end date for an assignment (does not delete the record).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - projects
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectAssignment'
+          description: ''
+        '400':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+  /api/projects/:
+    get:
+      operationId: projects_list
+      description: List projects visible to the caller, or create a new project.
+      parameters:
+      - in: query
+        name: active_from
+        schema:
+          type: string
+        description: ISO date (YYYY-MM-DD).
+      - in: query
+        name: active_to
+        schema:
+          type: string
+        description: ISO date (YYYY-MM-DD).
+      - in: query
+        name: owner
+        schema:
+          type: integer
+        description: Owner UserProfile id.
+      - in: query
+        name: page
+        schema:
+          type: integer
+      - in: query
+        name: page_size
+        schema:
+          type: integer
+      - in: query
+        name: search
+        schema:
+          type: string
+        description: Match name or client.
+      - in: query
+        name: status
+        schema:
+          type: string
+        description: Filter by project status.
+      tags:
+      - projects
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedProjectListItemList'
+          description: ''
+    post:
+      operationId: projects_create
+      description: List projects visible to the caller, or create a new project.
+      tags:
+      - projects
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ProjectRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ProjectRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectDetail'
+          description: ''
+        '400':
+          description: No response body
+        '403':
+          description: No response body
+  /api/projects/{id}/:
+    get:
+      operationId: projects_retrieve
+      description: Retrieve, update, archive, or reactivate a single project.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - projects
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectDetail'
+          description: ''
+        '404':
+          description: No response body
+    put:
+      operationId: projects_update
+      description: Retrieve, update, archive, or reactivate a single project.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - projects
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ProjectRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ProjectRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectDetail'
+          description: ''
+        '400':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+    patch:
+      operationId: projects_partial_update
+      description: Retrieve, update, archive, or reactivate a single project.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - projects
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedProjectRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedProjectRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedProjectRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectDetail'
+          description: ''
+        '400':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+    delete:
+      operationId: projects_destroy
+      description: Retrieve, update, archive, or reactivate a single project.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - projects
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+  /api/projects/{id}/activity/:
+    get:
+      operationId: projects_activity_retrieve
+      description: |-
+        Synthesize an activity feed for a project from existing timestamps.
+
+        No dedicated audit table yet. Events derived from:
+          - Project.created_at, Project.updated_at, Project.status (archive marker)
+          - ProjectAssignment.created_at (assignment created)
+          - ProjectAssignment.updated_at when end_date is set and status=completed
+            (assignment ended)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - projects
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+  /api/projects/{id}/archive/:
+    post:
+      operationId: projects_archive_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - projects
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectDetail'
+          description: ''
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+  /api/projects/{id}/reactivate/:
+    post:
+      operationId: projects_reactivate_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - projects
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectDetail'
+          description: ''
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+  /api/projects/{project_pk}/assignments/:
+    get:
+      operationId: projects_assignments_list
+      description: List or create assignments for a project.
+      parameters:
+      - in: path
+        name: project_pk
+        schema:
+          type: integer
+        required: true
+      tags:
+      - projects
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProjectAssignment'
+          description: ''
+        '404':
+          description: No response body
+    post:
+      operationId: projects_assignments_create
+      description: List or create assignments for a project.
+      parameters:
+      - in: path
+        name: project_pk
+        schema:
+          type: integer
+        required: true
+      tags:
+      - projects
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectAssignmentRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ProjectAssignmentRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ProjectAssignmentRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectAssignment'
+          description: ''
+        '400':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
   /api/replacement-logs/:
     get:
       operationId: replacement_logs_list
@@ -9507,6 +9935,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/DocumentVersion'
+    PaginatedProjectListItemList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProjectListItem'
     PaginatedTemplateGeneratedDocumentList:
       type: object
       required:
@@ -9855,16 +10306,14 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -9979,6 +10428,71 @@ components:
         content:
           type: string
           minLength: 1
+    PatchedProjectAssignmentRequest:
+      type: object
+      properties:
+        project_id:
+          type: integer
+        user_profile_id:
+          type: integer
+        role:
+          type: string
+          nullable: true
+          maxLength: 100
+        allocation_percentage:
+          type: integer
+          maximum: 100
+          minimum: 0
+          description: Percent of full-time allocation, 0–100.
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+          nullable: true
+        status:
+          $ref: '#/components/schemas/ProjectAssignmentStatusEnum'
+        notes:
+          type: string
+          nullable: true
+    PatchedProjectRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 150
+        description:
+          type: string
+          nullable: true
+        client:
+          type: string
+          nullable: true
+          maxLength: 150
+        app_stack:
+          type: string
+          nullable: true
+          maxLength: 200
+        project_type:
+          $ref: '#/components/schemas/ProjectTypeEnum'
+        status:
+          $ref: '#/components/schemas/StatusF9aEnum'
+        stage:
+          $ref: '#/components/schemas/StageEnum'
+        stage_note:
+          type: string
+        start_date:
+          type: string
+          format: date
+          nullable: true
+        end_date:
+          type: string
+          format: date
+          nullable: true
+        owner_id:
+          type: integer
+          nullable: true
     PatchedReplacementLogUpdateRequest:
       type: object
       description: Request serializer for partial replacement-log updates.
@@ -10111,9 +10625,8 @@ components:
           type: integer
         fiscal_year:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           description: Fiscal year for which budget is allocated
         allocated_budget:
           type: string
@@ -10199,16 +10712,14 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -10233,16 +10744,14 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -10275,16 +10784,14 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -10330,16 +10837,14 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -11086,6 +11591,11 @@ components:
         project_name:
           type: string
           readOnly: true
+        user_profile_id:
+          type: integer
+        employee_name:
+          type: string
+          readOnly: true
         role:
           type: string
           nullable: true
@@ -11095,6 +11605,9 @@ components:
           maximum: 100
           minimum: 0
           description: Percent of full-time allocation, 0–100.
+        active_projects_count:
+          type: string
+          readOnly: true
         start_date:
           type: string
           format: date
@@ -11116,7 +11629,9 @@ components:
           format: date-time
           readOnly: true
       required:
+      - active_projects_count
       - created_at
+      - employee_name
       - id
       - project_id
       - project_name
@@ -11126,6 +11641,8 @@ components:
       type: object
       properties:
         project_id:
+          type: integer
+        user_profile_id:
           type: integer
         role:
           type: string
@@ -11161,57 +11678,177 @@ components:
         * `active` - Active
         * `completed` - Completed
         * `on_hold` - On Hold
-    ProjectListResponse:
-      type: object
-      properties:
-        projects:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProjectSummary'
-      required:
-      - projects
-    ProjectPerson:
+    ProjectDetail:
       type: object
       properties:
         id:
           type: integer
+          readOnly: true
         name:
           type: string
-      required:
-      - id
-      - name
-    ProjectSummary:
-      type: object
-      properties:
-        id:
-          type: integer
-        name:
-          type: string
+          maxLength: 150
         description:
           type: string
           nullable: true
         client:
           type: string
           nullable: true
+          maxLength: 150
         app_stack:
           type: string
           nullable: true
-        leaders:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProjectPerson'
-        members:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProjectPerson'
+          maxLength: 200
+        project_type:
+          $ref: '#/components/schemas/ProjectTypeEnum'
+        status:
+          $ref: '#/components/schemas/StatusF9aEnum'
+        stage:
+          $ref: '#/components/schemas/StageEnum'
+        stage_note:
+          type: string
+        start_date:
+          type: string
+          format: date
+          nullable: true
+        end_date:
+          type: string
+          format: date
+          nullable: true
+        owner_id:
+          type: integer
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        assignment_summary:
+          type: string
+          readOnly: true
+        active_members_count:
+          type: integer
+          readOnly: true
+        active_members:
+          type: string
+          readOnly: true
       required:
-      - app_stack
-      - client
-      - description
+      - active_members
+      - active_members_count
+      - assignment_summary
+      - created_at
       - id
-      - leaders
-      - members
       - name
+      - updated_at
+    ProjectListItem:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          maxLength: 150
+        description:
+          type: string
+          nullable: true
+        client:
+          type: string
+          nullable: true
+          maxLength: 150
+        app_stack:
+          type: string
+          nullable: true
+          maxLength: 200
+        project_type:
+          $ref: '#/components/schemas/ProjectTypeEnum'
+        status:
+          $ref: '#/components/schemas/StatusF9aEnum'
+        stage:
+          $ref: '#/components/schemas/StageEnum'
+        stage_note:
+          type: string
+        start_date:
+          type: string
+          format: date
+          nullable: true
+        end_date:
+          type: string
+          format: date
+          nullable: true
+        owner_id:
+          type: integer
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        assignment_summary:
+          type: string
+          readOnly: true
+        active_members_count:
+          type: integer
+          readOnly: true
+      required:
+      - active_members_count
+      - assignment_summary
+      - created_at
+      - id
+      - name
+      - updated_at
+    ProjectRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 150
+        description:
+          type: string
+          nullable: true
+        client:
+          type: string
+          nullable: true
+          maxLength: 150
+        app_stack:
+          type: string
+          nullable: true
+          maxLength: 200
+        project_type:
+          $ref: '#/components/schemas/ProjectTypeEnum'
+        status:
+          $ref: '#/components/schemas/StatusF9aEnum'
+        stage:
+          $ref: '#/components/schemas/StageEnum'
+        stage_note:
+          type: string
+        start_date:
+          type: string
+          format: date
+          nullable: true
+        end_date:
+          type: string
+          format: date
+          nullable: true
+        owner_id:
+          type: integer
+          nullable: true
+      required:
+      - name
+    ProjectTypeEnum:
+      enum:
+      - client
+      - internal
+      type: string
+      description: |-
+        * `client` - Client
+        * `internal` - Internal
     RegisterRequest:
       type: object
       properties:
@@ -11928,6 +12565,26 @@ components:
       required:
       - email
       - name
+    StageEnum:
+      enum:
+      - intake
+      - scoping
+      - triage
+      - estimation
+      - review_approval
+      - proposal_sent
+      - kickoff
+      - delivery
+      type: string
+      description: |-
+        * `intake` - Proposal request
+        * `scoping` - Scoping
+        * `triage` - Triage
+        * `estimation` - Estimation
+        * `review_approval` - Review & approval
+        * `proposal_sent` - Proposal sent
+        * `kickoff` - Team assembly & kick-off
+        * `delivery` - Delivery
     Status081Enum:
       enum:
       - registered
@@ -11990,6 +12647,22 @@ components:
         * `lost` - Lost
         * `returned` - Returned
         * `damaged` - Damaged
+    StatusF9aEnum:
+      enum:
+      - planned
+      - active
+      - on_hold
+      - completed
+      - cancelled
+      - archived
+      type: string
+      description: |-
+        * `planned` - Planned
+        * `active` - Active
+        * `on_hold` - On Hold
+        * `completed` - Completed
+        * `cancelled` - Cancelled
+        * `archived` - Archived
     TaskTemplate:
       type: object
       properties:
@@ -12232,9 +12905,8 @@ components:
           readOnly: true
         fiscal_year:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           description: Fiscal year for which budget is allocated
         allocated_budget:
           type: string
@@ -12290,9 +12962,8 @@ components:
           type: integer
         fiscal_year:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           description: Fiscal year for which budget is allocated
         allocated_budget:
           type: string

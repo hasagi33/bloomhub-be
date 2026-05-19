@@ -39,7 +39,14 @@ from .views import (
     PerformanceReviewReminderViewSet,
     PerformanceReviewViewSet,
     PermissionsView,
+    ProjectActivityView,
+    ProjectArchiveView,
+    ProjectAssignmentDetailView,
+    ProjectAssignmentEndView,
+    ProjectAssignmentListCreateView,
+    ProjectDetailView,
     ProjectListView,
+    ProjectReactivateView,
     RegisterView,
     ReplacementLogDetailView,
     ReplacementLogListView,
@@ -190,6 +197,37 @@ urlpatterns = [
     # Reference data endpoints
     path("departments/", DepartmentListView.as_view(), name="department_list"),
     path("projects/", ProjectListView.as_view(), name="project_list"),
+    path("projects/<int:pk>/", ProjectDetailView.as_view(), name="project_detail"),
+    path(
+        "projects/<int:pk>/archive/",
+        ProjectArchiveView.as_view(),
+        name="project_archive",
+    ),
+    path(
+        "projects/<int:pk>/reactivate/",
+        ProjectReactivateView.as_view(),
+        name="project_reactivate",
+    ),
+    path(
+        "projects/<int:pk>/activity/",
+        ProjectActivityView.as_view(),
+        name="project_activity",
+    ),
+    path(
+        "projects/<int:project_pk>/assignments/",
+        ProjectAssignmentListCreateView.as_view(),
+        name="project_assignment_list",
+    ),
+    path(
+        "project-assignments/<int:pk>/",
+        ProjectAssignmentDetailView.as_view(),
+        name="project_assignment_detail",
+    ),
+    path(
+        "project-assignments/<int:pk>/end/",
+        ProjectAssignmentEndView.as_view(),
+        name="project_assignment_end",
+    ),
     path("roles/", RoleListView.as_view(), name="role_list"),
     path("cpf-levels/", CPFLevelListView.as_view(), name="cpf_level_list"),
     path(

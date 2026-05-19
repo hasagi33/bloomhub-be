@@ -162,6 +162,10 @@ from .serializers import (
     PerformanceReviewListSerializer,
     PerformanceReviewNoteSerializer,
     PerformanceReviewReminderSerializer,
+    ProjectAssignmentSerializer,
+    ProjectDetailSerializer,
+    ProjectListItemSerializer,
+    ProjectSerializer,
     RegisterSerializer,
     ReplacementLogSerializer,
     ReplacementLogUpdateSerializer,
@@ -232,6 +236,16 @@ from .services.performance_review_service import (
 )
 from .services.profile_change_history import log_employee_profile_change, role_value
 from .services.training_budget_service import recalculate_budget
+from .services.project_service import (
+    ProjectFilterError,
+    annotate_assignment_counts,
+    apply_project_filters,
+    archive_project,
+    can_modify_projects,
+    can_view_project,
+    reactivate_project,
+    visible_projects_for,
+)
 from .shared.employee_utils import soft_delete_employee_profile
 from .utils import (
     clone_template,
@@ -1501,51 +1515,448 @@ class DepartmentListView(APIView):
         )
 
 
+class ProjectPagination(pagination.PageNumberPagination):
+    page_size = 50
+    page_size_query_param = "page_size"
+    max_page_size = 200
+
+
+@extend_schema(tags=["projects"])
 class ProjectListView(APIView):
-    """Get all projects with leaders and members"""
+    """List projects visible to the caller, or create a new project."""
+
+    permission_classes = [IsAuthenticated]
+    pagination_class = ProjectPagination
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter("search", str, description="Match name or client."),
+            OpenApiParameter("status", str, description="Filter by project status."),
+            OpenApiParameter("owner", int, description="Owner UserProfile id."),
+            OpenApiParameter("active_from", str, description="ISO date (YYYY-MM-DD)."),
+            OpenApiParameter("active_to", str, description="ISO date (YYYY-MM-DD)."),
+            OpenApiParameter("page", int),
+            OpenApiParameter("page_size", int),
+        ],
+        responses={200: ProjectListItemSerializer(many=True)},
+    )
+    def get(self, request):
+        queryset = visible_projects_for(request.user)
+        try:
+            queryset = apply_project_filters(queryset, request.query_params)
+        except ProjectFilterError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        queryset = annotate_assignment_counts(queryset).order_by("name")
+
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(queryset, request)
+        serializer = ProjectListItemSerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
+
+    @extend_schema(
+        request=ProjectSerializer,
+        responses={201: ProjectDetailSerializer, 400: None, 403: None},
+    )
+    def post(self, request):
+        if not can_modify_projects(request.user):
+            return Response(
+                {"error": "You do not have permission to create projects."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        serializer = ProjectSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        project = serializer.save()
+        annotated = annotate_assignment_counts(
+            Project.objects.filter(pk=project.pk)
+        ).first()
+        return Response(
+            ProjectDetailSerializer(annotated).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+@extend_schema(tags=["projects"])
+class ProjectDetailView(APIView):
+    """Retrieve, update, archive, or reactivate a single project."""
+
+    permission_classes = [IsAuthenticated]
+
+    def _get_project(self, pk):
+        return annotate_assignment_counts(Project.objects.filter(pk=pk)).first()
+
+    @extend_schema(responses={200: ProjectDetailSerializer, 404: None})
+    def get(self, request, pk):
+        project = self._get_project(pk)
+        if project is None:
+            return Response(
+                {"error": "Project not found."}, status=status.HTTP_404_NOT_FOUND
+            )
+        if not can_view_project(request.user, project):
+            return Response(
+                {"error": "You do not have permission to view this project."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return Response(ProjectDetailSerializer(project).data)
+
+    @extend_schema(
+        request=ProjectSerializer,
+        responses={200: ProjectDetailSerializer, 400: None, 403: None, 404: None},
+    )
+    def put(self, request, pk):
+        return self._update(request, pk, partial=False)
+
+    @extend_schema(
+        request=ProjectSerializer,
+        responses={200: ProjectDetailSerializer, 400: None, 403: None, 404: None},
+    )
+    def patch(self, request, pk):
+        return self._update(request, pk, partial=True)
+
+    def _update(self, request, pk, partial):
+        project = Project.objects.filter(pk=pk).first()
+        if project is None:
+            return Response(
+                {"error": "Project not found."}, status=status.HTTP_404_NOT_FOUND
+            )
+        if not can_modify_projects(request.user):
+            return Response(
+                {"error": "You do not have permission to update projects."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        serializer = ProjectSerializer(project, data=request.data, partial=partial)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        project = serializer.save()
+        annotated = self._get_project(project.pk)
+        return Response(ProjectDetailSerializer(annotated).data)
+
+    @extend_schema(responses={204: None, 403: None, 404: None})
+    def delete(self, request, pk):
+        project = Project.objects.filter(pk=pk).first()
+        if project is None:
+            return Response(
+                {"error": "Project not found."}, status=status.HTTP_404_NOT_FOUND
+            )
+        if not can_modify_projects(request.user):
+            return Response(
+                {"error": "You do not have permission to delete projects."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        project.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@extend_schema(tags=["projects"])
+class ProjectArchiveView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(responses={200: ProjectDetailSerializer, 403: None, 404: None})
+    def post(self, request, pk):
+        project = Project.objects.filter(pk=pk).first()
+        if project is None:
+            return Response(
+                {"error": "Project not found."}, status=status.HTTP_404_NOT_FOUND
+            )
+        if not can_modify_projects(request.user):
+            return Response(
+                {"error": "You do not have permission to archive projects."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        archive_project(project)
+        annotated = annotate_assignment_counts(
+            Project.objects.filter(pk=project.pk)
+        ).first()
+        return Response(ProjectDetailSerializer(annotated).data)
+
+
+@extend_schema(tags=["projects"])
+class ProjectReactivateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(responses={200: ProjectDetailSerializer, 403: None, 404: None})
+    def post(self, request, pk):
+        project = Project.objects.filter(pk=pk).first()
+        if project is None:
+            return Response(
+                {"error": "Project not found."}, status=status.HTTP_404_NOT_FOUND
+            )
+        if not can_modify_projects(request.user):
+            return Response(
+                {"error": "You do not have permission to reactivate projects."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        reactivate_project(project)
+        annotated = annotate_assignment_counts(
+            Project.objects.filter(pk=project.pk)
+        ).first()
+        return Response(ProjectDetailSerializer(annotated).data)
+
+
+@extend_schema(tags=["projects"])
+class ProjectActivityView(APIView):
+    """Synthesize an activity feed for a project from existing timestamps.
+
+    No dedicated audit table yet. Events derived from:
+      - Project.created_at, Project.updated_at, Project.status (archive marker)
+      - ProjectAssignment.created_at (assignment created)
+      - ProjectAssignment.updated_at when end_date is set and status=completed
+        (assignment ended)
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(responses={200: None, 403: None, 404: None})
+    def get(self, request, pk):
+        project = Project.objects.filter(pk=pk).first()
+        if project is None:
+            return Response(
+                {"error": "Project not found."}, status=status.HTTP_404_NOT_FOUND
+            )
+        if not can_view_project(request.user, project):
+            return Response(
+                {"error": "You do not have permission to view this project."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        owner_name = ""
+        if project.owner is not None:
+            owner_name = project.owner.full_name or project.owner.user.username
+
+        events: list[dict[str, Any]] = []
+        events.append(
+            {
+                "id": f"p-{project.id}-created",
+                "at": project.created_at.isoformat(),
+                "actor": owner_name or "—",
+                "message": f"Created project {project.name}",
+            }
+        )
+
+        if (
+            project.updated_at
+            and project.created_at
+            and (project.updated_at - project.created_at).total_seconds() > 1
+        ):
+            archived = project.status == "archived"
+            events.append(
+                {
+                    "id": f"p-{project.id}-updated",
+                    "at": project.updated_at.isoformat(),
+                    "actor": owner_name or "—",
+                    "message": (
+                        f"Archived project {project.name}"
+                        if archived
+                        else f"Updated project {project.name}"
+                    ),
+                }
+            )
+
+        assignments = (
+            ProjectAssignment.objects.select_related("user_profile__user")
+            .filter(project=project)
+            .order_by("-created_at")
+        )
+        for a in assignments:
+            who = (
+                a.user_profile.full_name or a.user_profile.user.username
+                if a.user_profile
+                else "Unknown"
+            )
+            role_part = f" as {a.role}" if a.role else ""
+            events.append(
+                {
+                    "id": f"a-{a.id}-created",
+                    "at": a.created_at.isoformat(),
+                    "actor": "—",
+                    "message": (
+                        f"Assigned {who}{role_part} at {a.allocation_percentage}%"
+                    ),
+                }
+            )
+            if (
+                a.end_date
+                and a.updated_at
+                and (a.updated_at - a.created_at).total_seconds() > 1
+            ):
+                events.append(
+                    {
+                        "id": f"a-{a.id}-ended",
+                        "at": a.updated_at.isoformat(),
+                        "actor": "—",
+                        "message": (f"Ended assignment for {who} on {a.end_date}"),
+                    }
+                )
+
+        events.sort(key=lambda e: e["at"], reverse=True)
+        return Response({"events": events})
+
+
+@extend_schema(tags=["projects"])
+class ProjectAssignmentListCreateView(APIView):
+    """List or create assignments for a project."""
+
+    permission_classes = [IsAuthenticated]
+
+    def _get_project(self, pk):
+        return Project.objects.filter(pk=pk).first()
+
+    @extend_schema(responses={200: ProjectAssignmentSerializer(many=True), 404: None})
+    def get(self, request, project_pk):
+        project = self._get_project(project_pk)
+        if project is None:
+            return Response(
+                {"error": "Project not found."}, status=status.HTTP_404_NOT_FOUND
+            )
+        if not can_view_project(request.user, project):
+            return Response(
+                {"error": "You do not have permission to view this project."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        assignments = (
+            ProjectAssignment.objects.select_related("user_profile__user")
+            .filter(project=project)
+            .order_by("-start_date")
+        )
+        return Response(ProjectAssignmentSerializer(assignments, many=True).data)
+
+    @extend_schema(
+        request=ProjectAssignmentSerializer,
+        responses={201: ProjectAssignmentSerializer, 400: None, 403: None, 404: None},
+    )
+    def post(self, request, project_pk):
+        project = self._get_project(project_pk)
+        if project is None:
+            return Response(
+                {"error": "Project not found."}, status=status.HTTP_404_NOT_FOUND
+            )
+        if not can_modify_projects(request.user):
+            return Response(
+                {"error": "You do not have permission to manage project assignments."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        data = dict(request.data)
+        data["project_id"] = project.pk
+        serializer = ProjectAssignmentSerializer(data=data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        assignment = serializer.save()
+        return Response(
+            ProjectAssignmentSerializer(assignment).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+@extend_schema(tags=["projects"])
+class ProjectAssignmentDetailView(APIView):
+    """Retrieve, update, or end a single project assignment."""
+
+    permission_classes = [IsAuthenticated]
+
+    def _get_assignment(self, pk):
+        return (
+            ProjectAssignment.objects.select_related("user_profile__user", "project")
+            .filter(pk=pk)
+            .first()
+        )
+
+    @extend_schema(responses={200: ProjectAssignmentSerializer, 404: None})
+    def get(self, request, pk):
+        assignment = self._get_assignment(pk)
+        if assignment is None:
+            return Response(
+                {"error": "Assignment not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if not can_view_project(request.user, assignment.project):
+            return Response(
+                {"error": "You do not have permission to view this assignment."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return Response(ProjectAssignmentSerializer(assignment).data)
+
+    @extend_schema(
+        request=ProjectAssignmentSerializer,
+        responses={200: ProjectAssignmentSerializer, 400: None, 403: None, 404: None},
+    )
+    def patch(self, request, pk):
+        assignment = self._get_assignment(pk)
+        if assignment is None:
+            return Response(
+                {"error": "Assignment not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if not can_modify_projects(request.user):
+            return Response(
+                {"error": "You do not have permission to update assignments."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        serializer = ProjectAssignmentSerializer(
+            assignment, data=request.data, partial=True
+        )
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        assignment = serializer.save()
+        return Response(ProjectAssignmentSerializer(assignment).data)
+
+    @extend_schema(responses={204: None, 403: None, 404: None})
+    def delete(self, request, pk):
+        assignment = self._get_assignment(pk)
+        if assignment is None:
+            return Response(
+                {"error": "Assignment not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if not can_modify_projects(request.user):
+            return Response(
+                {"error": "You do not have permission to delete assignments."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        assignment.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@extend_schema(tags=["projects"])
+class ProjectAssignmentEndView(APIView):
+    """Set the end date for an assignment (does not delete the record)."""
 
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
-        tags=["projects"],
-        responses={200: ProjectListResponseSerializer},
+        responses={200: ProjectAssignmentSerializer, 400: None, 403: None, 404: None},
     )
-    def get(self, request):
-        from collections import defaultdict
-
-        # Fetch all assignments in one query, grouped by project
-        assignments = ProjectAssignment.objects.select_related(
-            "project", "user_profile__user"
-        ).all()
-
-        leaders_by_project: dict[int, list] = defaultdict(list)
-        members_by_project: dict[int, list] = defaultdict(list)
-
-        for assignment in assignments:
-            profile = assignment.user_profile
-            person = {
-                "id": profile.user_id,
-                "name": profile.full_name or profile.user.username,
-            }
-            members_by_project[assignment.project_id].append(person)
-            if profile.career_level and "lead" in profile.career_level.lower():
-                leaders_by_project[assignment.project_id].append(person)
-
-        projects = Project.objects.all().order_by("name")
-        data = [
-            {
-                "id": project.id,
-                "name": project.name,
-                "description": project.description,
-                "client": project.client,
-                "app_stack": project.app_stack,
-                "leaders": leaders_by_project.get(project.id, []),
-                "members": members_by_project.get(project.id, []),
-            }
-            for project in projects
-        ]
-
-        return Response({"projects": data}, status=status.HTTP_200_OK)
+    def post(self, request, pk):
+        assignment = (
+            ProjectAssignment.objects.select_related("user_profile__user", "project")
+            .filter(pk=pk)
+            .first()
+        )
+        if assignment is None:
+            return Response(
+                {"error": "Assignment not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if not can_modify_projects(request.user):
+            return Response(
+                {"error": "You do not have permission to end assignments."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        end_date = request.data.get("end_date")
+        if not end_date:
+            return Response(
+                {"end_date": "End date is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        serializer = ProjectAssignmentSerializer(
+            assignment,
+            data={"end_date": end_date, "status": "completed"},
+            partial=True,
+        )
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        assignment = serializer.save()
+        return Response(ProjectAssignmentSerializer(assignment).data)
 
 
 class RoleListView(APIView):
