@@ -6938,6 +6938,200 @@ paths:
           description: No response body
         '404':
           description: No response body
+  /api/promotion-history/:
+    get:
+      operationId: promotion_history_list
+      description: |-
+        CRUD for employee promotion history.
+
+        Employees see only their own promotion records. HR/admin see every
+        record (filterable via ``?employee=<id>``) and are the only users who
+        may create, update, or delete entries.
+      parameters:
+      - in: query
+        name: employee
+        schema:
+          type: integer
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - Internal Mobility
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PromotionHistory'
+          description: ''
+    post:
+      operationId: promotion_history_create
+      description: |-
+        CRUD for employee promotion history.
+
+        Employees see only their own promotion records. HR/admin see every
+        record (filterable via ``?employee=<id>``) and are the only users who
+        may create, update, or delete entries.
+      tags:
+      - Internal Mobility
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PromotionHistoryWriteRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PromotionHistoryWriteRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PromotionHistoryWriteRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromotionHistoryWrite'
+          description: ''
+  /api/promotion-history/{id}/:
+    get:
+      operationId: promotion_history_retrieve
+      description: |-
+        CRUD for employee promotion history.
+
+        Employees see only their own promotion records. HR/admin see every
+        record (filterable via ``?employee=<id>``) and are the only users who
+        may create, update, or delete entries.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Promotion History.
+        required: true
+      tags:
+      - Internal Mobility
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromotionHistory'
+          description: ''
+    put:
+      operationId: promotion_history_update
+      description: |-
+        CRUD for employee promotion history.
+
+        Employees see only their own promotion records. HR/admin see every
+        record (filterable via ``?employee=<id>``) and are the only users who
+        may create, update, or delete entries.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Promotion History.
+        required: true
+      tags:
+      - Internal Mobility
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PromotionHistoryWriteRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PromotionHistoryWriteRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PromotionHistoryWriteRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromotionHistoryWrite'
+          description: ''
+    patch:
+      operationId: promotion_history_partial_update
+      description: |-
+        CRUD for employee promotion history.
+
+        Employees see only their own promotion records. HR/admin see every
+        record (filterable via ``?employee=<id>``) and are the only users who
+        may create, update, or delete entries.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Promotion History.
+        required: true
+      tags:
+      - Internal Mobility
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedPromotionHistoryWriteRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedPromotionHistoryWriteRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedPromotionHistoryWriteRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromotionHistoryWrite'
+          description: ''
+    delete:
+      operationId: promotion_history_destroy
+      description: |-
+        CRUD for employee promotion history.
+
+        Employees see only their own promotion records. HR/admin see every
+        record (filterable via ``?employee=<id>``) and are the only users who
+        may create, update, or delete entries.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Promotion History.
+        required: true
+      tags:
+      - Internal Mobility
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
   /api/replacement-logs/:
     get:
       operationId: replacement_logs_list
@@ -11145,14 +11339,16 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -11332,6 +11528,37 @@ components:
         owner_id:
           type: integer
           nullable: true
+    PatchedPromotionHistoryWriteRequest:
+      type: object
+      description: Write serialiser used by HR/admin to create or update a promotion
+        record.
+      properties:
+        employee_id:
+          type: integer
+        previous_role_id:
+          type: integer
+          nullable: true
+        new_role_id:
+          type: integer
+          nullable: true
+        date:
+          type: string
+          format: date
+          description: Effective date of the promotion
+        notes:
+          type: string
+          description: Additional context about the promotion
+        previous_cpf_level:
+          type: string
+          description: Snapshot of CPF level prior to promotion
+          maxLength: 100
+        new_cpf_level:
+          type: string
+          description: Snapshot of CPF level after promotion
+          maxLength: 100
+        related_listing_id:
+          type: integer
+          nullable: true
     PatchedReplacementLogUpdateRequest:
       type: object
       description: Request serializer for partial replacement-log updates.
@@ -11464,8 +11691,9 @@ components:
           type: integer
         fiscal_year:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           description: Fiscal year for which budget is allocated
         allocated_budget:
           type: string
@@ -11551,14 +11779,16 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -11583,14 +11813,16 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -11623,14 +11855,16 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -11676,14 +11910,16 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -12688,6 +12924,153 @@ components:
       description: |-
         * `client` - Client
         * `internal` - Internal
+    PromotionHistory:
+      type: object
+      description: Read serialiser for a promotion history record.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        employee_id:
+          type: integer
+          readOnly: true
+        employee_name:
+          type: string
+          readOnly: true
+          default: ''
+        previous_role_id:
+          type: integer
+          readOnly: true
+          nullable: true
+        previous_role_name:
+          type: string
+          readOnly: true
+          default: ''
+        new_role_id:
+          type: integer
+          readOnly: true
+          nullable: true
+        new_role_name:
+          type: string
+          readOnly: true
+          default: ''
+        date:
+          type: string
+          format: date
+          readOnly: true
+          description: Effective date of the promotion
+        notes:
+          type: string
+          readOnly: true
+          description: Additional context about the promotion
+        previous_cpf_level:
+          type: string
+          readOnly: true
+          description: Snapshot of CPF level prior to promotion
+        new_cpf_level:
+          type: string
+          readOnly: true
+          description: Snapshot of CPF level after promotion
+        related_listing_id:
+          type: integer
+          readOnly: true
+          nullable: true
+        related_listing_title:
+          type: string
+          readOnly: true
+          default: ''
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - date
+      - employee_id
+      - employee_name
+      - id
+      - new_cpf_level
+      - new_role_id
+      - new_role_name
+      - notes
+      - previous_cpf_level
+      - previous_role_id
+      - previous_role_name
+      - related_listing_id
+      - related_listing_title
+      - updated_at
+    PromotionHistoryWrite:
+      type: object
+      description: Write serialiser used by HR/admin to create or update a promotion
+        record.
+      properties:
+        employee_id:
+          type: integer
+        previous_role_id:
+          type: integer
+          nullable: true
+        new_role_id:
+          type: integer
+          nullable: true
+        date:
+          type: string
+          format: date
+          description: Effective date of the promotion
+        notes:
+          type: string
+          description: Additional context about the promotion
+        previous_cpf_level:
+          type: string
+          description: Snapshot of CPF level prior to promotion
+          maxLength: 100
+        new_cpf_level:
+          type: string
+          description: Snapshot of CPF level after promotion
+          maxLength: 100
+        related_listing_id:
+          type: integer
+          nullable: true
+      required:
+      - date
+      - employee_id
+    PromotionHistoryWriteRequest:
+      type: object
+      description: Write serialiser used by HR/admin to create or update a promotion
+        record.
+      properties:
+        employee_id:
+          type: integer
+        previous_role_id:
+          type: integer
+          nullable: true
+        new_role_id:
+          type: integer
+          nullable: true
+        date:
+          type: string
+          format: date
+          description: Effective date of the promotion
+        notes:
+          type: string
+          description: Additional context about the promotion
+        previous_cpf_level:
+          type: string
+          description: Snapshot of CPF level prior to promotion
+          maxLength: 100
+        new_cpf_level:
+          type: string
+          description: Snapshot of CPF level after promotion
+          maxLength: 100
+        related_listing_id:
+          type: integer
+          nullable: true
+      required:
+      - date
+      - employee_id
     RegisterRequest:
       type: object
       properties:
@@ -13772,8 +14155,9 @@ components:
           readOnly: true
         fiscal_year:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           description: Fiscal year for which budget is allocated
         allocated_budget:
           type: string
@@ -13829,8 +14213,9 @@ components:
           type: integer
         fiscal_year:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           description: Fiscal year for which budget is allocated
         allocated_budget:
           type: string

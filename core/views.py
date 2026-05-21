@@ -76,6 +76,7 @@ from .models import (
     Permission,
     Project,
     ProjectAssignment,
+    PromotionHistory,
     ReplacementLog,
     Role,
     ScheduledMaintenance,
@@ -175,6 +176,8 @@ from .serializers import (
     ProjectDetailSerializer,
     ProjectListItemSerializer,
     ProjectSerializer,
+    PromotionHistorySerializer,
+    PromotionHistoryWriteSerializer,
     RegisterSerializer,
     ReplacementLogSerializer,
     ReplacementLogUpdateSerializer,
@@ -244,7 +247,6 @@ from .services.performance_review_service import (
     sync_performance_review_reminders_for_review,
 )
 from .services.profile_change_history import log_employee_profile_change, role_value
-from .services.training_budget_service import recalculate_budget
 from .services.project_service import (
     ProjectFilterError,
     annotate_assignment_counts,
@@ -255,6 +257,7 @@ from .services.project_service import (
     reactivate_project,
     visible_projects_for,
 )
+from .services.training_budget_service import recalculate_budget
 from .shared.employee_utils import soft_delete_employee_profile
 from .utils import (
     clone_template,
@@ -6584,6 +6587,81 @@ class JobApplicationViewSet(
         return Response(
             ApplicationSerializer(instance).data, status=response.status_code
         )
+
+
+@extend_schema(tags=["Internal Mobility"])
+class PromotionHistoryViewSet(viewsets.ModelViewSet):
+    """
+    CRUD for employee promotion history.
+
+    Employees see only their own promotion records. HR/admin see every
+    record (filterable via ``?employee=<id>``) and are the only users who
+    may create, update, or delete entries.
+    """
+
+    permission_classes = [IsAuthenticated]
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.SearchFilter,
+        filters.OrderingFilter,
+    ]
+    filterset_fields = ["employee"]
+    search_fields = [
+        "notes",
+        "employee__user__first_name",
+        "employee__user__last_name",
+    ]
+    ordering_fields = ["date", "created_at"]
+    ordering = ["-date"]
+
+    def get_queryset(self):
+        base = PromotionHistory.objects.select_related(
+            "employee__user",
+            "previous_role",
+            "new_role",
+            "related_listing",
+        )
+        user = self.request.user
+        if user.is_authenticated and is_hr_or_admin(user):
+            return base
+        profile = getattr(user, "profile", None) if user.is_authenticated else None
+        if profile is None:
+            return base.none()
+        return base.filter(employee=profile)
+
+    def get_serializer_class(self):
+        if self.action in ("create", "update", "partial_update"):
+            return PromotionHistoryWriteSerializer
+        return PromotionHistorySerializer
+
+    def _require_hr(self):
+        if not is_hr_or_admin(self.request.user):
+            raise PermissionDenied(
+                "Only HR or admin users may modify promotion history."
+            )
+
+    def create(self, request, *args, **kwargs):
+        self._require_hr()
+        write = self.get_serializer(data=request.data)
+        write.is_valid(raise_exception=True)
+        instance = write.save()
+        return Response(
+            PromotionHistorySerializer(instance).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    def update(self, request, *args, **kwargs):
+        self._require_hr()
+        partial = kwargs.pop("partial", False)
+        instance = self.get_object()
+        write = self.get_serializer(instance, data=request.data, partial=partial)
+        write.is_valid(raise_exception=True)
+        instance = write.save()
+        return Response(PromotionHistorySerializer(instance).data)
+
+    def perform_destroy(self, instance):
+        self._require_hr()
+        instance.delete()
 
 
 # ──────────────────────────────────────────────────────────────────────────────

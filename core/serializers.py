@@ -49,7 +49,9 @@ from core.models import (
     PerformanceReviewReminder,
     Project,
     ProjectAssignment,
+    PromotionHistory,
     ReplacementLog,
+    Role,
     SalaryRecord,
     ScheduledMaintenance,
     TaskTemplate,
@@ -3109,6 +3111,93 @@ class ApplicationStatusUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Application
         fields = ["status"]
+
+
+class PromotionHistorySerializer(serializers.ModelSerializer):
+    """Read serialiser for a promotion history record."""
+
+    employee_id = serializers.IntegerField(source="employee.id", read_only=True)
+    employee_name = serializers.CharField(
+        source="employee.user.get_full_name", read_only=True, default=""
+    )
+    previous_role_id = serializers.IntegerField(
+        source="previous_role.id", read_only=True, allow_null=True
+    )
+    previous_role_name = serializers.CharField(
+        source="previous_role.name", read_only=True, default=""
+    )
+    new_role_id = serializers.IntegerField(
+        source="new_role.id", read_only=True, allow_null=True
+    )
+    new_role_name = serializers.CharField(
+        source="new_role.name", read_only=True, default=""
+    )
+    related_listing_id = serializers.IntegerField(
+        source="related_listing.id", read_only=True, allow_null=True
+    )
+    related_listing_title = serializers.CharField(
+        source="related_listing.title", read_only=True, default=""
+    )
+
+    class Meta:
+        model = PromotionHistory
+        fields = [
+            "id",
+            "employee_id",
+            "employee_name",
+            "previous_role_id",
+            "previous_role_name",
+            "new_role_id",
+            "new_role_name",
+            "date",
+            "notes",
+            "previous_cpf_level",
+            "new_cpf_level",
+            "related_listing_id",
+            "related_listing_title",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
+
+
+class PromotionHistoryWriteSerializer(serializers.ModelSerializer):
+    """Write serialiser used by HR/admin to create or update a promotion record."""
+
+    employee_id = serializers.PrimaryKeyRelatedField(
+        source="employee", queryset=UserProfile.objects.all()
+    )
+    previous_role_id = serializers.PrimaryKeyRelatedField(
+        source="previous_role",
+        queryset=Role.objects.all(),
+        allow_null=True,
+        required=False,
+    )
+    new_role_id = serializers.PrimaryKeyRelatedField(
+        source="new_role",
+        queryset=Role.objects.all(),
+        allow_null=True,
+        required=False,
+    )
+    related_listing_id = serializers.PrimaryKeyRelatedField(
+        source="related_listing",
+        queryset=JobListing.objects.all(),
+        allow_null=True,
+        required=False,
+    )
+
+    class Meta:
+        model = PromotionHistory
+        fields = [
+            "employee_id",
+            "previous_role_id",
+            "new_role_id",
+            "date",
+            "notes",
+            "previous_cpf_level",
+            "new_cpf_level",
+            "related_listing_id",
+        ]
 
 
 # ──────────────────────────────────────────────────────────────────────────────

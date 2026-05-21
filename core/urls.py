@@ -49,6 +49,7 @@ from .views import (
     ProjectDetailView,
     ProjectListView,
     ProjectReactivateView,
+    PromotionHistoryViewSet,
     RegisterView,
     ReplacementLogDetailView,
     ReplacementLogListView,
@@ -114,6 +115,9 @@ router.register(
 router.register(r"notifications", NotificationViewSet, basename="notification")
 router.register(r"job-listings", JobListingViewSet, basename="job-listing")
 router.register(r"job-applications", JobApplicationViewSet, basename="job-application")
+router.register(
+    r"promotion-history", PromotionHistoryViewSet, basename="promotion-history"
+)
 
 urlpatterns = [
     path("", APIRootView.as_view(), name="api_root"),
