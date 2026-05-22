@@ -280,6 +280,15 @@ class Department(models.Model):
     """Reference table for organizational departments."""
 
     name = models.CharField(max_length=100, unique=True)
+    color = models.CharField(max_length=7, default="#475569")
+    color_soft = models.CharField(max_length=7, default="#f1f5f9")
+    head_employee = models.ForeignKey(
+        "UserProfile",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="headed_departments",
+    )
 
     class Meta:
         ordering = ["name"]
@@ -372,12 +381,27 @@ class UserProfile(models.Model):
         blank=True,
         related_name="direct_reports",
     )
+    primary_manager = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="primary_direct_reports",
+    )
     employee_id = models.CharField(max_length=20, unique=True, blank=True, null=True)
 
     full_name = models.CharField(max_length=150, blank=True, null=True)
     email_address = models.EmailField(max_length=254, blank=True, null=True)
 
     department = models.CharField(max_length=100, blank=True, null=True)
+    department_fk = models.ForeignKey(
+        Department,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="members",
+    )
+    is_remote = models.BooleanField(default=False)
     start_date = models.DateField(blank=True, null=True, default=None)
     hire_date = models.DateField(blank=True, null=True)
     phone_number = models.CharField(max_length=15, blank=True, null=True)
@@ -466,7 +490,7 @@ class UserProfile(models.Model):
         return salary.amount if salary else None
 
     def save(self, *args, **kwargs):
-        self.is_active = self.employment_status == self.EmploymentStatus.ACTIVE
+        self.is_active = self.employment_status != self.EmploymentStatus.INACTIVE
         super().save(*args, **kwargs)
 
     class Meta:

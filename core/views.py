@@ -1455,8 +1455,17 @@ def _profile_modal_bundle_etag(profile: UserProfile, sections: frozenset[str]) -
 # Dropdown/Reference Data Endpoints
 
 
-class DepartmentListResponseSerializer(serializers.Serializer):
-    departments = serializers.ListField(child=serializers.CharField())
+class DepartmentObjectSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    color = serializers.CharField()
+    color_soft = serializers.CharField()
+    employee_count = serializers.IntegerField()
+    head_employee_id = serializers.IntegerField(allow_null=True)
+
+
+class DepartmentListResponseSerializer(serializers.ListSerializer):
+    child = DepartmentObjectSerializer()
 
 
 class ProjectPersonSerializer(serializers.Serializer):
@@ -1517,14 +1526,31 @@ class DepartmentListView(APIView):
 
     @extend_schema(
         tags=["departments"],
-        responses={200: DepartmentListResponseSerializer},
+        responses={200: DepartmentObjectSerializer(many=True)},
     )
     def get(self, request):
-        departments = Department.objects.order_by("name").values_list("name", flat=True)
-        return Response(
-            {"departments": list(departments)},
-            status=status.HTTP_200_OK,
+        from django.db.models import Count
+        from django.db.models import Q as _Q
+
+        qs = Department.objects.order_by("name").annotate(
+            _employee_count=Count(
+                "members",
+                filter=_Q(members__is_active=True),
+                distinct=True,
+            )
         )
+        data = [
+            {
+                "id": d.id,
+                "name": d.name,
+                "color": d.color,
+                "color_soft": d.color_soft,
+                "employee_count": d._employee_count,
+                "head_employee_id": d.head_employee_id,
+            }
+            for d in qs
+        ]
+        return Response(data, status=status.HTTP_200_OK)
 
 
 class ProjectPagination(pagination.PageNumberPagination):

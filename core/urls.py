@@ -1,6 +1,7 @@
 from django.urls import path
 from rest_framework.routers import DefaultRouter
 
+from .org_chart import OrgChartRecentUpdatesView, OrgChartView
 from .views import (
     APIRootView,
     AssetCapabilitiesView,
@@ -204,6 +205,12 @@ urlpatterns = [
     path("user-profiles/", UserProfileListView.as_view(), name="user_profile_list"),
     # Reference data endpoints
     path("departments/", DepartmentListView.as_view(), name="department_list"),
+    path("org-chart/", OrgChartView.as_view(), name="org_chart"),
+    path(
+        "org-chart/recent-updates/",
+        OrgChartRecentUpdatesView.as_view(),
+        name="org_chart_recent_updates",
+    ),
     path("projects/", ProjectListView.as_view(), name="project_list"),
     path("projects/<int:pk>/", ProjectDetailView.as_view(), name="project_detail"),
     path(
