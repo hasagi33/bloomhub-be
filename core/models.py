@@ -38,12 +38,14 @@ from .enums import (
     ProjectStage,
     ProjectStatus,
     ProjectType,
+    QuestionType,
     ReminderType,
     ReviewEventType,
     ReviewNoteVisibility,
     ReviewOutcome,
     ReviewStatus,
     ReviewType,
+    SuggestionStatus,
     TaskRole,
     TemplateCategory,
     TemplateFieldType,
@@ -2979,6 +2981,155 @@ class PromotionHistory(models.Model):
 
     def __str__(self):
         return f"{self.employee} promoted on {self.date}"
+
+
+# ──────────────────────────────────────────
+# Feedback & Surveys
+# ──────────────────────────────────────────
+
+
+class Survey(models.Model):
+    """A feedback or pulse survey collected from employees."""
+
+    title = models.CharField(max_length=200)
+    description = models.TextField(blank=True, default="")
+    is_anonymous = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(
+        "UserProfile",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="surveys_created",
+    )
+
+    class Meta:
+        verbose_name = "Survey"
+        verbose_name_plural = "Surveys"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.title
+
+
+class Question(models.Model):
+    """A single question that belongs to a Survey."""
+
+    survey = models.ForeignKey(
+        Survey, on_delete=models.CASCADE, related_name="questions"
+    )
+    text = models.TextField()
+    type = models.CharField(
+        max_length=16, choices=QuestionType.choices, default=QuestionType.TEXT
+    )
+    order = models.PositiveIntegerField(default=0)
+    options = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="List of option strings for choice questions; ignored otherwise.",
+    )
+
+    class Meta:
+        verbose_name = "Question"
+        verbose_name_plural = "Questions"
+        ordering = ["survey_id", "order", "id"]
+
+    def __str__(self):
+        return f"{self.survey_id} · {self.text[:50]}"
+
+
+class Response(models.Model):
+    """A single submission of a survey by a respondent (or anonymous)."""
+
+    survey = models.ForeignKey(
+        Survey, on_delete=models.CASCADE, related_name="responses"
+    )
+    respondent = models.ForeignKey(
+        "UserProfile",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="survey_responses",
+        help_text="Null if the survey is anonymous.",
+    )
+    submitted_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Survey Response"
+        verbose_name_plural = "Survey Responses"
+        ordering = ["-submitted_at"]
+        indexes = [
+            models.Index(fields=["survey", "-submitted_at"]),
+        ]
+
+    def __str__(self):
+        who = self.respondent_id if self.respondent_id else "anonymous"
+        return f"Response({self.survey_id}, {who})"
+
+
+class Answer(models.Model):
+    """An answer to a single Question within a Response."""
+
+    question = models.ForeignKey(
+        Question, on_delete=models.CASCADE, related_name="answers"
+    )
+    response = models.ForeignKey(
+        Response, on_delete=models.CASCADE, related_name="answers"
+    )
+    value = models.TextField(
+        blank=True,
+        default="",
+        help_text="Free text for text questions, selected option for choice, numeric string for scale.",
+    )
+
+    class Meta:
+        verbose_name = "Answer"
+        verbose_name_plural = "Answers"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["question", "response"],
+                name="uniq_answer_per_question_response",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["question"]),
+            models.Index(fields=["response"]),
+        ]
+
+    def __str__(self):
+        return f"Answer(q={self.question_id}, r={self.response_id})"
+
+
+class Suggestion(models.Model):
+    """A standalone suggestion submitted through the suggestion box."""
+
+    employee = models.ForeignKey(
+        "UserProfile",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="suggestions",
+        help_text="Null if submitted anonymously.",
+    )
+    category = models.CharField(max_length=64, blank=True, default="")
+    text = models.TextField()
+    status = models.CharField(
+        max_length=20,
+        choices=SuggestionStatus.choices,
+        default=SuggestionStatus.NEW,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Suggestion"
+        verbose_name_plural = "Suggestions"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["status", "-created_at"]),
+        ]
+
+    def __str__(self):
+        return f"Suggestion({self.category or 'general'}, {self.status})"
 
 
 class CPFLevelChange(models.Model):

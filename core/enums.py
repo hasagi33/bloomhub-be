@@ -379,7 +379,26 @@ class TemplateStatus(models.TextChoices):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# 11. API Error Codes
+# 11. Feedback & Surveys
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class QuestionType(models.TextChoices):
+    TEXT = "text", "Text"
+    CHOICE = "choice", "Choice"
+    SCALE = "scale", "Scale"
+
+
+class SuggestionStatus(models.TextChoices):
+    NEW = "new", "New"
+    UNDER_REVIEW = "under_review", "Under Review"
+    PLANNED = "planned", "Planned"
+    IMPLEMENTED = "implemented", "Implemented"
+    DECLINED = "declined", "Declined"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 12. API Error Codes
 # ──────────────────────────────────────────────────────────────────────────────
 
 
