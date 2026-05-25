@@ -1247,6 +1247,270 @@ paths:
       responses:
         '204':
           description: No response body
+  /api/cpf-level-changes/:
+    get:
+      operationId: cpf_level_changes_list
+      description: |-
+        CRUD for employee CPF (Career Progression Framework) level changes.
+
+        Employees see only their own CPF history. HR/admin see every record
+        (filterable via ``?employee=<id>``) and are the only users who may
+        create, update, or delete entries.
+
+        The ``progression`` action returns a consolidated career-progression
+        timeline that combines recorded level changes with performance-review
+        outcomes — suitable for rendering a timeline visualization.
+      parameters:
+      - in: query
+        name: employee
+        schema:
+          type: integer
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      - in: query
+        name: source
+        schema:
+          type: string
+          enum:
+          - manual
+          - performance_review
+          - promotion
+        description: |-
+          What triggered the level change
+
+          * `manual` - Manual
+          * `performance_review` - Performance Review
+          * `promotion` - Promotion
+      tags:
+      - Internal Mobility
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CPFLevelChange'
+          description: ''
+    post:
+      operationId: cpf_level_changes_create
+      description: |-
+        CRUD for employee CPF (Career Progression Framework) level changes.
+
+        Employees see only their own CPF history. HR/admin see every record
+        (filterable via ``?employee=<id>``) and are the only users who may
+        create, update, or delete entries.
+
+        The ``progression`` action returns a consolidated career-progression
+        timeline that combines recorded level changes with performance-review
+        outcomes — suitable for rendering a timeline visualization.
+      tags:
+      - Internal Mobility
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CPFLevelChangeWriteRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CPFLevelChangeWriteRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CPFLevelChangeWriteRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CPFLevelChangeWrite'
+          description: ''
+  /api/cpf-level-changes/{id}/:
+    get:
+      operationId: cpf_level_changes_retrieve
+      description: |-
+        CRUD for employee CPF (Career Progression Framework) level changes.
+
+        Employees see only their own CPF history. HR/admin see every record
+        (filterable via ``?employee=<id>``) and are the only users who may
+        create, update, or delete entries.
+
+        The ``progression`` action returns a consolidated career-progression
+        timeline that combines recorded level changes with performance-review
+        outcomes — suitable for rendering a timeline visualization.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this CPF Level Change.
+        required: true
+      tags:
+      - Internal Mobility
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CPFLevelChange'
+          description: ''
+    put:
+      operationId: cpf_level_changes_update
+      description: |-
+        CRUD for employee CPF (Career Progression Framework) level changes.
+
+        Employees see only their own CPF history. HR/admin see every record
+        (filterable via ``?employee=<id>``) and are the only users who may
+        create, update, or delete entries.
+
+        The ``progression`` action returns a consolidated career-progression
+        timeline that combines recorded level changes with performance-review
+        outcomes — suitable for rendering a timeline visualization.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this CPF Level Change.
+        required: true
+      tags:
+      - Internal Mobility
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CPFLevelChangeWriteRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CPFLevelChangeWriteRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CPFLevelChangeWriteRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CPFLevelChangeWrite'
+          description: ''
+    patch:
+      operationId: cpf_level_changes_partial_update
+      description: |-
+        CRUD for employee CPF (Career Progression Framework) level changes.
+
+        Employees see only their own CPF history. HR/admin see every record
+        (filterable via ``?employee=<id>``) and are the only users who may
+        create, update, or delete entries.
+
+        The ``progression`` action returns a consolidated career-progression
+        timeline that combines recorded level changes with performance-review
+        outcomes — suitable for rendering a timeline visualization.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this CPF Level Change.
+        required: true
+      tags:
+      - Internal Mobility
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedCPFLevelChangeWriteRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedCPFLevelChangeWriteRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedCPFLevelChangeWriteRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CPFLevelChangeWrite'
+          description: ''
+    delete:
+      operationId: cpf_level_changes_destroy
+      description: |-
+        CRUD for employee CPF (Career Progression Framework) level changes.
+
+        Employees see only their own CPF history. HR/admin see every record
+        (filterable via ``?employee=<id>``) and are the only users who may
+        create, update, or delete entries.
+
+        The ``progression`` action returns a consolidated career-progression
+        timeline that combines recorded level changes with performance-review
+        outcomes — suitable for rendering a timeline visualization.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this CPF Level Change.
+        required: true
+      tags:
+      - Internal Mobility
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/cpf-level-changes/progression/:
+    get:
+      operationId: cpf_level_changes_progression_retrieve
+      description: |-
+        CRUD for employee CPF (Career Progression Framework) level changes.
+
+        Employees see only their own CPF history. HR/admin see every record
+        (filterable via ``?employee=<id>``) and are the only users who may
+        create, update, or delete entries.
+
+        The ``progression`` action returns a consolidated career-progression
+        timeline that combines recorded level changes with performance-review
+        outcomes — suitable for rendering a timeline visualization.
+      summary: CPF career-progression timeline for an employee
+      parameters:
+      - in: query
+        name: employee
+        schema:
+          type: integer
+        description: Employee profile id. HR/admin only; non-HR users always receive
+          their own timeline.
+      tags:
+      - Internal Mobility
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CPFProgression'
+          description: ''
   /api/cpf-levels/:
     get:
       operationId: cpf_levels_retrieve
@@ -8786,6 +9050,193 @@ components:
             minimum: 1
       required:
       - ids
+    CPFChangeSourceEnum:
+      enum:
+      - manual
+      - performance_review
+      - promotion
+      type: string
+      description: |-
+        * `manual` - Manual
+        * `performance_review` - Performance Review
+        * `promotion` - Promotion
+    CPFLevelChange:
+      type: object
+      description: Read serialiser for a single CPF level change record.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        employee_id:
+          type: integer
+          readOnly: true
+        employee_name:
+          type: string
+          readOnly: true
+          default: ''
+        previous_level:
+          type: string
+          readOnly: true
+          description: CPF level before this change
+        new_level:
+          type: string
+          readOnly: true
+          description: CPF level after this change
+        effective_date:
+          type: string
+          format: date
+          readOnly: true
+          description: Date the new level took effect
+        source:
+          allOf:
+          - $ref: '#/components/schemas/CPFChangeSourceEnum'
+          readOnly: true
+          description: |-
+            What triggered the level change
+
+            * `manual` - Manual
+            * `performance_review` - Performance Review
+            * `promotion` - Promotion
+        source_display:
+          type: string
+          readOnly: true
+        cpf_score:
+          type: integer
+          readOnly: true
+          nullable: true
+          description: Optional CPF score (0-100) recorded at the time of change
+        performance_review_id:
+          type: integer
+          readOnly: true
+          nullable: true
+        promotion_id:
+          type: integer
+          readOnly: true
+          nullable: true
+        notes:
+          type: string
+          readOnly: true
+        recorded_by_name:
+          type: string
+          readOnly: true
+          default: ''
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - cpf_score
+      - created_at
+      - effective_date
+      - employee_id
+      - employee_name
+      - id
+      - new_level
+      - notes
+      - performance_review_id
+      - previous_level
+      - promotion_id
+      - recorded_by_name
+      - source
+      - source_display
+      - updated_at
+    CPFLevelChangeWrite:
+      type: object
+      description: Write serialiser used by HR/admin to create or update a CPF level
+        change.
+      properties:
+        employee_id:
+          type: integer
+        previous_level:
+          type: string
+          description: CPF level before this change
+          maxLength: 100
+        new_level:
+          type: string
+          description: CPF level after this change
+          maxLength: 100
+        effective_date:
+          type: string
+          format: date
+          description: Date the new level took effect
+        source:
+          allOf:
+          - $ref: '#/components/schemas/CPFChangeSourceEnum'
+          description: |-
+            What triggered the level change
+
+            * `manual` - Manual
+            * `performance_review` - Performance Review
+            * `promotion` - Promotion
+        cpf_score:
+          type: integer
+          maximum: 100
+          minimum: 0
+          nullable: true
+          description: Optional CPF score (0-100) recorded at the time of change
+        performance_review_id:
+          type: integer
+          nullable: true
+        promotion_id:
+          type: integer
+          nullable: true
+        notes:
+          type: string
+      required:
+      - effective_date
+      - employee_id
+      - new_level
+    CPFLevelChangeWriteRequest:
+      type: object
+      description: Write serialiser used by HR/admin to create or update a CPF level
+        change.
+      properties:
+        employee_id:
+          type: integer
+        previous_level:
+          type: string
+          description: CPF level before this change
+          maxLength: 100
+        new_level:
+          type: string
+          minLength: 1
+          description: CPF level after this change
+          maxLength: 100
+        effective_date:
+          type: string
+          format: date
+          description: Date the new level took effect
+        source:
+          allOf:
+          - $ref: '#/components/schemas/CPFChangeSourceEnum'
+          description: |-
+            What triggered the level change
+
+            * `manual` - Manual
+            * `performance_review` - Performance Review
+            * `promotion` - Promotion
+        cpf_score:
+          type: integer
+          maximum: 100
+          minimum: 0
+          nullable: true
+          description: Optional CPF score (0-100) recorded at the time of change
+        performance_review_id:
+          type: integer
+          nullable: true
+        promotion_id:
+          type: integer
+          nullable: true
+        notes:
+          type: string
+      required:
+      - effective_date
+      - employee_id
+      - new_level
     CPFLevelListResponse:
       type: object
       properties:
@@ -8803,6 +9254,78 @@ components:
       required:
       - cpf_levels
       - user_role
+    CPFProgression:
+      type: object
+      description: CPF career-progression timeline for a single employee.
+      properties:
+        employee_id:
+          type: integer
+        employee_name:
+          type: string
+        current_level:
+          type: string
+        timeline:
+          type: array
+          items:
+            $ref: '#/components/schemas/CPFProgressionEvent'
+      required:
+      - current_level
+      - employee_id
+      - employee_name
+      - timeline
+    CPFProgressionEvent:
+      type: object
+      description: One event on an employee's CPF career-progression timeline.
+      properties:
+        date:
+          type: string
+          format: date
+        event_type:
+          $ref: '#/components/schemas/CPFProgressionEventEventTypeEnum'
+        previous_level:
+          type: string
+        new_level:
+          type: string
+        source:
+          $ref: '#/components/schemas/CPFProgressionEventSourceEnum'
+        cpf_score:
+          type: integer
+          nullable: true
+        notes:
+          type: string
+        reference_id:
+          type: integer
+          nullable: true
+        reference_label:
+          type: string
+      required:
+      - cpf_score
+      - date
+      - event_type
+      - new_level
+      - notes
+      - previous_level
+      - reference_id
+      - reference_label
+      - source
+    CPFProgressionEventEventTypeEnum:
+      enum:
+      - level_change
+      - review_assessment
+      type: string
+      description: |-
+        * `level_change` - level_change
+        * `review_assessment` - review_assessment
+    CPFProgressionEventSourceEnum:
+      enum:
+      - manual
+      - performance_review
+      - promotion
+      type: string
+      description: |-
+        * `manual` - manual
+        * `performance_review` - performance_review
+        * `promotion` - promotion
     Category59fEnum:
       enum:
       - laptops
@@ -10003,38 +10526,6 @@ components:
         * `active` - Active
         * `on_leave` - On Leave
         * `inactive` - Inactive
-    EventTypeEnum:
-      enum:
-      - created
-      - updated
-      - scheduled
-      - rescheduled
-      - status_changed
-      - outcome_updated
-      - note_added
-      - note_updated
-      - action_point_added
-      - action_point_updated
-      - attachment_added
-      - attachment_removed
-      - reminder_generated
-      - reminder_read
-      type: string
-      description: |-
-        * `created` - Created
-        * `updated` - Updated
-        * `scheduled` - Scheduled
-        * `rescheduled` - Rescheduled
-        * `status_changed` - Status Changed
-        * `outcome_updated` - Outcome Updated
-        * `note_added` - Note Added
-        * `note_updated` - Note Updated
-        * `action_point_added` - Action Point Added
-        * `action_point_updated` - Action Point Updated
-        * `attachment_added` - Attachment Added
-        * `attachment_removed` - Attachment Removed
-        * `reminder_generated` - Reminder Generated
-        * `reminder_read` - Reminder Read
     FieldEnum:
       enum:
       - role
@@ -11304,6 +11795,49 @@ components:
           type: string
           nullable: true
           description: Additional description or notes
+    PatchedCPFLevelChangeWriteRequest:
+      type: object
+      description: Write serialiser used by HR/admin to create or update a CPF level
+        change.
+      properties:
+        employee_id:
+          type: integer
+        previous_level:
+          type: string
+          description: CPF level before this change
+          maxLength: 100
+        new_level:
+          type: string
+          minLength: 1
+          description: CPF level after this change
+          maxLength: 100
+        effective_date:
+          type: string
+          format: date
+          description: Date the new level took effect
+        source:
+          allOf:
+          - $ref: '#/components/schemas/CPFChangeSourceEnum'
+          description: |-
+            What triggered the level change
+
+            * `manual` - Manual
+            * `performance_review` - Performance Review
+            * `promotion` - Promotion
+        cpf_score:
+          type: integer
+          maximum: 100
+          minimum: 0
+          nullable: true
+          description: Optional CPF score (0-100) recorded at the time of change
+        performance_review_id:
+          type: integer
+          nullable: true
+        promotion_id:
+          type: integer
+          nullable: true
+        notes:
+          type: string
     PatchedCertificateCreateUpdateRequest:
       type: object
       description: Writable serializer for certificate uploads.
@@ -12651,7 +13185,7 @@ components:
           readOnly: true
         event_type:
           allOf:
-          - $ref: '#/components/schemas/EventTypeEnum'
+          - $ref: '#/components/schemas/PerformanceReviewHistoryEventEventTypeEnum'
           readOnly: true
         event_type_display:
           type: string
@@ -12682,6 +13216,38 @@ components:
       - event_type_display
       - id
       - metadata
+    PerformanceReviewHistoryEventEventTypeEnum:
+      enum:
+      - created
+      - updated
+      - scheduled
+      - rescheduled
+      - status_changed
+      - outcome_updated
+      - note_added
+      - note_updated
+      - action_point_added
+      - action_point_updated
+      - attachment_added
+      - attachment_removed
+      - reminder_generated
+      - reminder_read
+      type: string
+      description: |-
+        * `created` - Created
+        * `updated` - Updated
+        * `scheduled` - Scheduled
+        * `rescheduled` - Rescheduled
+        * `status_changed` - Status Changed
+        * `outcome_updated` - Outcome Updated
+        * `note_added` - Note Added
+        * `note_updated` - Note Updated
+        * `action_point_added` - Action Point Added
+        * `action_point_updated` - Action Point Updated
+        * `attachment_added` - Attachment Added
+        * `attachment_removed` - Attachment Removed
+        * `reminder_generated` - Reminder Generated
+        * `reminder_read` - Reminder Read
     PerformanceReviewList:
       type: object
       properties:

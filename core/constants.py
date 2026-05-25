@@ -70,6 +70,48 @@ EMPLOYEE_PROFILE_SEARCH_FIELDS = [
 
 EMPLOYEE_PROFILE_ORDERING_FIELDS = ["full_name", "start_date", "created_at"]
 
+CPF_LEVEL_CHANGE_SERIALIZER_FIELDS = [
+    "id",
+    "employee_id",
+    "employee_name",
+    "previous_level",
+    "new_level",
+    "effective_date",
+    "source",
+    "source_display",
+    "cpf_score",
+    "performance_review_id",
+    "promotion_id",
+    "notes",
+    "recorded_by_name",
+    "created_at",
+    "updated_at",
+]
+
+CPF_LEVEL_CHANGE_WRITE_FIELDS = [
+    "employee_id",
+    "previous_level",
+    "new_level",
+    "effective_date",
+    "source",
+    "cpf_score",
+    "performance_review_id",
+    "promotion_id",
+    "notes",
+]
+
+CPF_LEVEL_CHANGE_FILTERSET_FIELDS = ["employee", "source"]
+
+CPF_LEVEL_CHANGE_SEARCH_FIELDS = [
+    "notes",
+    "new_level",
+    "previous_level",
+    "employee__user__first_name",
+    "employee__user__last_name",
+]
+
+CPF_LEVEL_CHANGE_ORDERING_FIELDS = ["effective_date", "created_at"]
+
 DOCUMENT_ROLE_RANK_ADMIN = 4
 DOCUMENT_ROLE_RANK_HR = 3
 DOCUMENT_ROLE_RANK_MANAGER = 2

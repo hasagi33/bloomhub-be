@@ -30,7 +30,7 @@ from rest_framework import (
     viewsets,
 )
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -38,6 +38,9 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView
 
 from .constants import (
+    CPF_LEVEL_CHANGE_FILTERSET_FIELDS,
+    CPF_LEVEL_CHANGE_ORDERING_FIELDS,
+    CPF_LEVEL_CHANGE_SEARCH_FIELDS,
     EMPLOYEE_PROFILE_FILTERSET_FIELDS,
     EMPLOYEE_PROFILE_ORDERING_FIELDS,
     EMPLOYEE_PROFILE_SEARCH_FIELDS,
@@ -53,6 +56,7 @@ from .models import (
     ChecklistTemplate,
     ConferenceCourseRegistration,
     CPFLevel,
+    CPFLevelChange,
     Department,
     Document,
     DocumentTemplate,
@@ -89,6 +93,7 @@ from .models import (
     UserTemplateSnippet,
 )
 from .permissions import (
+    IsCPFLevelChangeEditor,
     IsEmployeeOrHR,
     IsHRAdminForAdjustment,
     IsHRAdminOrReadOnlyOwnProfile,
@@ -99,6 +104,7 @@ from .permissions import (
     IsTrainingBudgetEditor,
     can_attach_review_documents,
     can_edit_review_note,
+    can_manage_cpf_level_changes,
     can_view_asset,
     can_view_asset_maintenance_logs,
     can_view_assignment,
@@ -132,6 +138,9 @@ from .serializers import (
     ChecklistTemplateSerializer,
     ConferenceCourseRegistrationCreateUpdateSerializer,
     ConferenceCourseRegistrationListSerializer,
+    CPFLevelChangeSerializer,
+    CPFLevelChangeWriteSerializer,
+    CPFProgressionSerializer,
     DocumentCategoryDefaultUpdateSerializer,
     DocumentCreateSerializer,
     DocumentListSerializer,
@@ -204,6 +213,10 @@ from .serializers import (
     VacationCapabilitiesSerializer,
 )
 from .services.asset_qr import ensure_asset_qr_code
+from .services.cpf_service import (
+    build_cpf_progression,
+    sync_employee_current_cpf_level,
+)
 from .services.document_query_service import (
     DocumentFilterError,
     apply_document_list_filters,
@@ -2032,16 +2045,14 @@ class CPFLevelListView(APIView):
         # If role parameter is provided, filter by that role
         if role:
             try:
-                # Convert role parameter to uppercase for matching
-                role_upper = role.upper()
-                role_obj = Role.objects.get(name=role_upper)
-                cpf_levels = role_obj.cpf_levels.order_by("name").values_list(
+                role_obj = Role.objects.get(name__iexact=role)
+                cpf_levels = role_obj.cpf_levels.order_by("order", "name").values_list(
                     "name", flat=True
                 )
 
                 return Response(
                     {
-                        "requested_role": role_upper,
+                        "requested_role": role_obj.name,
                         "user_role": user_role,
                         "cpf_levels": list(cpf_levels),
                     },
@@ -2059,7 +2070,9 @@ class CPFLevelListView(APIView):
                 )
 
         # Otherwise return all CPF levels
-        cpf_levels = CPFLevel.objects.order_by("name").values_list("name", flat=True)
+        cpf_levels = CPFLevel.objects.order_by("role", "order", "name").values_list(
+            "name", flat=True
+        )
 
         return Response(
             {"user_role": user_role, "cpf_levels": list(cpf_levels)},
@@ -6688,6 +6701,129 @@ class PromotionHistoryViewSet(viewsets.ModelViewSet):
     def perform_destroy(self, instance):
         self._require_hr()
         instance.delete()
+
+
+@extend_schema(tags=["Internal Mobility"])
+class CPFLevelChangeViewSet(viewsets.ModelViewSet):
+    """
+    CRUD for employee CPF (Career Progression Framework) level changes.
+
+    Employees see only their own CPF history. HR/admin see every record
+    (filterable via ``?employee=<id>``) and are the only users who may
+    create, update, or delete entries.
+
+    The ``progression`` action returns a consolidated career-progression
+    timeline that combines recorded level changes with performance-review
+    outcomes — suitable for rendering a timeline visualization.
+    """
+
+    permission_classes = [IsCPFLevelChangeEditor]
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.SearchFilter,
+        filters.OrderingFilter,
+    ]
+    filterset_fields = CPF_LEVEL_CHANGE_FILTERSET_FIELDS
+    search_fields = CPF_LEVEL_CHANGE_SEARCH_FIELDS
+    ordering_fields = CPF_LEVEL_CHANGE_ORDERING_FIELDS
+    ordering = ["-effective_date"]
+
+    def get_queryset(self):
+        base = CPFLevelChange.objects.select_related(
+            "employee__user",
+            "performance_review",
+            "promotion",
+            "recorded_by__user",
+        )
+        user = self.request.user
+        if can_manage_cpf_level_changes(user):
+            return base
+        profile = self._get_profile()
+        if profile is None:
+            return base.none()
+        return base.filter(employee=profile)
+
+    def get_serializer_class(self):
+        if self.action in ("create", "update", "partial_update"):
+            return CPFLevelChangeWriteSerializer
+        if self.action == "progression":
+            return CPFProgressionSerializer
+        return CPFLevelChangeSerializer
+
+    def _get_profile(self) -> UserProfile | None:
+        user = self.request.user
+        return getattr(user, "profile", None) if user.is_authenticated else None
+
+    def create(self, request, *args, **kwargs):
+        write = self.get_serializer(data=request.data)
+        write.is_valid(raise_exception=True)
+        instance = write.save(recorded_by=self._get_profile())
+        sync_employee_current_cpf_level(instance.employee, actor=request.user)
+        return Response(
+            CPFLevelChangeSerializer(instance).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop("partial", False)
+        instance = self.get_object()
+        write = self.get_serializer(instance, data=request.data, partial=partial)
+        write.is_valid(raise_exception=True)
+        instance = write.save()
+        sync_employee_current_cpf_level(instance.employee, actor=request.user)
+        return Response(CPFLevelChangeSerializer(instance).data)
+
+    def perform_destroy(self, instance):
+        employee = instance.employee
+        instance.delete()
+        sync_employee_current_cpf_level(employee, actor=self.request.user)
+
+    def _resolve_progression_target(self, request) -> UserProfile:
+        """Resolve whose CPF timeline to return.
+
+        HR/admin may target any employee via ``?employee=``; everyone else
+        always receives their own timeline.
+        """
+        employee_param = request.query_params.get("employee")
+        if can_manage_cpf_level_changes(request.user) and employee_param:
+            target = (
+                UserProfile.objects.select_related("user")
+                .filter(pk=employee_param)
+                .first()
+            )
+            if target is None:
+                raise NotFound("Employee not found.")
+            return target
+        target = self._get_profile()
+        if target is None:
+            raise ValidationError("Authenticated employee profile required.")
+        return target
+
+    @extend_schema(
+        summary="CPF career-progression timeline for an employee",
+        parameters=[
+            OpenApiParameter(
+                "employee",
+                OpenApiTypes.INT,
+                OpenApiParameter.QUERY,
+                description=(
+                    "Employee profile id. HR/admin only; non-HR users always "
+                    "receive their own timeline."
+                ),
+            )
+        ],
+        responses={200: CPFProgressionSerializer},
+    )
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="progression",
+        serializer_class=CPFProgressionSerializer,
+    )
+    def progression(self, request):
+        target = self._resolve_progression_target(request)
+        payload = build_cpf_progression(target)
+        return Response(self.get_serializer(payload).data)
 
 
 # ──────────────────────────────────────────────────────────────────────────────

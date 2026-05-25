@@ -331,6 +331,17 @@ class ApplicationStatus(models.TextChoices):
     ACCEPTED = "accepted", "Accepted"
 
 
+class CPFChangeSource(models.TextChoices):
+    MANUAL = "manual", "Manual"
+    PERFORMANCE_REVIEW = "performance_review", "Performance Review"
+    PROMOTION = "promotion", "Promotion"
+
+
+class CPFProgressionEventType(models.TextChoices):
+    LEVEL_CHANGE = "level_change", "Level Change"
+    REVIEW_ASSESSMENT = "review_assessment", "Review Assessment"
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # 10. Document Templates
 # ──────────────────────────────────────────────────────────────────────────────

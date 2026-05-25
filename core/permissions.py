@@ -567,3 +567,39 @@ class IsReviewEditor(permissions.BasePermission):
 
     def has_object_permission(self, request, view, obj):
         return can_edit_review(request.user, obj)
+
+
+def can_manage_cpf_level_changes(user) -> bool:
+    """True when the user may create, update, or delete CPF level changes.
+
+    CPF advancement is a career/profile concern, so it reuses the
+    Employee Profiles administrative permissions.
+    """
+    return _has_permission(
+        user, "Employee Profiles", ["view_all_profiles", "add_remove_employees"]
+    )
+
+
+class IsCPFLevelChangeEditor(permissions.BasePermission):
+    """Read access for any authenticated user; writes restricted to HR/admin.
+
+    List and retrieve are further scoped to the employee's own records by the
+    viewset queryset.
+    """
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False
+        if request.method in permissions.SAFE_METHODS:
+            return True
+        return can_manage_cpf_level_changes(user)
+
+    def has_object_permission(self, request, view, obj):
+        user = request.user
+        if can_manage_cpf_level_changes(user):
+            return True
+        if request.method in permissions.SAFE_METHODS:
+            profile = _get_user_profile(user)
+            return profile is not None and obj.employee_id == profile.id
+        return False

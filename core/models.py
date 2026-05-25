@@ -22,6 +22,7 @@ from .enums import (
     ChecklistTaskStatus,
     ChecklistType,
     ConferenceCourseRegistrationStatus,
+    CPFChangeSource,
     DocumentAccessRole,
     DocumentSignatureStatus,
     DocumentSignerStatus,
@@ -266,9 +267,13 @@ class CPFLevel(models.Model):
         blank=True,
         related_name="cpf_levels",
     )
+    order = models.PositiveSmallIntegerField(
+        default=0,
+        help_text="Rank within the role's CPF ladder (1 = entry level).",
+    )
 
     class Meta:
-        ordering = ["name"]
+        ordering = ["role", "order", "name"]
         verbose_name = "CPF Level"
         verbose_name_plural = "CPF Levels"
 
@@ -2974,3 +2979,89 @@ class PromotionHistory(models.Model):
 
     def __str__(self):
         return f"{self.employee} promoted on {self.date}"
+
+
+class CPFLevelChange(models.Model):
+    """A single CPF (Career Progression Framework) level change for an employee.
+
+    Records the longitudinal CPF history used to render career-progression
+    timelines. Each row may optionally link to the performance review or
+    promotion that drove the change.
+    """
+
+    employee = models.ForeignKey(
+        UserProfile,
+        on_delete=models.CASCADE,
+        related_name="cpf_level_changes",
+        help_text="Employee whose CPF level changed",
+    )
+    previous_level = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        help_text="CPF level before this change",
+    )
+    new_level = models.CharField(
+        max_length=100,
+        help_text="CPF level after this change",
+    )
+    effective_date = models.DateField(help_text="Date the new level took effect")
+    source = models.CharField(
+        max_length=20,
+        choices=CPFChangeSource.choices,
+        default=CPFChangeSource.MANUAL,
+        help_text="What triggered the level change",
+    )
+    cpf_score = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text="Optional CPF score (0-100) recorded at the time of change",
+    )
+    performance_review = models.ForeignKey(
+        PerformanceReview,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="cpf_level_changes",
+        help_text="Review whose outcome drove this change, if any",
+    )
+    promotion = models.ForeignKey(
+        PromotionHistory,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="cpf_level_changes",
+        help_text="Promotion record linked to this change, if any",
+    )
+    notes = models.TextField(blank=True, default="")
+    recorded_by = models.ForeignKey(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="recorded_cpf_level_changes",
+        help_text="User who recorded the change",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "CPF Level Change"
+        verbose_name_plural = "CPF Level Changes"
+        ordering = ["-effective_date", "-created_at"]
+        indexes = [
+            models.Index(fields=["employee", "-effective_date"]),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(cpf_score__isnull=True)
+                    | models.Q(cpf_score__gte=0, cpf_score__lte=100)
+                ),
+                name="cpf_level_change_score_between_0_100",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.employee} → {self.new_level} ({self.effective_date})"

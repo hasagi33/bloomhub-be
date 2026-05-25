@@ -8,11 +8,14 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from core.constants import (
+    CPF_LEVEL_CHANGE_SERIALIZER_FIELDS,
+    CPF_LEVEL_CHANGE_WRITE_FIELDS,
     EMPLOYEE_PROFILE_FIELDS,
     EMPLOYEE_PROFILE_READ_ONLY_FIELDS,
     REGISTER_EXTRA_KWARGS,
     REGISTER_FIELDS,
 )
+from core.enums import CPFChangeSource, CPFProgressionEventType
 from core.models import (
     Application,
     Asset,
@@ -25,6 +28,7 @@ from core.models import (
     ChecklistTask,
     ChecklistTemplate,
     ConferenceCourseRegistration,
+    CPFLevelChange,
     Department,
     Document,
     DocumentSignatureAuditLog,
@@ -3198,6 +3202,77 @@ class PromotionHistoryWriteSerializer(serializers.ModelSerializer):
             "new_cpf_level",
             "related_listing_id",
         ]
+
+
+class CPFLevelChangeSerializer(serializers.ModelSerializer):
+    """Read serialiser for a single CPF level change record."""
+
+    employee_id = serializers.IntegerField(source="employee.id", read_only=True)
+    employee_name = serializers.CharField(
+        source="employee.user.get_full_name", read_only=True, default=""
+    )
+    source_display = serializers.CharField(source="get_source_display", read_only=True)
+    performance_review_id = serializers.IntegerField(
+        source="performance_review.id", read_only=True, allow_null=True
+    )
+    promotion_id = serializers.IntegerField(
+        source="promotion.id", read_only=True, allow_null=True
+    )
+    recorded_by_name = serializers.CharField(
+        source="recorded_by.user.get_full_name", read_only=True, default=""
+    )
+
+    class Meta:
+        model = CPFLevelChange
+        fields = CPF_LEVEL_CHANGE_SERIALIZER_FIELDS
+        read_only_fields = CPF_LEVEL_CHANGE_SERIALIZER_FIELDS
+
+
+class CPFLevelChangeWriteSerializer(serializers.ModelSerializer):
+    """Write serialiser used by HR/admin to create or update a CPF level change."""
+
+    employee_id = serializers.PrimaryKeyRelatedField(
+        source="employee", queryset=UserProfile.objects.all()
+    )
+    performance_review_id = serializers.PrimaryKeyRelatedField(
+        source="performance_review",
+        queryset=PerformanceReview.objects.all(),
+        allow_null=True,
+        required=False,
+    )
+    promotion_id = serializers.PrimaryKeyRelatedField(
+        source="promotion",
+        queryset=PromotionHistory.objects.all(),
+        allow_null=True,
+        required=False,
+    )
+
+    class Meta:
+        model = CPFLevelChange
+        fields = CPF_LEVEL_CHANGE_WRITE_FIELDS
+
+
+class CPFProgressionEventSerializer(serializers.Serializer):
+    """One event on an employee's CPF career-progression timeline."""
+
+    date = serializers.DateField()
+    event_type = serializers.ChoiceField(choices=CPFProgressionEventType.values)
+    previous_level = serializers.CharField(allow_blank=True)
+    new_level = serializers.CharField(allow_blank=True)
+    source = serializers.ChoiceField(choices=CPFChangeSource.values)
+    cpf_score = serializers.IntegerField(allow_null=True)
+    notes = serializers.CharField(allow_blank=True)
+    reference_id = serializers.IntegerField(allow_null=True)
+    reference_label = serializers.CharField(allow_blank=True)
+
+
+class CPFProgressionSerializer(serializers.Serializer):
+    """CPF career-progression timeline for a single employee."""
+
+    employee_id = serializers.IntegerField()
+    employee_name = serializers.CharField()
+    current_level = serializers.CharField(allow_blank=True)
+    timeline = CPFProgressionEventSerializer(many=True)
 
 
 # ──────────────────────────────────────────────────────────────────────────────

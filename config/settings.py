@@ -97,6 +97,7 @@ SPECTACULAR_SETTINGS = {
     "ENUM_NAME_OVERRIDES": {
         "ConditionEnum": "core.models.AssetCondition",
         "StatusEnum": "core.models.AssetStatus",
+        "CPFChangeSourceEnum": "core.enums.CPFChangeSource",
     },
 }
 
