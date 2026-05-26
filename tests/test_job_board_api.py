@@ -13,6 +13,7 @@ from core.models import (
     Department,
     JobListing,
     JobListingStatus,
+    Notification,
     UserProfile,
 )
 
@@ -36,6 +37,9 @@ class JobBoardAPITestCase(APITestCase):
         )
         self.other_user = User.objects.create_user(
             username="other", email="other@test.com", password="pw"
+        )
+        self.hr_user = User.objects.create_user(
+            username="hr", email="hr@test.com", password="pw", is_staff=True
         )
         self.emp = UserProfile.objects.get(user=self.emp_user)
         self.other = UserProfile.objects.get(user=self.other_user)
@@ -206,3 +210,310 @@ class JobBoardAPITestCase(APITestCase):
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0]["listing_id"], self.active_eng.id)
         self.assertEqual(results[0]["applicant_id"], self.emp.id)
+
+    # ── HR listing access ──
+
+    def test_hr_sees_all_listings_including_inactive(self):
+        self.client.force_authenticate(user=self.hr_user)
+        response = self.client.get("/api/job-listings/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        results = _extract_results(response.json())
+        ids = {r["id"] for r in results}
+        self.assertEqual(
+            ids,
+            {
+                self.active_eng.id,
+                self.active_design.id,
+                self.draft.id,
+                self.closed.id,
+                self.expired.id,
+                self.upcoming.id,
+            },
+        )
+
+    def test_hr_can_retrieve_inactive_listing(self):
+        self.client.force_authenticate(user=self.hr_user)
+        response = self.client.get(f"/api/job-listings/{self.draft.id}/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json()["id"], self.draft.id)
+
+    # ── applications-per-listing ──
+
+    def test_applications_list_requires_hr(self):
+        Application.objects.create(listing=self.active_eng, applicant=self.emp)
+        self.client.force_authenticate(user=self.emp_user)
+        response = self.client.get(
+            f"/api/job-listings/{self.active_eng.id}/applications/"
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_applications_list_scoped_to_listing(self):
+        Application.objects.create(listing=self.active_eng, applicant=self.emp)
+        Application.objects.create(listing=self.active_design, applicant=self.other)
+        self.client.force_authenticate(user=self.hr_user)
+        response = self.client.get(
+            f"/api/job-listings/{self.active_eng.id}/applications/"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        results = _extract_results(response.json())
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["listing_id"], self.active_eng.id)
+        self.assertEqual(results[0]["applicant_id"], self.emp.id)
+
+    # ── PATCH application status (BHB-465) ──
+
+    def _create_application(self):
+        return Application.objects.create(
+            listing=self.active_eng,
+            applicant=self.emp,
+            cover_note="initial",
+        )
+
+    def test_patch_status_requires_hr(self):
+        app = self._create_application()
+        self.client.force_authenticate(user=self.emp_user)
+        response = self.client.patch(
+            f"/api/job-applications/{app.id}/",
+            {"status": ApplicationStatus.UNDER_REVIEW},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        app.refresh_from_db()
+        self.assertEqual(app.status, ApplicationStatus.SUBMITTED)
+
+    def test_patch_status_succeeds_as_hr(self):
+        app = self._create_application()
+        self.client.force_authenticate(user=self.hr_user)
+        # SUBMITTED → UNDER_REVIEW is a legal first transition.
+        response = self.client.patch(
+            f"/api/job-applications/{app.id}/",
+            {"status": ApplicationStatus.UNDER_REVIEW},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        # Response uses the full ApplicationSerializer, not the status-only write.
+        self.assertEqual(data["id"], app.id)
+        self.assertEqual(data["status"], ApplicationStatus.UNDER_REVIEW)
+        self.assertEqual(data["listing_id"], self.active_eng.id)
+        app.refresh_from_db()
+        self.assertEqual(app.status, ApplicationStatus.UNDER_REVIEW)
+
+    def test_patch_status_rejects_invalid_value(self):
+        app = self._create_application()
+        self.client.force_authenticate(user=self.hr_user)
+        response = self.client.patch(
+            f"/api/job-applications/{app.id}/",
+            {"status": "not_a_real_status"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        app.refresh_from_db()
+        self.assertEqual(app.status, ApplicationStatus.SUBMITTED)
+
+    def test_retrieve_application_as_applicant(self):
+        app = self._create_application()
+        self.client.force_authenticate(user=self.emp_user)
+        response = self.client.get(f"/api/job-applications/{app.id}/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json()["id"], app.id)
+
+    def test_retrieve_application_blocked_for_stranger(self):
+        app = self._create_application()
+        self.client.force_authenticate(user=self.other_user)
+        response = self.client.get(f"/api/job-applications/{app.id}/")
+        # Queryset is scoped to the caller's own applications, so strangers
+        # see a 404 rather than a 403.
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    # ── list applications (cross-listing, HR scope) ──
+
+    def test_application_list_requires_authentication(self):
+        response = self.client.get("/api/job-applications/")
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_application_list_employee_sees_only_own(self):
+        Application.objects.create(listing=self.active_eng, applicant=self.emp)
+        Application.objects.create(listing=self.active_design, applicant=self.other)
+        self.client.force_authenticate(user=self.emp_user)
+        response = self.client.get("/api/job-applications/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        results = _extract_results(response.json())
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["applicant_id"], self.emp.id)
+
+    def test_application_list_hr_sees_all_and_filter_by_listing(self):
+        Application.objects.create(listing=self.active_eng, applicant=self.emp)
+        Application.objects.create(listing=self.active_design, applicant=self.other)
+        self.client.force_authenticate(user=self.hr_user)
+        all_response = self.client.get("/api/job-applications/")
+        self.assertEqual(all_response.status_code, status.HTTP_200_OK)
+        all_results = _extract_results(all_response.json())
+        self.assertEqual(len(all_results), 2)
+
+        filtered = self.client.get(
+            f"/api/job-applications/?listing={self.active_eng.id}"
+        )
+        self.assertEqual(filtered.status_code, status.HTTP_200_OK)
+        filtered_results = _extract_results(filtered.json())
+        self.assertEqual(len(filtered_results), 1)
+        self.assertEqual(filtered_results[0]["listing_id"], self.active_eng.id)
+
+    # ── apply guard hardening (BHB-465) ──
+
+    def test_apply_to_draft_listing_returns_404_even_for_hr(self):
+        self.client.force_authenticate(user=self.hr_user)
+        response = self.client.post(
+            f"/api/job-listings/{self.draft.id}/apply/",
+            {"cover_note": "should be blocked"},
+            format="json",
+        )
+        self.assertIn(
+            response.status_code,
+            (status.HTTP_400_BAD_REQUEST, status.HTTP_404_NOT_FOUND),
+        )
+        self.assertFalse(
+            Application.objects.filter(
+                listing=self.draft, applicant=self.hr_user.profile
+            ).exists()
+        )
+
+    # ── workflow / state machine (BHB-465 full workflow) ──
+
+    def _advance(self, app, new_status, *, actor=None, note=""):
+        actor = actor or self.hr_user
+        self.client.force_authenticate(user=actor)
+        payload = {"status": new_status}
+        if note:
+            payload["decision_note"] = note
+        return self.client.patch(
+            f"/api/job-applications/{app.id}/", payload, format="json"
+        )
+
+    def test_legal_transition_submitted_to_under_review(self):
+        app = self._create_application()
+        response = self._advance(app, ApplicationStatus.UNDER_REVIEW)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        app.refresh_from_db()
+        self.assertEqual(app.status, ApplicationStatus.UNDER_REVIEW)
+        # Non-terminal moves leave decision_* untouched.
+        self.assertEqual(app.decision_note, "")
+        self.assertIsNone(app.decided_by)
+        self.assertIsNone(app.decided_at)
+
+    def test_illegal_transition_submitted_to_shortlisted_rejected(self):
+        app = self._create_application()
+        response = self._advance(app, ApplicationStatus.SHORTLISTED)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        app.refresh_from_db()
+        self.assertEqual(app.status, ApplicationStatus.SUBMITTED)
+
+    def test_idempotent_transition_rejected(self):
+        app = self._create_application()
+        response = self._advance(app, ApplicationStatus.SUBMITTED)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_reject_captures_decision_metadata_and_notifies(self):
+        app = self._create_application()
+        self._advance(app, ApplicationStatus.UNDER_REVIEW)
+        response = self._advance(
+            app, ApplicationStatus.REJECTED, note="Not enough scope yet."
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertEqual(data["status"], ApplicationStatus.REJECTED)
+        self.assertEqual(data["decision_note"], "Not enough scope yet.")
+        self.assertEqual(data["decided_by_id"], self.hr_user.profile.id)
+        self.assertIsNotNone(data["decided_at"])
+        # Notification on applicant's bell.
+        self.assertTrue(
+            Notification.objects.filter(
+                recipient=self.emp,
+                metadata__application_id=app.id,
+                metadata__status=ApplicationStatus.REJECTED,
+            ).exists()
+        )
+
+    def test_accept_full_happy_path(self):
+        app = self._create_application()
+        self._advance(app, ApplicationStatus.UNDER_REVIEW)
+        self._advance(app, ApplicationStatus.SHORTLISTED)
+        response = self._advance(
+            app, ApplicationStatus.ACCEPTED, note="Offer extended."
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        app.refresh_from_db()
+        self.assertEqual(app.status, ApplicationStatus.ACCEPTED)
+        self.assertEqual(app.decision_note, "Offer extended.")
+        self.assertEqual(app.decided_by_id, self.hr_user.profile.id)
+        self.assertIsNotNone(app.decided_at)
+
+    def test_terminal_state_blocks_further_transitions(self):
+        app = self._create_application()
+        self._advance(app, ApplicationStatus.UNDER_REVIEW)
+        self._advance(app, ApplicationStatus.REJECTED)
+        response = self._advance(app, ApplicationStatus.UNDER_REVIEW)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_hr_cannot_set_withdrawn_via_patch(self):
+        app = self._create_application()
+        response = self._advance(app, ApplicationStatus.WITHDRAWN)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    # ── applicant withdraw ──
+
+    def test_applicant_can_withdraw_their_own_application(self):
+        app = self._create_application()
+        self.client.force_authenticate(user=self.emp_user)
+        response = self.client.post(
+            f"/api/job-applications/{app.id}/withdraw/",
+            {"decision_note": "Changed my mind."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        app.refresh_from_db()
+        self.assertEqual(app.status, ApplicationStatus.WITHDRAWN)
+        self.assertEqual(app.decision_note, "Changed my mind.")
+        self.assertEqual(app.decided_by_id, self.emp.id)
+
+    def test_withdraw_blocked_for_non_applicant(self):
+        app = self._create_application()
+        self.client.force_authenticate(user=self.other_user)
+        response = self.client.post(
+            f"/api/job-applications/{app.id}/withdraw/", {}, format="json"
+        )
+        # Non-applicant strangers fall outside the queryset.
+        self.assertIn(
+            response.status_code,
+            (status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND),
+        )
+
+    def test_withdraw_blocked_after_terminal_state(self):
+        app = self._create_application()
+        self._advance(app, ApplicationStatus.UNDER_REVIEW)
+        self._advance(app, ApplicationStatus.REJECTED)
+        self.client.force_authenticate(user=self.emp_user)
+        response = self.client.post(
+            f"/api/job-applications/{app.id}/withdraw/", {}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    # ── reviewer widening (listing creator) ──
+
+    def test_listing_creator_can_review_without_being_hr(self):
+        creator_user = User.objects.create_user(
+            username="creator", email="creator@test.com", password="pw"
+        )
+        creator = UserProfile.objects.get(user=creator_user)
+        self.active_eng.created_by = creator
+        self.active_eng.save(update_fields=["created_by"])
+        app = self._create_application()
+        self.client.force_authenticate(user=creator_user)
+        response = self.client.patch(
+            f"/api/job-applications/{app.id}/",
+            {"status": ApplicationStatus.UNDER_REVIEW},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        app.refresh_from_db()
+        self.assertEqual(app.status, ApplicationStatus.UNDER_REVIEW)

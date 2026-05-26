@@ -3681,10 +3681,76 @@ paths:
           description: No response body
         '403':
           description: No response body
+  /api/job-applications/:
+    get:
+      operationId: job_applications_list
+      description: |-
+        Endpoints over the ``Application`` model.
+
+        * ``list`` / ``retrieve`` — HR/admin see every application; an applicant
+          sees only their own. ``?listing=<id>`` and ``?status=<value>`` filter.
+        * ``update`` / ``partial_update`` — reviewer-driven status transitions
+          (HR/admin, the listing creator, or a manager of an employee in the
+          hiring department). State machine in
+          ``core.services.job_application_service`` enforces legal moves.
+        * ``withdraw`` action — applicant-only self-withdrawal.
+      parameters:
+      - in: query
+        name: listing
+        schema:
+          type: integer
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - in: query
+        name: status
+        schema:
+          type: string
+          enum:
+          - accepted
+          - rejected
+          - shortlisted
+          - submitted
+          - under_review
+          - withdrawn
+        description: |-
+          Current status of the application
+
+          * `submitted` - Submitted
+          * `under_review` - Under Review
+          * `shortlisted` - Shortlisted
+          * `rejected` - Rejected
+          * `withdrawn` - Withdrawn
+          * `accepted` - Accepted
+      tags:
+      - Internal Mobility
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Application'
+          description: ''
   /api/job-applications/{id}/:
     get:
       operationId: job_applications_retrieve
-      description: HR/admin endpoints to advance an application's status.
+      description: |-
+        Endpoints over the ``Application`` model.
+
+        * ``list`` / ``retrieve`` — HR/admin see every application; an applicant
+          sees only their own. ``?listing=<id>`` and ``?status=<value>`` filter.
+        * ``update`` / ``partial_update`` — reviewer-driven status transitions
+          (HR/admin, the listing creator, or a manager of an employee in the
+          hiring department). State machine in
+          ``core.services.job_application_service`` enforces legal moves.
+        * ``withdraw`` action — applicant-only self-withdrawal.
       parameters:
       - in: path
         name: id
@@ -3705,7 +3771,16 @@ paths:
           description: ''
     put:
       operationId: job_applications_update
-      description: HR/admin endpoints to advance an application's status.
+      description: |-
+        Endpoints over the ``Application`` model.
+
+        * ``list`` / ``retrieve`` — HR/admin see every application; an applicant
+          sees only their own. ``?listing=<id>`` and ``?status=<value>`` filter.
+        * ``update`` / ``partial_update`` — reviewer-driven status transitions
+          (HR/admin, the listing creator, or a manager of an employee in the
+          hiring department). State machine in
+          ``core.services.job_application_service`` enforces legal moves.
+        * ``withdraw`` action — applicant-only self-withdrawal.
       parameters:
       - in: path
         name: id
@@ -3737,7 +3812,16 @@ paths:
           description: ''
     patch:
       operationId: job_applications_partial_update
-      description: HR/admin endpoints to advance an application's status.
+      description: |-
+        Endpoints over the ``Application`` model.
+
+        * ``list`` / ``retrieve`` — HR/admin see every application; an applicant
+          sees only their own. ``?listing=<id>`` and ``?status=<value>`` filter.
+        * ``update`` / ``partial_update`` — reviewer-driven status transitions
+          (HR/admin, the listing creator, or a manager of an employee in the
+          hiring department). State machine in
+          ``core.services.job_application_service`` enforces legal moves.
+        * ``withdraw`` action — applicant-only self-withdrawal.
       parameters:
       - in: path
         name: id
@@ -3766,6 +3850,49 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApplicationStatusUpdate'
+          description: ''
+  /api/job-applications/{id}/withdraw/:
+    post:
+      operationId: job_applications_withdraw_create
+      description: |-
+        Endpoints over the ``Application`` model.
+
+        * ``list`` / ``retrieve`` — HR/admin see every application; an applicant
+          sees only their own. ``?listing=<id>`` and ``?status=<value>`` filter.
+        * ``update`` / ``partial_update`` — reviewer-driven status transitions
+          (HR/admin, the listing creator, or a manager of an employee in the
+          hiring department). State machine in
+          ``core.services.job_application_service`` enforces legal moves.
+        * ``withdraw`` action — applicant-only self-withdrawal.
+      summary: Applicant withdraws their own application
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Job Application.
+        required: true
+      tags:
+      - Internal Mobility
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplicationWithdrawRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ApplicationWithdrawRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ApplicationWithdrawRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Application'
           description: ''
   /api/job-listings/:
     get:
@@ -8375,6 +8502,31 @@ components:
           type: string
           readOnly: true
           description: Optional note from the applicant
+        decision_note:
+          type: string
+          readOnly: true
+          description: Reviewer note captured when the application reaches a terminal
+            state
+        decided_by_id:
+          type: integer
+          readOnly: true
+          nullable: true
+        decided_by_name:
+          type: string
+          readOnly: true
+          default: ''
+        decided_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+          description: When the terminal decision (accepted/rejected/withdrawn) was
+            recorded
+        allowed_next_statuses:
+          type: array
+          items:
+            type: string
+          readOnly: true
         created_at:
           type: string
           format: date-time
@@ -8384,11 +8536,16 @@ components:
           format: date-time
           readOnly: true
       required:
+      - allowed_next_statuses
       - applicant_id
       - applicant_name
       - applied_at
       - cover_note
       - created_at
+      - decided_at
+      - decided_by_id
+      - decided_by_name
+      - decision_note
       - id
       - listing_id
       - listing_title
@@ -8404,7 +8561,11 @@ components:
           description: Optional note from the applicant
     ApplicationStatusUpdate:
       type: object
-      description: Write serialiser for HR/admin to advance an application status.
+      description: |-
+        Write serialiser for HR/admin to advance an application status.
+
+        Accepts an optional ``decision_note`` that the service layer stores when
+        the new status is terminal (accepted/rejected).
       properties:
         status:
           allOf:
@@ -8418,9 +8579,16 @@ components:
             * `rejected` - Rejected
             * `withdrawn` - Withdrawn
             * `accepted` - Accepted
+        decision_note:
+          type: string
+          maxLength: 4000
     ApplicationStatusUpdateRequest:
       type: object
-      description: Write serialiser for HR/admin to advance an application status.
+      description: |-
+        Write serialiser for HR/admin to advance an application status.
+
+        Accepts an optional ``decision_note`` that the service layer stores when
+        the new status is terminal (accepted/rejected).
       properties:
         status:
           allOf:
@@ -8434,6 +8602,16 @@ components:
             * `rejected` - Rejected
             * `withdrawn` - Withdrawn
             * `accepted` - Accepted
+        decision_note:
+          type: string
+          maxLength: 4000
+    ApplicationWithdrawRequest:
+      type: object
+      description: Applicant-side serialiser used by the ``withdraw`` action.
+      properties:
+        decision_note:
+          type: string
+          maxLength: 4000
     Asset:
       type: object
       description: Serializer for Asset model
@@ -11696,7 +11874,11 @@ components:
             $ref: '#/components/schemas/TemplateGeneratedDocument'
     PatchedApplicationStatusUpdateRequest:
       type: object
-      description: Write serialiser for HR/admin to advance an application status.
+      description: |-
+        Write serialiser for HR/admin to advance an application status.
+
+        Accepts an optional ``decision_note`` that the service layer stores when
+        the new status is terminal (accepted/rejected).
       properties:
         status:
           allOf:
@@ -11710,6 +11892,9 @@ components:
             * `rejected` - Rejected
             * `withdrawn` - Withdrawn
             * `accepted` - Accepted
+        decision_note:
+          type: string
+          maxLength: 4000
     PatchedAssetCreateRequest:
       type: object
       description: Simplified serializer for creating assets

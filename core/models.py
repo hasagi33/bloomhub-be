@@ -2901,6 +2901,24 @@ class Application(models.Model):
     cover_note = models.TextField(
         blank=True, default="", help_text="Optional note from the applicant"
     )
+    decision_note = models.TextField(
+        blank=True,
+        default="",
+        help_text="Reviewer note captured when the application reaches a terminal state",
+    )
+    decided_by = models.ForeignKey(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="decided_applications",
+        help_text="Reviewer who set the current terminal status",
+    )
+    decided_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the terminal decision (accepted/rejected/withdrawn) was recorded",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

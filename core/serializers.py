@@ -3051,6 +3051,13 @@ class ApplicationSerializer(serializers.ModelSerializer):
     listing_id = serializers.IntegerField(source="listing.id", read_only=True)
     listing_title = serializers.CharField(source="listing.title", read_only=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
+    decided_by_id = serializers.IntegerField(
+        source="decided_by.id", read_only=True, allow_null=True
+    )
+    decided_by_name = serializers.CharField(
+        source="decided_by.user.get_full_name", read_only=True, default=""
+    )
+    allowed_next_statuses = serializers.SerializerMethodField()
 
     class Meta:
         model = Application
@@ -3064,10 +3071,21 @@ class ApplicationSerializer(serializers.ModelSerializer):
             "status_display",
             "applied_at",
             "cover_note",
+            "decision_note",
+            "decided_by_id",
+            "decided_by_name",
+            "decided_at",
+            "allowed_next_statuses",
             "created_at",
             "updated_at",
         ]
         read_only_fields = fields
+
+    @extend_schema_field(serializers.ListField(child=serializers.CharField()))
+    def get_allowed_next_statuses(self, obj) -> list[str]:
+        from core.services.job_application_service import allowed_next_statuses
+
+        return sorted(allowed_next_statuses(obj.status))
 
 
 class ApplicationCreateSerializer(serializers.ModelSerializer):
@@ -3110,11 +3128,27 @@ class JobListingWriteSerializer(serializers.ModelSerializer):
 
 
 class ApplicationStatusUpdateSerializer(serializers.ModelSerializer):
-    """Write serialiser for HR/admin to advance an application status."""
+    """Write serialiser for HR/admin to advance an application status.
+
+    Accepts an optional ``decision_note`` that the service layer stores when
+    the new status is terminal (accepted/rejected).
+    """
+
+    decision_note = serializers.CharField(
+        required=False, allow_blank=True, max_length=4000
+    )
 
     class Meta:
         model = Application
-        fields = ["status"]
+        fields = ["status", "decision_note"]
+
+
+class ApplicationWithdrawSerializer(serializers.Serializer):
+    """Applicant-side serialiser used by the ``withdraw`` action."""
+
+    decision_note = serializers.CharField(
+        required=False, allow_blank=True, max_length=4000
+    )
 
 
 class PromotionHistorySerializer(serializers.ModelSerializer):

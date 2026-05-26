@@ -580,6 +580,55 @@ def can_manage_cpf_level_changes(user) -> bool:
     )
 
 
+class IsHrOrAdmin(permissions.BasePermission):
+    """Permission gate for HR or admin users (read + write).
+
+    Delegates to ``core.services.document_service.is_hr_or_admin`` so the
+    role-resolution logic stays in one place.
+    """
+
+    def has_permission(self, request, view):
+        # Import locally to avoid a circular import with services/document_service.
+        from .services.document_service import is_hr_or_admin
+
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False
+        return is_hr_or_admin(user)
+
+
+class IsHrOrAdminOrReadOnly(permissions.BasePermission):
+    """Authenticated read for everyone; writes restricted to HR/admin."""
+
+    def has_permission(self, request, view):
+        from .services.document_service import is_hr_or_admin
+
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False
+        if request.method in permissions.SAFE_METHODS:
+            return True
+        return is_hr_or_admin(user)
+
+
+class CanReviewApplication(permissions.BasePermission):
+    """Object-level gate for advancing a job application.
+
+    Allowed reviewers: HR/admin, the listing's creator, and any direct
+    manager of an employee in the hiring department. Applicants themselves
+    are *not* covered here — that's the ``withdraw`` action's job.
+    """
+
+    def has_permission(self, request, view):
+        user = request.user
+        return bool(user and user.is_authenticated)
+
+    def has_object_permission(self, request, view, obj):
+        from .services.job_application_service import can_review_application
+
+        return can_review_application(request.user, obj)
+
+
 class IsCPFLevelChangeEditor(permissions.BasePermission):
     """Read access for any authenticated user; writes restricted to HR/admin.
 

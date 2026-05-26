@@ -12,7 +12,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.core.validators import URLValidator
-from django.db import models, transaction
+from django.db import IntegrityError, models, transaction
 from django.db.models import Avg, Exists, Max, OuterRef, Prefetch, Q
 from django.http import HttpResponse
 from django.utils import timezone
@@ -93,10 +93,12 @@ from .models import (
     UserTemplateSnippet,
 )
 from .permissions import (
+    CanReviewApplication,
     IsCPFLevelChangeEditor,
     IsEmployeeOrHR,
     IsHRAdminForAdjustment,
     IsHRAdminOrReadOnlyOwnProfile,
+    IsHrOrAdmin,
     IsManagerForApproval,
     IsReviewCreator,
     IsReviewEditor,
@@ -119,6 +121,7 @@ from .serializers import (
     ApplicationCreateSerializer,
     ApplicationSerializer,
     ApplicationStatusUpdateSerializer,
+    ApplicationWithdrawSerializer,
     AssetCreateSerializer,
     AssetExportRequestSerializer,
     AssetSerializer,
@@ -6429,6 +6432,15 @@ class CertificateViewSet(viewsets.ModelViewSet):
 # ──────────────────────────────────────────────────────────────────────────────
 
 
+def _is_listing_open_for_applications(listing: JobListing) -> bool:
+    """A listing accepts applications only while OPEN and within its window."""
+    now = timezone.now()
+    return (
+        listing.status == JobListingStatus.OPEN
+        and listing.open_at <= now <= listing.close_at
+    )
+
+
 @extend_schema(tags=["Internal Mobility"])
 class JobListingViewSet(
     mixins.ListModelMixin,
@@ -6480,17 +6492,13 @@ class JobListingViewSet(
             return JobListingDetailSerializer
         return JobListingListSerializer
 
-    def _require_hr(self):
-        if not is_hr_or_admin(self.request.user):
-            raise PermissionDenied("Only HR or admin users may modify job listings.")
+    def get_permissions(self):
+        if self.action in ("create", "update", "partial_update", "applications"):
+            return [IsAuthenticated(), IsHrOrAdmin()]
+        return [IsAuthenticated()]
 
     def perform_create(self, serializer):
-        self._require_hr()
         serializer.save(created_by=self._get_profile())
-
-    def perform_update(self, serializer):
-        self._require_hr()
-        serializer.save()
 
     def _get_profile(self) -> UserProfile | None:
         user = self.request.user
@@ -6504,11 +6512,16 @@ class JobListingViewSet(
     @action(detail=True, methods=["post"], url_path="apply")
     def apply(self, request, pk=None):
         listing = self.get_object()
+        if not _is_listing_open_for_applications(listing):
+            return Response(
+                {"detail": "This listing is not open for applications."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         profile = self._get_profile()
         if profile is None:
             return Response(
                 {"detail": "Authenticated employee profile required to apply."},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_403_FORBIDDEN,
             )
         if Application.objects.filter(listing=listing, applicant=profile).exists():
             return Response(
@@ -6517,11 +6530,18 @@ class JobListingViewSet(
             )
         serializer = ApplicationCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        application = Application.objects.create(
-            listing=listing,
-            applicant=profile,
-            cover_note=serializer.validated_data.get("cover_note", ""),
-        )
+        try:
+            application = Application.objects.create(
+                listing=listing,
+                applicant=profile,
+                cover_note=serializer.validated_data.get("cover_note", "").strip(),
+            )
+        except IntegrityError:
+            # Lost the race with another concurrent apply request.
+            return Response(
+                {"detail": "You have already applied to this listing."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         return Response(
             ApplicationSerializer(application).data,
             status=status.HTTP_201_CREATED,
@@ -6553,8 +6573,6 @@ class JobListingViewSet(
     )
     @action(detail=True, methods=["get"], url_path="applications")
     def applications(self, request, pk=None):
-        if not is_hr_or_admin(request.user):
-            raise PermissionDenied("Only HR or admin users may view all applicants.")
         listing = self.get_object()
         qs = (
             Application.objects.filter(listing=listing)
@@ -6570,62 +6588,120 @@ class JobListingViewSet(
 
 @extend_schema(tags=["Internal Mobility"])
 class JobApplicationViewSet(
+    mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.UpdateModelMixin,
     viewsets.GenericViewSet,
 ):
-    """HR/admin endpoints to advance an application's status."""
+    """
+    Endpoints over the ``Application`` model.
+
+    * ``list`` / ``retrieve`` — HR/admin see every application; an applicant
+      sees only their own. ``?listing=<id>`` and ``?status=<value>`` filter.
+    * ``update`` / ``partial_update`` — reviewer-driven status transitions
+      (HR/admin, the listing creator, or a manager of an employee in the
+      hiring department). State machine in
+      ``core.services.job_application_service`` enforces legal moves.
+    * ``withdraw`` action — applicant-only self-withdrawal.
+    """
 
     permission_classes = [IsAuthenticated]
-    queryset = Application.objects.select_related("listing", "applicant__user").all()
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.OrderingFilter,
+    ]
+    filterset_fields = ["listing", "status"]
+    ordering_fields = ["applied_at", "created_at", "updated_at"]
+    ordering = ["-applied_at"]
+
+    def get_queryset(self):
+        base = Application.objects.select_related(
+            "listing", "applicant__user", "decided_by__user"
+        )
+        user = self.request.user
+        if user.is_authenticated and is_hr_or_admin(user):
+            return base
+        profile = getattr(user, "profile", None) if user.is_authenticated else None
+        if profile is None:
+            return base.none()
+        # Reviewers (listing creator + managers of the hiring department)
+        # need to see and act on applications outside their own pipeline.
+        managed_dept_ids = list(
+            profile.direct_reports.values_list("department_fk", flat=True)
+            .exclude(department_fk__isnull=True)
+            .distinct()
+        )
+        return base.filter(
+            models.Q(applicant=profile)
+            | models.Q(listing__created_by=profile)
+            | models.Q(listing__department_id__in=managed_dept_ids)
+        )
 
     def get_serializer_class(self):
         if self.action in ("update", "partial_update"):
             return ApplicationStatusUpdateSerializer
+        if self.action == "withdraw":
+            return ApplicationWithdrawSerializer
         return ApplicationSerializer
 
-    def _require_hr_or_owner(self, instance=None):
+    def get_permissions(self):
+        if self.action in ("update", "partial_update"):
+            return [IsAuthenticated(), CanReviewApplication()]
+        return [IsAuthenticated()]
+
+    def _get_actor_profile(self) -> UserProfile | None:
         user = self.request.user
-        if is_hr_or_admin(user):
-            return
-        # Allow applicants to retrieve their own application; everything else
-        # requires HR/admin.
-        if instance is not None and self.action == "retrieve":
-            profile = getattr(user, "profile", None)
-            if profile is not None and instance.applicant_id == profile.id:
-                return
-        raise PermissionDenied(
-            "Only HR/admin or the applicant may access this application."
-        )
-
-    def _require_hr(self):
-        if not is_hr_or_admin(self.request.user):
-            raise PermissionDenied("Only HR or admin users may modify applications.")
-
-    def retrieve(self, request, *args, **kwargs):
-        instance = self.get_object()
-        self._require_hr_or_owner(instance)
-        return Response(ApplicationSerializer(instance).data)
-
-    def perform_update(self, serializer):
-        self._require_hr()
-        serializer.save()
+        return getattr(user, "profile", None) if user.is_authenticated else None
 
     def update(self, request, *args, **kwargs):
-        self._require_hr()
-        response = super().update(request, *args, **kwargs)
+        from .services.job_application_service import transition_application
+
         instance = self.get_object()
-        return Response(
-            ApplicationSerializer(instance).data, status=response.status_code
+        write = self.get_serializer(
+            instance,
+            data=request.data,
+            partial=kwargs.get("partial", False),
         )
+        write.is_valid(raise_exception=True)
+        new_status = write.validated_data.get("status", instance.status)
+        note = write.validated_data.get("decision_note", "")
+        transition_application(
+            instance,
+            new_status=new_status,
+            actor=self._get_actor_profile(),
+            note=note,
+        )
+        instance.refresh_from_db()
+        return Response(ApplicationSerializer(instance).data)
 
     def partial_update(self, request, *args, **kwargs):
-        self._require_hr()
-        response = super().partial_update(request, *args, **kwargs)
+        kwargs["partial"] = True
+        return self.update(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Applicant withdraws their own application",
+        request=ApplicationWithdrawSerializer,
+        responses={200: ApplicationSerializer},
+    )
+    @action(detail=True, methods=["post"], url_path="withdraw")
+    def withdraw(self, request, pk=None):
+        from .services.job_application_service import withdraw_application
+
         instance = self.get_object()
-        return Response(
-            ApplicationSerializer(instance).data, status=response.status_code
+        profile = self._get_actor_profile()
+        if profile is None or instance.applicant_id != profile.id:
+            raise PermissionDenied(
+                "Only the applicant may withdraw their own application."
+            )
+        write = ApplicationWithdrawSerializer(data=request.data)
+        write.is_valid(raise_exception=True)
+        withdraw_application(
+            instance,
+            actor=profile,
+            note=write.validated_data.get("decision_note", ""),
         )
+        instance.refresh_from_db()
+        return Response(ApplicationSerializer(instance).data)
 
 
 @extend_schema(tags=["Internal Mobility"])
