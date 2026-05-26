@@ -805,6 +805,206 @@ paths:
               schema:
                 $ref: '#/components/schemas/User'
           description: ''
+  /api/bonuses/:
+    get:
+      operationId: bonuses_list
+      description: |-
+        Bonus records (Compensation module).
+
+        HR can list/create/update/delete bonuses for any employee.
+        Non-HR users may only list bonuses they own (filtered by queryset).
+      parameters:
+      - in: query
+        name: bonus_type
+        schema:
+          type: string
+          enum:
+          - education
+          - performance
+          - project
+          - referral
+          - retention
+          - spot
+        description: |-
+          * `performance` - Performance
+          * `retention` - Retention
+          * `referral` - Referral
+          * `project` - Project
+          * `education` - Education
+          * `spot` - Spot
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - in: query
+        name: user_profile
+        schema:
+          type: integer
+      tags:
+      - bonuses
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BonusRecord'
+          description: ''
+    post:
+      operationId: bonuses_create
+      description: |-
+        Bonus records (Compensation module).
+
+        HR can list/create/update/delete bonuses for any employee.
+        Non-HR users may only list bonuses they own (filtered by queryset).
+      tags:
+      - bonuses
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BonusRecordRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BonusRecordRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BonusRecordRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BonusRecord'
+          description: ''
+  /api/bonuses/{id}/:
+    get:
+      operationId: bonuses_retrieve
+      description: |-
+        Bonus records (Compensation module).
+
+        HR can list/create/update/delete bonuses for any employee.
+        Non-HR users may only list bonuses they own (filtered by queryset).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Bonus Record.
+        required: true
+      tags:
+      - bonuses
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BonusRecord'
+          description: ''
+    put:
+      operationId: bonuses_update
+      description: |-
+        Bonus records (Compensation module).
+
+        HR can list/create/update/delete bonuses for any employee.
+        Non-HR users may only list bonuses they own (filtered by queryset).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Bonus Record.
+        required: true
+      tags:
+      - bonuses
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BonusRecordRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BonusRecordRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BonusRecordRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BonusRecord'
+          description: ''
+    patch:
+      operationId: bonuses_partial_update
+      description: |-
+        Bonus records (Compensation module).
+
+        HR can list/create/update/delete bonuses for any employee.
+        Non-HR users may only list bonuses they own (filtered by queryset).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Bonus Record.
+        required: true
+      tags:
+      - bonuses
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedBonusRecordRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedBonusRecordRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedBonusRecordRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BonusRecord'
+          description: ''
+    delete:
+      operationId: bonuses_destroy
+      description: |-
+        Bonus records (Compensation module).
+
+        HR can list/create/update/delete bonuses for any employee.
+        Non-HR users may only list bonuses they own (filtered by queryset).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Bonus Record.
+        required: true
+      tags:
+      - bonuses
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
   /api/certificates/:
     get:
       operationId: certificates_list
@@ -1044,6 +1244,360 @@ paths:
                   signed_url:
                     type: string
           description: ''
+  /api/compensation/benefits/:
+    get:
+      operationId: compensation_benefits_list
+      description: Global benefit catalog. HR-only (read + write).
+      parameters:
+      - in: query
+        name: benefit_type
+        schema:
+          type: string
+          enum:
+          - education
+          - equipment
+          - health
+          - meal
+          - other
+          - phone
+          - recreation
+          - remote_work
+          - transport
+        description: |-
+          * `transport` - Transport allowance
+          * `meal` - Meal allowance
+          * `recreation` - Recreation
+          * `health` - Private health
+          * `education` - Education stipend
+          * `equipment` - Equipment allowance
+          * `remote_work` - Remote-work stipend
+          * `phone` - Phone / data
+          * `other` - Other
+      - in: query
+        name: is_active
+        schema:
+          type: boolean
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      tags:
+      - compensation
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BenefitCatalog'
+          description: ''
+    post:
+      operationId: compensation_benefits_create
+      description: Global benefit catalog. HR-only (read + write).
+      tags:
+      - compensation
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BenefitCatalogRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BenefitCatalogRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BenefitCatalogRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BenefitCatalog'
+          description: ''
+  /api/compensation/benefits/{id}/:
+    get:
+      operationId: compensation_benefits_retrieve
+      description: Global benefit catalog. HR-only (read + write).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Benefit (Catalog).
+        required: true
+      tags:
+      - compensation
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BenefitCatalog'
+          description: ''
+    put:
+      operationId: compensation_benefits_update
+      description: Global benefit catalog. HR-only (read + write).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Benefit (Catalog).
+        required: true
+      tags:
+      - compensation
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BenefitCatalogRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BenefitCatalogRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BenefitCatalogRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BenefitCatalog'
+          description: ''
+    patch:
+      operationId: compensation_benefits_partial_update
+      description: Global benefit catalog. HR-only (read + write).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Benefit (Catalog).
+        required: true
+      tags:
+      - compensation
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedBenefitCatalogRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedBenefitCatalogRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedBenefitCatalogRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BenefitCatalog'
+          description: ''
+    delete:
+      operationId: compensation_benefits_destroy
+      description: Global benefit catalog. HR-only (read + write).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Benefit (Catalog).
+        required: true
+      tags:
+      - compensation
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/compensation/overview/:
+    get:
+      operationId: compensation_overview_retrieve
+      description: |-
+        GET /api/compensation/overview/ — aggregated compensation dashboard payload.
+
+        HR-only. Returns the full CompensationOverview shape consumed by the frontend.
+      tags:
+      - compensation
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/compensation/policies/:
+    get:
+      operationId: compensation_policies_list
+      description: One NET-salary policy per CPF level. HR-only (read + write).
+      parameters:
+      - in: query
+        name: cpf_level
+        schema:
+          type: string
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      tags:
+      - compensation
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CompensationPolicy'
+          description: ''
+    post:
+      operationId: compensation_policies_create
+      description: One NET-salary policy per CPF level. HR-only (read + write).
+      tags:
+      - compensation
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CompensationPolicyRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CompensationPolicyRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CompensationPolicyRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompensationPolicy'
+          description: ''
+  /api/compensation/policies/{id}/:
+    get:
+      operationId: compensation_policies_retrieve
+      description: One NET-salary policy per CPF level. HR-only (read + write).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Compensation Policy.
+        required: true
+      tags:
+      - compensation
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompensationPolicy'
+          description: ''
+    put:
+      operationId: compensation_policies_update
+      description: One NET-salary policy per CPF level. HR-only (read + write).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Compensation Policy.
+        required: true
+      tags:
+      - compensation
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CompensationPolicyRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CompensationPolicyRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CompensationPolicyRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompensationPolicy'
+          description: ''
+    patch:
+      operationId: compensation_policies_partial_update
+      description: One NET-salary policy per CPF level. HR-only (read + write).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Compensation Policy.
+        required: true
+      tags:
+      - compensation
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedCompensationPolicyRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedCompensationPolicyRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedCompensationPolicyRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompensationPolicy'
+          description: ''
+    delete:
+      operationId: compensation_policies_destroy
+      description: One NET-salary policy per CPF level. HR-only (read + write).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Compensation Policy.
+        required: true
+      tags:
+      - compensation
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
   /api/conference-course-registrations/:
     get:
       operationId: conference_course_registrations_list
@@ -3167,6 +3721,23 @@ paths:
         '400':
           description: No response body
         '403':
+          description: No response body
+  /api/employees/{employee_id}/bonuses/:
+    get:
+      operationId: employees_bonuses_retrieve
+      description: GET /api/employees/{id}/bonuses/ — per-employee bonus history.
+      parameters:
+      - in: path
+        name: employee_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - employees
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
           description: No response body
   /api/employees/{employee_id}/profile-change-history/:
     get:
@@ -10521,9 +11092,215 @@ components:
           format: binary
       required:
       - avatar
+    BenefitCatalog:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        benefit_type:
+          $ref: '#/components/schemas/BenefitTypeEnum'
+        benefit_type_display:
+          type: string
+          readOnly: true
+        name:
+          type: string
+          maxLength: 120
+        monthly_amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        currency:
+          type: string
+          maxLength: 3
+        is_active:
+          type: boolean
+        effective_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+          nullable: true
+        notes:
+          type: string
+        created_by:
+          type: integer
+          readOnly: true
+          nullable: true
+        created_by_name:
+          type: string
+          nullable: true
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - benefit_type
+      - benefit_type_display
+      - created_at
+      - created_by
+      - created_by_name
+      - effective_date
+      - id
+      - monthly_amount
+      - name
+      - updated_at
+    BenefitCatalogRequest:
+      type: object
+      properties:
+        benefit_type:
+          $ref: '#/components/schemas/BenefitTypeEnum'
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        monthly_amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        currency:
+          type: string
+          minLength: 1
+          maxLength: 3
+        is_active:
+          type: boolean
+        effective_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+          nullable: true
+        notes:
+          type: string
+      required:
+      - benefit_type
+      - effective_date
+      - monthly_amount
+      - name
+    BenefitTypeEnum:
+      enum:
+      - transport
+      - meal
+      - recreation
+      - health
+      - education
+      - equipment
+      - remote_work
+      - phone
+      - other
+      type: string
+      description: |-
+        * `transport` - Transport allowance
+        * `meal` - Meal allowance
+        * `recreation` - Recreation
+        * `health` - Private health
+        * `education` - Education stipend
+        * `equipment` - Equipment allowance
+        * `remote_work` - Remote-work stipend
+        * `phone` - Phone / data
+        * `other` - Other
     BlankEnum:
       enum:
       - ''
+    BonusRecord:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        user_profile:
+          type: integer
+        employee_name:
+          type: string
+          readOnly: true
+        bonus_type:
+          $ref: '#/components/schemas/BonusTypeEnum'
+        bonus_type_display:
+          type: string
+          readOnly: true
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        currency:
+          type: string
+          maxLength: 3
+        effective_date:
+          type: string
+          format: date
+        reason:
+          type: string
+        created_by:
+          type: integer
+          readOnly: true
+          nullable: true
+        created_by_name:
+          type: string
+          nullable: true
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - amount
+      - bonus_type
+      - bonus_type_display
+      - created_at
+      - created_by
+      - created_by_name
+      - effective_date
+      - employee_name
+      - id
+      - user_profile
+    BonusRecordRequest:
+      type: object
+      properties:
+        user_profile:
+          type: integer
+        bonus_type:
+          $ref: '#/components/schemas/BonusTypeEnum'
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        currency:
+          type: string
+          minLength: 1
+          maxLength: 3
+        effective_date:
+          type: string
+          format: date
+        reason:
+          type: string
+      required:
+      - amount
+      - bonus_type
+      - effective_date
+      - user_profile
+    BonusTypeEnum:
+      enum:
+      - performance
+      - retention
+      - referral
+      - project
+      - education
+      - spot
+      type: string
+      description: |-
+        * `performance` - Performance
+        * `retention` - Retention
+        * `referral` - Referral
+        * `project` - Project
+        * `education` - Education
+        * `spot` - Spot
     BulkIdsRequest:
       type: object
       properties:
@@ -11203,6 +11980,80 @@ components:
       description: |-
         * `onboarding` - Onboarding
         * `offboarding` - Offboarding
+    CompensationPolicy:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        cpf_level:
+          type: string
+          maxLength: 100
+        net_monthly:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        currency:
+          type: string
+          maxLength: 3
+        effective_date:
+          type: string
+          format: date
+        notes:
+          type: string
+        created_by:
+          type: integer
+          readOnly: true
+          nullable: true
+        created_by_name:
+          type: string
+          nullable: true
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        employees_count:
+          type: integer
+          readOnly: true
+      required:
+      - cpf_level
+      - created_at
+      - created_by
+      - created_by_name
+      - effective_date
+      - employees_count
+      - id
+      - net_monthly
+      - updated_at
+    CompensationPolicyRequest:
+      type: object
+      properties:
+        cpf_level:
+          type: string
+          minLength: 1
+          maxLength: 100
+        net_monthly:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        currency:
+          type: string
+          minLength: 1
+          maxLength: 3
+        effective_date:
+          type: string
+          format: date
+        notes:
+          type: string
+      required:
+      - cpf_level
+      - effective_date
+      - net_monthly
     ConditionEnum:
       enum:
       - excellent
@@ -11851,6 +12702,19 @@ components:
         current_salary:
           type: string
           readOnly: true
+        current_net_salary:
+          type: string
+          readOnly: true
+        current_total_monthly:
+          type: string
+          readOnly: true
+        current_bonus_pct:
+          type: number
+          format: double
+          readOnly: true
+        compensation_status:
+          type: string
+          readOnly: true
         tech_tags:
           type: string
         permissions_bitmap:
@@ -11861,7 +12725,11 @@ components:
           items:
             $ref: '#/components/schemas/ProjectAssignment'
       required:
+      - compensation_status
+      - current_bonus_pct
+      - current_net_salary
       - current_salary
+      - current_total_monthly
       - email
       - id
       - is_active
@@ -13447,6 +14315,54 @@ components:
           type: string
           nullable: true
           description: Additional description or notes
+    PatchedBenefitCatalogRequest:
+      type: object
+      properties:
+        benefit_type:
+          $ref: '#/components/schemas/BenefitTypeEnum'
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        monthly_amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        currency:
+          type: string
+          minLength: 1
+          maxLength: 3
+        is_active:
+          type: boolean
+        effective_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+          nullable: true
+        notes:
+          type: string
+    PatchedBonusRecordRequest:
+      type: object
+      properties:
+        user_profile:
+          type: integer
+        bonus_type:
+          $ref: '#/components/schemas/BonusTypeEnum'
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        currency:
+          type: string
+          minLength: 1
+          maxLength: 3
+        effective_date:
+          type: string
+          format: date
+        reason:
+          type: string
     PatchedCPFLevelChangeWriteRequest:
       type: object
       description: Write serialiser used by HR/admin to create or update a CPF level
@@ -13548,6 +14464,26 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/TaskTemplateRequest'
+    PatchedCompensationPolicyRequest:
+      type: object
+      properties:
+        cpf_level:
+          type: string
+          minLength: 1
+          maxLength: 100
+        net_monthly:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        currency:
+          type: string
+          minLength: 1
+          maxLength: 3
+        effective_date:
+          type: string
+          format: date
+        notes:
+          type: string
     PatchedConferenceCourseRegistrationCreateUpdateRequest:
       type: object
       description: Writable serializer for conference / course registrations.

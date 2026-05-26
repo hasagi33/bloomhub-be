@@ -18,6 +18,8 @@ from .enums import (
     ApplicationStatus,
     AssetCondition,
     AssetStatus,
+    BenefitType,
+    BonusType,
     ChecklistInstanceStatus,
     ChecklistTaskStatus,
     ChecklistType,
@@ -780,6 +782,14 @@ class UserProfile(models.Model):
     def current_salary(self):
         salary = self.salary_records.order_by("-effective_date").first()
         return salary.amount if salary else None
+
+    @property
+    def current_net_salary(self):
+        """Resolve NET salary via CompensationPolicy keyed on cpf_level."""
+        from core.services.compensation_service import resolve_policy
+
+        policy = resolve_policy(self)
+        return policy.net_monthly if policy else None
 
     def save(self, *args, **kwargs):
         self.is_active = self.employment_status != self.EmploymentStatus.INACTIVE
@@ -3755,3 +3765,119 @@ class CPFLevelChange(models.Model):
 
     def __str__(self):
         return f"{self.employee} → {self.new_level} ({self.effective_date})"
+
+
+class BonusRecord(models.Model):
+    BonusType = BonusType
+
+    user_profile = models.ForeignKey(
+        UserProfile, on_delete=models.CASCADE, related_name="bonus_records"
+    )
+    bonus_type = models.CharField(max_length=20, choices=BonusType.choices)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    currency = models.CharField(max_length=3, default="BAM")
+    effective_date = models.DateField()
+    reason = models.TextField(blank=True, default="")
+    created_by = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="bonuses_created",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Bonus Record"
+        verbose_name_plural = "Bonus Records"
+        ordering = ["-effective_date"]
+        indexes = [
+            models.Index(fields=["user_profile", "-effective_date"]),
+            models.Index(fields=["bonus_type"]),
+        ]
+
+    def __str__(self):
+        return f"{self.user_profile.user.username}: {self.amount} {self.currency} ({self.bonus_type} @ {self.effective_date})"
+
+
+class PayrollSnapshot(models.Model):
+    snapshot_date = models.DateField(unique=True)
+    total_monthly = models.DecimalField(max_digits=14, decimal_places=2)
+    avg_salary = models.DecimalField(max_digits=12, decimal_places=2)
+    median_salary = models.DecimalField(max_digits=12, decimal_places=2)
+    headcount = models.PositiveIntegerField()
+    currency = models.CharField(max_length=3, default="BAM")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Payroll Snapshot"
+        verbose_name_plural = "Payroll Snapshots"
+        ordering = ["-snapshot_date"]
+
+    def __str__(self):
+        return f"PayrollSnapshot {self.snapshot_date} total={self.total_monthly}"
+
+
+class CompensationPolicy(models.Model):
+    """One NET-salary policy per CPF level. Unique on cpf_level."""
+
+    cpf_level = models.CharField(max_length=100, unique=True)
+    net_monthly = models.DecimalField(max_digits=12, decimal_places=2)
+    currency = models.CharField(max_length=3, default="BAM")
+    effective_date = models.DateField()
+    notes = models.TextField(blank=True, default="")
+    created_by = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="comp_policies_created",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Compensation Policy"
+        verbose_name_plural = "Compensation Policies"
+        ordering = ["cpf_level"]
+
+    def __str__(self):
+        return f"{self.cpf_level}: NET {self.net_monthly} {self.currency}"
+
+
+class BenefitCatalog(models.Model):
+    """Global benefit catalog. Every active entry applies to every employee."""
+
+    Type = BenefitType
+
+    benefit_type = models.CharField(max_length=20, choices=BenefitType.choices)
+    name = models.CharField(max_length=120)
+    monthly_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    currency = models.CharField(max_length=3, default="BAM")
+    is_active = models.BooleanField(default=True)
+    effective_date = models.DateField()
+    end_date = models.DateField(null=True, blank=True)
+    notes = models.TextField(blank=True, default="")
+    created_by = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="benefit_catalog_created",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Benefit (Catalog)"
+        verbose_name_plural = "Benefits Catalog"
+        ordering = ["benefit_type", "name"]
+        indexes = [
+            models.Index(fields=["benefit_type"]),
+            models.Index(fields=["is_active"]),
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.name} ({self.benefit_type}) {self.monthly_amount} {self.currency}"
+        )

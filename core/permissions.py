@@ -652,3 +652,47 @@ class IsCPFLevelChangeEditor(permissions.BasePermission):
             profile = _get_user_profile(user)
             return profile is not None and obj.employee_id == profile.id
         return False
+
+
+def is_compensation_admin(user) -> bool:
+    """HR-like role gate reused for Compensation module writes + cross-employee reads.
+
+    Mirrors IsHRAdminOrReadOnlyOwnProfile._is_hr_admin: staff/superuser or holders of
+    Employee Profiles add_remove_employees / view_all_profiles.
+    """
+    if not getattr(user, "is_authenticated", False):
+        return False
+    if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+        return True
+    profile = _get_user_profile(user)
+    if profile is None:
+        return False
+    for action in ("view_all_profiles", "add_remove_employees"):
+        try:
+            perm = Permission.objects.get(
+                module_name="Employee Profiles", feature_action=action
+            )
+        except Permission.DoesNotExist:
+            continue
+        if profile.has_permission(perm):
+            return True
+    return False
+
+
+class IsCompensationAdminOrOwnReadOnly(permissions.BasePermission):
+    """HR full access; non-HR read-only on their own bonus rows."""
+
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+        if is_compensation_admin(request.user):
+            return True
+        return request.method in permissions.SAFE_METHODS
+
+    def has_object_permission(self, request, view, obj):
+        if is_compensation_admin(request.user):
+            return True
+        if request.method in permissions.SAFE_METHODS:
+            profile = _get_user_profile(request.user)
+            return profile is not None and obj.user_profile_id == profile.id
+        return False

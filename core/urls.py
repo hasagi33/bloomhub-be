@@ -15,10 +15,14 @@ from .views import (
     AssignmentRequestReturnView,
     AssignmentReturnView,
     AvatarUploadView,
+    BenefitCatalogViewSet,
+    BonusRecordViewSet,
     CertificateViewSet,
     ChecklistInstanceViewSet,
     ChecklistTaskViewSet,
     ChecklistTemplateViewSet,
+    CompensationOverviewView,
+    CompensationPolicyViewSet,
     ConferenceCourseRegistrationViewSet,
     CPFLevelChangeViewSet,
     CPFLevelListView,
@@ -26,6 +30,7 @@ from .views import (
     DocumentCategoryDefaultsView,
     DocumentTemplateViewSet,
     DocumentViewSet,
+    EmployeeBonusListView,
     EmployeeProfileChangeHistoryView,
     EmployeeProfileViewSet,
     EmployeeTechLeadsView,
@@ -152,6 +157,13 @@ router.register(
 )
 router.register(
     r"cpf-level-changes", CPFLevelChangeViewSet, basename="cpf-level-change"
+)
+router.register(r"bonuses", BonusRecordViewSet, basename="bonus")
+router.register(
+    r"compensation/policies", CompensationPolicyViewSet, basename="compensation-policy"
+)
+router.register(
+    r"compensation/benefits", BenefitCatalogViewSet, basename="benefit-catalog"
 )
 
 urlpatterns = [
@@ -421,6 +433,16 @@ urlpatterns = [
         "employees/<int:employee_id>/tech-leads/",
         EmployeeTechLeadsView.as_view(),
         name="employee_tech_leads",
+    ),
+    path(
+        "employees/<int:employee_id>/bonuses/",
+        EmployeeBonusListView.as_view(),
+        name="employee_bonuses",
+    ),
+    path(
+        "compensation/overview/",
+        CompensationOverviewView.as_view(),
+        name="compensation_overview",
     ),
     path(
         "documents/category-defaults/",

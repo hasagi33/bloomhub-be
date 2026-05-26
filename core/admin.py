@@ -2,8 +2,11 @@ from django.contrib import admin
 from django.utils.html import format_html
 
 from .models import (
+    BenefitCatalog,
+    BonusRecord,
     Certificate,
     ChangeLog,
+    CompensationPolicy,
     CPFLevel,
     Document,
     DocumentCategory,
@@ -19,6 +22,7 @@ from .models import (
     LeaveBalance,
     LeavePolicy,
     LeaveRequest,
+    PayrollSnapshot,
     PeerSession,
     PerformanceReview,
     PerformanceReviewActionPoint,
@@ -356,6 +360,55 @@ class SalaryRecordAdmin(admin.ModelAdmin):
     list_display = ("user_profile", "amount", "effective_date")
     list_filter = ("effective_date",)
     search_fields = ("user_profile__user__username",)
+
+
+@admin.register(CompensationPolicy)
+class CompensationPolicyAdmin(admin.ModelAdmin):
+    list_display = ("cpf_level", "net_monthly", "currency", "effective_date")
+    list_filter = ("currency",)
+    search_fields = ("cpf_level", "notes")
+
+
+@admin.register(BenefitCatalog)
+class BenefitCatalogAdmin(admin.ModelAdmin):
+    list_display = (
+        "benefit_type",
+        "name",
+        "monthly_amount",
+        "currency",
+        "is_active",
+        "effective_date",
+        "end_date",
+    )
+    list_filter = ("benefit_type", "is_active", "currency")
+    search_fields = ("name", "notes")
+
+
+@admin.register(BonusRecord)
+class BonusRecordAdmin(admin.ModelAdmin):
+    list_display = (
+        "user_profile",
+        "bonus_type",
+        "amount",
+        "currency",
+        "effective_date",
+    )
+    list_filter = ("bonus_type", "effective_date", "currency")
+    search_fields = ("user_profile__user__username", "reason")
+
+
+@admin.register(PayrollSnapshot)
+class PayrollSnapshotAdmin(admin.ModelAdmin):
+    list_display = (
+        "snapshot_date",
+        "total_monthly",
+        "avg_salary",
+        "median_salary",
+        "headcount",
+        "currency",
+    )
+    list_filter = ("currency",)
+    ordering = ("-snapshot_date",)
 
 
 @admin.register(ChangeLog)

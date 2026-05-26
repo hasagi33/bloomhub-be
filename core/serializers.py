@@ -25,10 +25,13 @@ from core.models import (
     AssetCondition,
     AssetStatus,
     Assignment,
+    BenefitCatalog,
+    BonusRecord,
     Certificate,
     ChecklistInstance,
     ChecklistTask,
     ChecklistTemplate,
+    CompensationPolicy,
     ConferenceCourseRegistration,
     CPFLevelChange,
     Department,
@@ -1252,6 +1255,10 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
         max_digits=12, decimal_places=2, required=False, write_only=True
     )
     current_salary = serializers.SerializerMethodField(read_only=True)
+    current_net_salary = serializers.SerializerMethodField(read_only=True)
+    current_total_monthly = serializers.SerializerMethodField(read_only=True)
+    current_bonus_pct = serializers.SerializerMethodField(read_only=True)
+    compensation_status = serializers.SerializerMethodField(read_only=True)
     manager_names = serializers.SerializerMethodField()
     permissions_bitmap = serializers.SerializerMethodField()
     tech_tags = TechnologyTagIdsField(required=False)
@@ -1267,6 +1274,26 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
 
     def get_current_salary(self, obj):
         return obj.current_salary
+
+    def get_current_net_salary(self, obj):
+        return obj.current_net_salary
+
+    def get_current_total_monthly(self, obj):
+        from core.services.compensation_service import (
+            resolve_employee_total,
+        )
+
+        return resolve_employee_total(obj)["total_monthly"]
+
+    def get_current_bonus_pct(self, obj) -> float:
+        from core.services.compensation_service import compute_bonus_pct
+
+        return compute_bonus_pct(obj)
+
+    def get_compensation_status(self, obj) -> str:
+        from core.services.compensation_service import compute_compensation_status
+
+        return compute_compensation_status(obj)
 
     class Meta:
         model = UserProfile
@@ -4400,3 +4427,133 @@ class NotificationSerializer(serializers.ModelSerializer):
             "created_at",
         ]
         read_only_fields = fields
+
+
+class BonusRecordSerializer(serializers.ModelSerializer):
+    employee_name = serializers.SerializerMethodField(read_only=True)
+    bonus_type_display = serializers.CharField(
+        source="get_bonus_type_display", read_only=True
+    )
+    created_by_name = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = BonusRecord
+        fields = [
+            "id",
+            "user_profile",
+            "employee_name",
+            "bonus_type",
+            "bonus_type_display",
+            "amount",
+            "currency",
+            "effective_date",
+            "reason",
+            "created_by",
+            "created_by_name",
+            "created_at",
+        ]
+        read_only_fields = ["id", "created_by", "created_at"]
+
+    def get_employee_name(self, obj) -> str:
+        profile = obj.user_profile
+        return (
+            profile.full_name or profile.user.get_full_name() or profile.user.username
+        )
+
+    def get_created_by_name(self, obj) -> str | None:
+        if not obj.created_by:
+            return None
+        return obj.created_by.get_full_name() or obj.created_by.username
+
+    def create(self, validated_data):
+        request = self.context.get("request")
+        if request and request.user.is_authenticated:
+            validated_data.setdefault("created_by", request.user)
+        return super().create(validated_data)
+
+
+class CompensationPolicySerializer(serializers.ModelSerializer):
+    created_by_name = serializers.SerializerMethodField(read_only=True)
+    employees_count = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = CompensationPolicy
+        fields = [
+            "id",
+            "cpf_level",
+            "net_monthly",
+            "currency",
+            "effective_date",
+            "notes",
+            "created_by",
+            "created_by_name",
+            "created_at",
+            "updated_at",
+            "employees_count",
+        ]
+        read_only_fields = ["id", "created_by", "created_at", "updated_at"]
+
+    def get_created_by_name(self, obj) -> str | None:
+        if not obj.created_by:
+            return None
+        return obj.created_by.get_full_name() or obj.created_by.username
+
+    def get_employees_count(self, obj) -> int:
+        count = getattr(obj, "_employees_count", None)
+        if count is not None:
+            return count
+        return UserProfile.objects.filter(cpf_level=obj.cpf_level).count()
+
+    def validate_cpf_level(self, value: str):
+        qs = CompensationPolicy.objects.filter(cpf_level=value)
+        if self.instance is not None:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(
+                "A policy already exists for this CPF level."
+            )
+        return value
+
+    def create(self, validated_data):
+        request = self.context.get("request")
+        if request and request.user.is_authenticated:
+            validated_data.setdefault("created_by", request.user)
+        return super().create(validated_data)
+
+
+class BenefitCatalogSerializer(serializers.ModelSerializer):
+    benefit_type_display = serializers.CharField(
+        source="get_benefit_type_display", read_only=True
+    )
+    created_by_name = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = BenefitCatalog
+        fields = [
+            "id",
+            "benefit_type",
+            "benefit_type_display",
+            "name",
+            "monthly_amount",
+            "currency",
+            "is_active",
+            "effective_date",
+            "end_date",
+            "notes",
+            "created_by",
+            "created_by_name",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_by", "created_at", "updated_at"]
+
+    def get_created_by_name(self, obj) -> str | None:
+        if not obj.created_by:
+            return None
+        return obj.created_by.get_full_name() or obj.created_by.username
+
+    def create(self, validated_data):
+        request = self.context.get("request")
+        if request and request.user.is_authenticated:
+            validated_data.setdefault("created_by", request.user)
+        return super().create(validated_data)

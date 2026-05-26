@@ -59,10 +59,13 @@ from .models import (
     Asset,
     AssetStatus,
     Assignment,
+    BenefitCatalog,
+    BonusRecord,
     Certificate,
     ChecklistInstance,
     ChecklistTask,
     ChecklistTemplate,
+    CompensationPolicy,
     ConferenceCourseRegistration,
     CPFLevel,
     CPFLevelChange,
@@ -114,6 +117,7 @@ from .models import (
     UserTemplateSnippet,
 )
 from .permissions import (
+    IsCompensationAdminOrOwnReadOnly,
     CanReviewApplication,
     IsCPFLevelChangeEditor,
     IsEmployeeOrHR,
@@ -136,6 +140,7 @@ from .permissions import (
     get_asset_scope,
     has_asset_permission,
     has_review_permission,
+    is_compensation_admin,
 )
 from .serializers import (
     APIRootResponseSerializer,
@@ -152,6 +157,8 @@ from .serializers import (
     AssignmentReturnSerializer,
     AssignmentSerializer,
     AvatarUploadSerializer,
+    BenefitCatalogSerializer,
+    BonusRecordSerializer,
     BulkIdsSerializer,
     CertificateCreateUpdateSerializer,
     CertificateDetailSerializer,
@@ -160,6 +167,7 @@ from .serializers import (
     ChecklistInstanceSerializer,
     ChecklistTaskSerializer,
     ChecklistTemplateSerializer,
+    CompensationPolicySerializer,
     ConferenceCourseRegistrationCreateUpdateSerializer,
     ConferenceCourseRegistrationListSerializer,
     CPFLevelChangeSerializer,
@@ -2159,8 +2167,8 @@ class CPFLevelListView(APIView):
                 )
 
         # Otherwise return all CPF levels
-        cpf_levels = CPFLevel.objects.order_by("role", "order", "name").values_list(
-            "name", flat=True
+        cpf_levels = (
+            CPFLevel.objects.order_by("name").values_list("name", flat=True).distinct()
         )
 
         return Response(
@@ -9192,3 +9200,192 @@ class NotificationViewSet(
     def unread_count(self, request):
         count = self.get_queryset().filter(is_read=False).count()
         return Response({"count": count}, status=status.HTTP_200_OK)
+
+
+class BonusRecordViewSet(viewsets.ModelViewSet):
+    """Bonus records (Compensation module).
+
+    HR can list/create/update/delete bonuses for any employee.
+    Non-HR users may only list bonuses they own (filtered by queryset).
+    """
+
+    serializer_class = BonusRecordSerializer
+    permission_classes = [IsAuthenticated, IsCompensationAdminOrOwnReadOnly]
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ["user_profile", "bonus_type"]
+    ordering_fields = ["effective_date", "amount", "created_at"]
+    ordering = ["-effective_date"]
+
+    def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):
+            return BonusRecord.objects.none()
+        qs = BonusRecord.objects.select_related("user_profile__user", "created_by")
+        user = self.request.user
+        if not user or not user.is_authenticated:
+            return BonusRecord.objects.none()
+
+        employee_id = self.request.query_params.get("employee_id")
+        if employee_id:
+            qs = qs.filter(user_profile_id=employee_id)
+        since = self.request.query_params.get("since")
+        if since:
+            qs = qs.filter(effective_date__gte=since)
+        bonus_type = self.request.query_params.get("bonus_type")
+        if bonus_type:
+            qs = qs.filter(bonus_type=bonus_type)
+
+        if is_compensation_admin(user):
+            return qs
+
+        try:
+            profile = user.profile
+        except Exception:
+            return BonusRecord.objects.none()
+        return qs.filter(user_profile=profile)
+
+
+class EmployeeBonusListView(APIView):
+    """GET /api/employees/{id}/bonuses/ — per-employee bonus history."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, employee_id: int):
+        try:
+            profile = UserProfile.objects.get(pk=employee_id)
+        except UserProfile.DoesNotExist:
+            raise NotFound("Employee not found.")
+
+        if not is_compensation_admin(request.user):
+            try:
+                own = request.user.profile
+            except Exception:
+                raise PermissionDenied("Forbidden.")
+            if own.id != profile.id:
+                raise PermissionDenied("Forbidden.")
+
+        qs = profile.bonus_records.select_related("created_by").all()
+        serializer = BonusRecordSerializer(qs, many=True)
+        return Response(serializer.data)
+
+
+class CompensationOverviewView(APIView):
+    """GET /api/compensation/overview/ — aggregated compensation dashboard payload.
+
+    HR-only. Returns the full CompensationOverview shape consumed by the frontend.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not is_compensation_admin(request.user):
+            raise PermissionDenied("Compensation overview is HR-only.")
+        from .services.compensation_service import build_overview
+
+        return Response(build_overview())
+
+
+class CompensationPolicyViewSet(viewsets.ModelViewSet):
+    """One NET-salary policy per CPF level. HR-only (read + write)."""
+
+    serializer_class = CompensationPolicySerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ["cpf_level"]
+    ordering_fields = ["cpf_level", "net_monthly", "effective_date"]
+    ordering = ["cpf_level"]
+
+    def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):
+            return CompensationPolicy.objects.none()
+        return CompensationPolicy.objects.select_related("created_by").all()
+
+    def check_permissions(self, request):
+        super().check_permissions(request)
+        if not is_compensation_admin(request.user):
+            raise PermissionDenied("HR-only.")
+
+    def _policy_salary_value(self, value):
+        if value in (None, ""):
+            return None
+        return float(value)
+
+    def _log_policy_salary_change(self, *, policy, old_value, new_value, source):
+        for employee in UserProfile.objects.filter(cpf_level=policy.cpf_level):
+            log_employee_profile_change(
+                employee=employee,
+                field=EmployeeProfileChangeHistory.TrackedField.SALARY,
+                old_value=self._policy_salary_value(old_value),
+                new_value=self._policy_salary_value(new_value),
+                changed_by=(
+                    self.request.user if self.request.user.is_authenticated else None
+                ),
+                metadata={
+                    "source": source,
+                    "policy_id": policy.id,
+                    "cpf_level": policy.cpf_level,
+                    "salary_type": "net_monthly_policy",
+                },
+            )
+
+    def perform_create(self, serializer):
+        policy = serializer.save()
+        self._log_policy_salary_change(
+            policy=policy,
+            old_value=None,
+            new_value=policy.net_monthly,
+            source="compensation_policy_created",
+        )
+
+    def perform_update(self, serializer):
+        old_net = serializer.instance.net_monthly
+        policy = serializer.save()
+        self._log_policy_salary_change(
+            policy=policy,
+            old_value=old_net,
+            new_value=policy.net_monthly,
+            source="compensation_policy_updated",
+        )
+
+    def perform_destroy(self, instance):
+        old_net = instance.net_monthly
+        cpf_level = instance.cpf_level
+        policy_id = instance.id
+        affected = list(UserProfile.objects.filter(cpf_level=cpf_level))
+        instance.delete()
+        for employee in affected:
+            log_employee_profile_change(
+                employee=employee,
+                field=EmployeeProfileChangeHistory.TrackedField.SALARY,
+                old_value=self._policy_salary_value(old_net),
+                new_value=None,
+                changed_by=(
+                    self.request.user if self.request.user.is_authenticated else None
+                ),
+                metadata={
+                    "source": "compensation_policy_deleted",
+                    "policy_id": policy_id,
+                    "cpf_level": cpf_level,
+                    "salary_type": "net_monthly_policy",
+                },
+            )
+
+
+class BenefitCatalogViewSet(viewsets.ModelViewSet):
+    """Global benefit catalog. HR-only (read + write)."""
+
+    serializer_class = BenefitCatalogSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ["benefit_type", "is_active"]
+    ordering_fields = ["benefit_type", "name", "monthly_amount", "effective_date"]
+    ordering = ["benefit_type", "name"]
+
+    def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):
+            return BenefitCatalog.objects.none()
+        return BenefitCatalog.objects.select_related("created_by").all()
+
+    def check_permissions(self, request):
+        super().check_permissions(request)
+        if not is_compensation_admin(request.user):
+            raise PermissionDenied("HR-only.")

@@ -41,6 +41,35 @@ class OrgChartEventKind(models.TextChoices):
     LEAVE = "leave", "Leave"
 
 
+class CompensationStatus(models.TextChoices):
+    """Status surfaced by Compensation module. Derived from employment_status + active leave."""
+
+    ACTIVE = "Active", "Active"
+    ON_LEAVE = "OnLeave", "On Leave"
+    PTO = "PTO", "PTO"
+
+
+class BenefitType(models.TextChoices):
+    TRANSPORT = "transport", "Transport allowance"
+    MEAL = "meal", "Meal allowance"
+    RECREATION = "recreation", "Recreation"
+    HEALTH = "health", "Private health"
+    EDUCATION = "education", "Education stipend"
+    EQUIPMENT = "equipment", "Equipment allowance"
+    REMOTE_WORK = "remote_work", "Remote-work stipend"
+    PHONE = "phone", "Phone / data"
+    OTHER = "other", "Other"
+
+
+class BonusType(models.TextChoices):
+    PERFORMANCE = "performance", "Performance"
+    RETENTION = "retention", "Retention"
+    REFERRAL = "referral", "Referral"
+    PROJECT = "project", "Project"
+    EDUCATION = "education", "Education"
+    SPOT = "spot", "Spot"
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # 2. Employee Documents  (per-employee CV / external files)
 # ──────────────────────────────────────────────────────────────────────────────
