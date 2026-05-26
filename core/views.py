@@ -3,6 +3,7 @@ import hashlib
 import io
 from collections import defaultdict
 from datetime import timedelta
+from decimal import Decimal
 from typing import Any, cast
 from urllib.parse import unquote, urlparse
 
@@ -13,9 +14,10 @@ from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.core.validators import URLValidator
 from django.db import IntegrityError, models, transaction
-from django.db.models import Avg, Exists, Max, OuterRef, Prefetch, Q
+from django.db.models import Avg, Exists, Max, OuterRef, Prefetch, Q, Sum
 from django.http import HttpResponse
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
@@ -32,6 +34,7 @@ from rest_framework import (
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.renderers import BaseRenderer, JSONRenderer
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -44,6 +47,12 @@ from .constants import (
     EMPLOYEE_PROFILE_FILTERSET_FIELDS,
     EMPLOYEE_PROFILE_ORDERING_FIELDS,
     EMPLOYEE_PROFILE_SEARCH_FIELDS,
+)
+from .enums import (
+    TimeEntryAuditEventType,
+    TimeEntrySourceChangeFlag,
+    TimeEntrySourceType,
+    TimeEntryStatus,
 )
 from .models import (
     Application,
@@ -63,6 +72,10 @@ from .models import (
     DocumentType,
     EmployeeDocument,
     EmployeeProfileChangeHistory,
+    JiraConnection,
+    JiraIssueMapping,
+    JiraProjectMapping,
+    JiraUserMapping,
     JobListing,
     JobListingStatus,
     LeaveAdjustment,
@@ -87,6 +100,14 @@ from .models import (
     TaskTemplate,
     TemplateField,
     TemplateGeneratedDocument,
+    TempoAccountMapping,
+    TempoConnection,
+    TempoProjectMapping,
+    TempoTeamMapping,
+    TempoUserMapping,
+    TimeEntry,
+    TimeImportBatch,
+    TimeTask,
     TrainingBudget,
     TrainingEntry,
     UserProfile,
@@ -158,6 +179,14 @@ from .serializers import (
     EmployeeProfileChangeHistorySerializer,
     EmployeeProfileSerializer,
     GoogleExchangeSerializer,
+    JiraConnectionSerializer,
+    JiraImportCommitSerializer,
+    JiraImportPreviewSerializer,
+    JiraIssueMappingSerializer,
+    JiraMappingMutationSerializer,
+    JiraProjectDiscoverySerializer,
+    JiraProjectMappingSerializer,
+    JiraUserMappingSerializer,
     JobListingDetailSerializer,
     JobListingListSerializer,
     JobListingWriteSerializer,
@@ -202,6 +231,23 @@ from .serializers import (
     SignDocumentSerializer,
     TemplateGeneratedDocumentSerializer,
     TemplateUseSerializer,
+    TempoAccountMappingSerializer,
+    TempoConnectionSerializer,
+    TempoImportCommitSerializer,
+    TempoImportPreviewSerializer,
+    TempoMappingMutationSerializer,
+    TempoProjectDiscoverySerializer,
+    TempoProjectMappingSerializer,
+    TempoTeamMappingSerializer,
+    TempoUserMappingSerializer,
+    TimeDocumentImportColumnMapSerializer,
+    TimeDocumentImportUploadSerializer,
+    TimeEntryRejectSerializer,
+    TimeEntrySerializer,
+    TimeEntrySubmitWeekSerializer,
+    TimeImportBatchSerializer,
+    TimeSourceChangeResolveSerializer,
+    TimeTaskSerializer,
     TokenSerializer,
     TrainingBudgetSerializer,
     TrainingEntryCreateUpdateSerializer,
@@ -258,6 +304,22 @@ from .services.document_signature_service import (
     reset_document_signatures,
     sign_document,
 )
+from .services.document_time_import_service import (
+    commit_document_import,
+    map_columns,
+    require_document_import_admin,
+    upload_document_import,
+    validate_batch_rows,
+)
+from .services.jira_time_import_service import (
+    JiraImportFilters,
+    commit_jira_worklogs,
+    discover_jira_project_ids,
+    fetch_jira_worklogs,
+    preview_jira_worklogs,
+    require_jira_admin,
+    test_jira_connection,
+)
 from .services.performance_review_service import (
     materialize_performance_review_reminders,
     sync_performance_review_reminders_for_review,
@@ -272,6 +334,30 @@ from .services.project_service import (
     can_view_project,
     reactivate_project,
     visible_projects_for,
+)
+from .services.tempo_time_import_service import (
+    TempoImportFilters,
+    commit_tempo_worklogs,
+    discover_tempo_project_ids,
+    fetch_tempo_worklogs,
+    preview_tempo_worklogs,
+    require_tempo_admin,
+    test_tempo_connection,
+)
+from .services.time_tracking_service import (
+    active_time_tracking_allocations,
+    approve_entry,
+    can_delete_time_entry,
+    can_edit_time_entry,
+    can_view_employee_timesheet,
+    find_duplicate,
+    fingerprint_for_entry,
+    has_time_tracking_permission,
+    log_time_entry_event,
+    profile_for_user,
+    reject_entry,
+    submit_entries_for_week,
+    weekly_allocation_summary,
 )
 from .services.training_budget_service import recalculate_budget
 from .shared.employee_utils import soft_delete_employee_profile
@@ -6112,6 +6198,1529 @@ class PeerSessionViewSet(viewsets.ModelViewSet):
             return self.get_paginated_response(serializer.data)
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
+
+
+@extend_schema(tags=["Time Tracking"])
+class TimeTaskViewSet(viewsets.ModelViewSet):
+    serializer_class = TimeTaskSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.SearchFilter,
+        filters.OrderingFilter,
+    ]
+    filterset_fields = ["project", "is_active", "jira_project_key", "jira_issue_key"]
+    search_fields = ["name", "jira_issue_key", "jira_project_key", "project__name"]
+    ordering_fields = ["name", "project__name", "created_at"]
+    ordering = ["project__name", "name"]
+
+    def get_queryset(self):
+        queryset = TimeTask.objects.select_related("project")
+        project_id = self.request.query_params.get("project_id")
+        if project_id:
+            queryset = queryset.filter(project_id=project_id)
+        if not has_time_tracking_permission(self.request.user, "view_dept_timesheets"):
+            profile = profile_for_user(self.request.user)
+            if profile is None:
+                return TimeTask.objects.none()
+            queryset = queryset.filter(
+                Q(project__assignments__user_profile=profile)
+                | Q(project__owner=profile)
+            )
+        return queryset.distinct()
+
+    def perform_create(self, serializer):
+        if not has_time_tracking_permission(
+            self.request.user, "approve_team_timesheets"
+        ):
+            raise PermissionDenied("You do not have permission to manage time tasks.")
+        serializer.save()
+
+    def perform_update(self, serializer):
+        if not has_time_tracking_permission(
+            self.request.user, "approve_team_timesheets"
+        ):
+            raise PermissionDenied("You do not have permission to manage time tasks.")
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        if not has_time_tracking_permission(
+            self.request.user, "approve_team_timesheets"
+        ):
+            raise PermissionDenied("You do not have permission to manage time tasks.")
+        instance.delete()
+
+
+@extend_schema(tags=["Time Tracking"])
+class TimeEntryViewSet(viewsets.ModelViewSet):
+    serializer_class = TimeEntrySerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = [
+        "employee",
+        "project",
+        "task",
+        "status",
+        "source_type",
+        "work_date",
+    ]
+    ordering_fields = ["work_date", "start_time", "hours", "created_at", "updated_at"]
+    ordering = ["-work_date", "start_time", "employee_id"]
+
+    def get_queryset(self):
+        base = TimeEntry.objects.select_related(
+            "employee__user",
+            "project",
+            "task",
+            "submitted_by__user",
+            "approved_by__user",
+            "rejected_by__user",
+        ).prefetch_related("audit_events__actor__user")
+        user = self.request.user
+        if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+            queryset = base
+        else:
+            profile = profile_for_user(user)
+            if profile is None:
+                return TimeEntry.objects.none()
+            scopes = Q()
+            if has_time_tracking_permission(user, "view_own_timesheet"):
+                scopes |= Q(employee=profile)
+            if has_time_tracking_permission(
+                user, "view_team_timesheets"
+            ) or has_time_tracking_permission(user, "approve_team_timesheets"):
+                scopes |= Q(employee__managers=profile)
+            if has_time_tracking_permission(user, "view_dept_timesheets"):
+                scopes |= Q()
+                queryset = base
+            else:
+                queryset = base.filter(scopes) if scopes else base.none()
+
+        date_from = self.request.query_params.get("date_from")
+        date_to = self.request.query_params.get("date_to")
+        if date_from:
+            queryset = queryset.filter(work_date__gte=date_from)
+        if date_to:
+            queryset = queryset.filter(work_date__lte=date_to)
+        return queryset.distinct()
+
+    def perform_create(self, serializer):
+        entry = serializer.save()
+        profile = profile_for_user(self.request.user)
+        if not can_edit_time_entry(self.request.user, entry):
+            entry.delete()
+            raise PermissionDenied("You do not have permission to create this entry.")
+        if (
+            entry.source_type != TimeEntrySourceType.MANUAL
+            and not has_time_tracking_permission(
+                self.request.user, "approve_team_timesheets"
+            )
+        ):
+            entry.delete()
+            raise PermissionDenied("Only approvers can create imported entries.")
+        event = (
+            TimeEntryAuditEventType.IMPORTED
+            if entry.source_type != TimeEntrySourceType.MANUAL
+            else TimeEntryAuditEventType.CREATED
+        )
+        duplicate = find_duplicate(entry)
+        metadata = {"duplicate_of": duplicate.id} if duplicate else {}
+        log_time_entry_event(entry, event, profile, metadata=metadata)
+
+    def perform_update(self, serializer):
+        entry = self.get_object()
+        if not can_edit_time_entry(self.request.user, entry):
+            raise PermissionDenied("You do not have permission to edit this entry.")
+        updated = serializer.save()
+        profile = profile_for_user(self.request.user)
+        event = (
+            TimeEntryAuditEventType.CORRECTED
+            if updated.source_type != TimeEntrySourceType.MANUAL
+            else TimeEntryAuditEventType.UPDATED
+        )
+        duplicate = find_duplicate(updated)
+        metadata = {"duplicate_of": duplicate.id} if duplicate else {}
+        log_time_entry_event(updated, event, profile, metadata=metadata)
+
+    def perform_destroy(self, instance):
+        if not can_delete_time_entry(self.request.user, instance):
+            raise PermissionDenied("You do not have permission to delete this entry.")
+        if (
+            instance.source_type == TimeEntrySourceType.MANUAL
+            and instance.status not in {TimeEntryStatus.DRAFT, TimeEntryStatus.REJECTED}
+        ):
+            raise PermissionDenied("Only draft or rejected entries can be deleted.")
+        instance.delete()
+
+    @extend_schema(
+        request=TimeEntrySubmitWeekSerializer,
+        responses={200: TimeEntrySerializer(many=True), 400: None, 403: None},
+    )
+    @action(detail=False, methods=["post"], url_path="submit-week")
+    def submit_week(self, request):
+        serializer = TimeEntrySubmitWeekSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        employee = serializer.validated_data.get("employee") or profile_for_user(
+            request.user
+        )
+        if employee is None:
+            return Response(
+                {"detail": "Employee is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        entries = submit_entries_for_week(
+            user=request.user,
+            employee=employee,
+            week_start=serializer.validated_data["week_start"],
+        )
+        return Response(TimeEntrySerializer(entries, many=True).data)
+
+    @extend_schema(responses={200: TimeEntrySerializer, 400: None, 403: None})
+    @action(detail=True, methods=["post"])
+    def approve(self, request, pk=None):
+        entry = approve_entry(user=request.user, entry=self.get_object())
+        return Response(TimeEntrySerializer(entry).data)
+
+    @extend_schema(
+        request=TimeEntryRejectSerializer,
+        responses={200: TimeEntrySerializer, 400: None, 403: None},
+    )
+    @action(detail=True, methods=["post"])
+    def reject(self, request, pk=None):
+        serializer = TimeEntryRejectSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        entry = reject_entry(
+            user=request.user,
+            entry=self.get_object(),
+            reason=serializer.validated_data["reason"],
+        )
+        return Response(TimeEntrySerializer(entry).data)
+
+
+@extend_schema(tags=["Time Tracking"])
+class TimeTrackingWeeklySummaryView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                "week_start",
+                str,
+                description="Week start date, ISO format YYYY-MM-DD.",
+                required=True,
+            ),
+            OpenApiParameter(
+                "employee",
+                int,
+                description="UserProfile id. Alias for employee_id.",
+                required=False,
+            ),
+            OpenApiParameter(
+                "employee_id",
+                int,
+                description="UserProfile id. Defaults to current user's profile.",
+                required=False,
+            ),
+        ],
+        responses={200: None, 400: None, 403: None, 404: None},
+    )
+    def get(self, request):
+        raw_week_start = request.query_params.get("week_start")
+        week_start = parse_date(raw_week_start or "")
+        if week_start is None:
+            return Response(
+                {"detail": "week_start must be an ISO date (YYYY-MM-DD)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        employee_id = request.query_params.get(
+            "employee_id"
+        ) or request.query_params.get("employee")
+        if employee_id:
+            try:
+                employee_pk = int(employee_id)
+            except (TypeError, ValueError):
+                return Response(
+                    {"detail": "employee_id must be an integer."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            employee = (
+                UserProfile.objects.select_related("user")
+                .filter(pk=employee_pk)
+                .first()
+            )
+            if employee is None:
+                return Response(
+                    {"detail": "Employee not found."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+        else:
+            employee = profile_for_user(request.user)
+            if employee is None:
+                return Response(
+                    {"detail": "User profile not found."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+        if not can_view_employee_timesheet(request.user, employee):
+            return Response(
+                {"detail": "You do not have permission to view this timesheet."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        return Response(
+            weekly_allocation_summary(employee=employee, week_start=week_start)
+        )
+
+
+@extend_schema(tags=["Time Tracking"])
+class TimeTrackingActiveAllocationsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                "work_date",
+                str,
+                description="Date for active allocation lookup, ISO YYYY-MM-DD. Defaults to today.",
+                required=False,
+            ),
+            OpenApiParameter(
+                "employee",
+                int,
+                description="UserProfile id. Alias for employee_id.",
+                required=False,
+            ),
+            OpenApiParameter("employee_id", int, required=False),
+        ],
+        responses={200: None, 400: None, 403: None, 404: None},
+    )
+    def get(self, request):
+        raw_date = request.query_params.get("work_date")
+        work_date = parse_date(raw_date) if raw_date else timezone.localdate()
+        if work_date is None:
+            return Response(
+                {"work_date": "work_date must be an ISO date (YYYY-MM-DD)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        employee_id = request.query_params.get(
+            "employee_id"
+        ) or request.query_params.get("employee")
+        if employee_id:
+            employee = (
+                UserProfile.objects.select_related("user")
+                .filter(pk=employee_id)
+                .first()
+            )
+            if employee is None:
+                return Response(
+                    {"detail": "Employee not found."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+        else:
+            employee = profile_for_user(request.user)
+            if employee is None:
+                return Response(
+                    {"detail": "User profile not found."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+        if not can_view_employee_timesheet(request.user, employee):
+            return Response(
+                {"detail": "You do not have permission to view this allocation."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return Response(
+            active_time_tracking_allocations(employee=employee, work_date=work_date)
+        )
+
+
+def _week_start_from_request(request):
+    raw_week_start = request.query_params.get("week_start")
+    if raw_week_start:
+        week_start = parse_date(raw_week_start)
+        if week_start is None:
+            raise serializers.ValidationError(
+                {"week_start": "week_start must be an ISO date (YYYY-MM-DD)."}
+            )
+        return week_start
+    today = timezone.localdate()
+    return today - timedelta(days=today.weekday())
+
+
+def _scoped_time_entries(user):
+    base = TimeEntry.objects.select_related(
+        "employee__user",
+        "project",
+        "task",
+        "submitted_by__user",
+        "approved_by__user",
+        "rejected_by__user",
+    )
+    if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+        return base
+    profile = profile_for_user(user)
+    if profile is None:
+        return TimeEntry.objects.none()
+    scopes = Q()
+    if has_time_tracking_permission(user, "view_own_timesheet"):
+        scopes |= Q(employee=profile)
+    if has_time_tracking_permission(
+        user, "view_team_timesheets"
+    ) or has_time_tracking_permission(user, "approve_team_timesheets"):
+        scopes |= Q(employee__managers=profile)
+    if has_time_tracking_permission(user, "view_dept_timesheets"):
+        return base
+    return base.filter(scopes).distinct() if scopes else base.none()
+
+
+def _scoped_time_entry_employees(user):
+    base = UserProfile.objects.select_related("user")
+    if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+        return base
+    profile = profile_for_user(user)
+    if profile is None:
+        return UserProfile.objects.none()
+    scopes = Q()
+    if has_time_tracking_permission(user, "view_own_timesheet"):
+        scopes |= Q(id=profile.id)
+    if has_time_tracking_permission(
+        user, "view_team_timesheets"
+    ) or has_time_tracking_permission(user, "approve_team_timesheets"):
+        scopes |= Q(managers=profile)
+    if has_time_tracking_permission(user, "view_dept_timesheets"):
+        return base
+    return base.filter(scopes).distinct() if scopes else base.none()
+
+
+def _apply_time_entry_filters(queryset, params):
+    employee_id = params.get("employee") or params.get("employee_id")
+    project_id = params.get("project") or params.get("project_id")
+    source_type = params.get("source_type")
+    entry_status = params.get("status")
+    date_from = params.get("date_from")
+    date_to = params.get("date_to")
+    if employee_id:
+        queryset = queryset.filter(employee_id=employee_id)
+    if project_id:
+        queryset = queryset.filter(project_id=project_id)
+    if source_type:
+        queryset = queryset.filter(source_type=source_type)
+    if entry_status:
+        queryset = queryset.filter(status=entry_status)
+    if date_from:
+        queryset = queryset.filter(work_date__gte=date_from)
+    if date_to:
+        queryset = queryset.filter(work_date__lte=date_to)
+    return queryset
+
+
+def _decimal(value):
+    return str((value or Decimal("0.00")).quantize(Decimal("0.01")))
+
+
+@extend_schema(tags=["Time Tracking"])
+class TimeTrackingWeeklyDashboardView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(responses={200: None, 400: None, 403: None})
+    def get(self, request):
+        week_start = _week_start_from_request(request)
+        week_end = week_start + timedelta(days=6)
+        queryset = _scoped_time_entries(request.user).filter(
+            work_date__gte=week_start,
+            work_date__lte=week_end,
+        )
+        employee_id = request.query_params.get(
+            "employee_id"
+        ) or request.query_params.get("employee")
+        if employee_id:
+            queryset = queryset.filter(employee_id=employee_id)
+
+        totals_by_source = {
+            row["source_type"]: _decimal(row["total_hours"])
+            for row in queryset.values("source_type").annotate(total_hours=Sum("hours"))
+        }
+        totals_by_status = {
+            row["status"]: _decimal(row["total_hours"])
+            for row in queryset.values("status").annotate(total_hours=Sum("hours"))
+        }
+        total_hours = queryset.aggregate(total=Sum("hours"))["total"]
+        employees = []
+        for employee in (
+            queryset.values(
+                "employee_id", "employee__full_name", "employee__user__username"
+            )
+            .annotate(total_hours=Sum("hours"))
+            .order_by("employee__full_name")
+        ):
+            employees.append(
+                {
+                    "employee_id": employee["employee_id"],
+                    "employee_name": employee["employee__full_name"]
+                    or employee["employee__user__username"],
+                    "total_hours": _decimal(employee["total_hours"]),
+                }
+            )
+        return Response(
+            {
+                "week_start": week_start.isoformat(),
+                "week_end": week_end.isoformat(),
+                "total_hours": _decimal(total_hours),
+                "totals_by_source": totals_by_source,
+                "totals_by_status": totals_by_status,
+                "employees": employees,
+                "entries": TimeEntrySerializer(
+                    queryset.order_by("work_date"), many=True
+                ).data,
+            }
+        )
+
+
+@extend_schema(tags=["Time Tracking"])
+class TimeTrackingApprovalQueueView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        responses={200: TimeEntrySerializer(many=True), 400: None, 403: None}
+    )
+    def get(self, request):
+        if not (
+            getattr(request.user, "is_staff", False)
+            or getattr(request.user, "is_superuser", False)
+            or has_time_tracking_permission(request.user, "approve_team_timesheets")
+        ):
+            return Response(
+                {"detail": "You do not have permission to view approval queue."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        queryset = _scoped_time_entries(request.user)
+        if not request.query_params.get("status"):
+            queryset = queryset.filter(status=TimeEntryStatus.SUBMITTED)
+        week_start_raw = request.query_params.get("week_start")
+        if week_start_raw:
+            week_start = parse_date(week_start_raw)
+            if week_start is None:
+                return Response(
+                    {"week_start": "week_start must be an ISO date (YYYY-MM-DD)."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            queryset = queryset.filter(
+                work_date__gte=week_start,
+                work_date__lte=week_start + timedelta(days=6),
+            )
+        queryset = _apply_time_entry_filters(queryset, request.query_params)
+        return Response(
+            TimeEntrySerializer(
+                queryset.order_by("employee__full_name", "work_date"), many=True
+            ).data
+        )
+
+
+@extend_schema(tags=["Time Tracking"])
+class TimeTrackingPlannedVsActualView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(responses={200: None, 400: None, 403: None})
+    def get(self, request):
+        raw_date_from = request.query_params.get("date_from")
+        raw_date_to = request.query_params.get("date_to")
+        if raw_date_from and raw_date_to:
+            date_from = parse_date(raw_date_from)
+            date_to = parse_date(raw_date_to)
+        else:
+            week_start = _week_start_from_request(request)
+            date_from = week_start
+            date_to = week_start + timedelta(days=6)
+        if date_from is None or date_to is None or date_to < date_from:
+            return Response(
+                {"detail": "Provide valid date_from/date_to ISO dates."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        queryset = _scoped_time_entries(request.user)
+        employee_id = request.query_params.get("employee") or request.query_params.get(
+            "employee_id"
+        )
+        project_id = request.query_params.get("project") or request.query_params.get(
+            "project_id"
+        )
+        entry_employee_entries = queryset.filter(
+            work_date__gte=date_from,
+            work_date__lte=date_to,
+        )
+        if project_id:
+            entry_employee_entries = entry_employee_entries.filter(
+                project_id=project_id
+            )
+        entry_employee_ids = entry_employee_entries.values_list(
+            "employee_id", flat=True
+        ).distinct()
+        assignment_employee_ids = (
+            ProjectAssignment.objects.filter(
+                user_profile__in=_scoped_time_entry_employees(request.user)
+            )
+            .filter(start_date__lte=date_to)
+            .filter(Q(end_date__isnull=True) | Q(end_date__gte=date_from))
+        )
+        if project_id:
+            assignment_employee_ids = assignment_employee_ids.filter(
+                project_id=project_id
+            )
+        assignment_employee_ids = assignment_employee_ids.values_list(
+            "user_profile_id", flat=True
+        ).distinct()
+        employees = (
+            _scoped_time_entry_employees(request.user)
+            .filter(Q(id__in=entry_employee_ids) | Q(id__in=assignment_employee_ids))
+            .select_related("user")
+            .order_by("full_name", "user__username", "id")
+        )
+        if employee_id:
+            employees = employees.filter(id=employee_id)
+        rows = []
+        current = date_from - timedelta(days=date_from.weekday())
+        final_week = date_to - timedelta(days=date_to.weekday())
+        while current <= final_week:
+            for employee in employees:
+                summary = weekly_allocation_summary(
+                    employee=employee, week_start=current
+                )
+                for project in summary["projects"]:
+                    if project_id and str(project["project_id"]) != str(project_id):
+                        continue
+                    rows.append(
+                        {
+                            "employee_id": employee.id,
+                            "employee_name": employee.full_name
+                            or employee.user.username,
+                            "week_start": summary["week_start"],
+                            "week_end": summary["week_end"],
+                            **project,
+                        }
+                    )
+            current += timedelta(days=7)
+        return Response(
+            {
+                "date_from": date_from.isoformat(),
+                "date_to": date_to.isoformat(),
+                "rows": rows,
+            }
+        )
+
+
+def _export_row(entry: TimeEntry, include_source_identifiers: bool):
+    metadata = entry.source_metadata or {}
+    jira_issue_key = entry.task.jira_issue_key if entry.task_id else ""
+    jira_issue_key = jira_issue_key or metadata.get("jira_issue_key", "")
+    row = {
+        "employee": entry.employee.full_name or entry.employee.user.username,
+        "employee_id": entry.employee_id,
+        "date": entry.work_date.isoformat(),
+        "start_time": entry.start_time.isoformat() if entry.start_time else "",
+        "end_time": entry.end_time.isoformat() if entry.end_time else "",
+        "project": entry.project.name,
+        "project_id": entry.project_id,
+        "task": entry.task.name if entry.task_id else "",
+        "task_id": entry.task_id or "",
+        "jira_issue_key": jira_issue_key,
+        "hours": str(entry.hours),
+        "notes": entry.notes,
+        "source_type": entry.source_type,
+        "status": entry.status,
+        "submitted_at": entry.submitted_at.isoformat() if entry.submitted_at else "",
+        "submitted_by": (
+            entry.submitted_by.full_name or entry.submitted_by.user.username
+            if entry.submitted_by_id
+            else ""
+        ),
+        "approved_at": entry.approved_at.isoformat() if entry.approved_at else "",
+        "approved_by": (
+            entry.approved_by.full_name or entry.approved_by.user.username
+            if entry.approved_by_id
+            else ""
+        ),
+        "rejected_at": entry.rejected_at.isoformat() if entry.rejected_at else "",
+        "rejected_by": (
+            entry.rejected_by.full_name or entry.rejected_by.user.username
+            if entry.rejected_by_id
+            else ""
+        ),
+        "rejection_reason": entry.rejection_reason,
+    }
+    if include_source_identifiers:
+        row["source_external_id"] = entry.source_external_id
+        row["source_metadata"] = entry.source_metadata
+    return row
+
+
+class CSVExportRenderer(BaseRenderer):
+    media_type = "text/csv"
+    format = "csv"
+
+    def render(self, data, accepted_media_type=None, renderer_context=None):
+        return data
+
+
+class XLSXExportRenderer(BaseRenderer):
+    media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    format = "xlsx"
+
+    def render(self, data, accepted_media_type=None, renderer_context=None):
+        return data
+
+
+@extend_schema(tags=["Time Tracking"])
+class TimeTrackingTimesheetExportView(APIView):
+    permission_classes = [IsAuthenticated]
+    renderer_classes = [JSONRenderer, CSVExportRenderer, XLSXExportRenderer]
+
+    @extend_schema(responses={200: OpenApiTypes.BINARY, 400: None, 403: None})
+    def get(self, request):
+        if not has_time_tracking_permission(request.user, "export_timesheets"):
+            return Response(
+                {"detail": "You do not have permission to export timesheets."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        export_format = (request.query_params.get("format") or "csv").lower()
+        if export_format not in {"csv", "xlsx"}:
+            return Response(
+                {"format": "format must be csv or xlsx."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        queryset = _apply_time_entry_filters(
+            _scoped_time_entries(request.user), request.query_params
+        ).order_by("work_date", "employee__full_name", "project__name")
+        rows = [_export_row(entry, True) for entry in queryset]
+        headers = [
+            "employee",
+            "employee_id",
+            "date",
+            "start_time",
+            "end_time",
+            "project",
+            "project_id",
+            "task",
+            "task_id",
+            "jira_issue_key",
+            "hours",
+            "notes",
+            "source_type",
+            "status",
+            "submitted_at",
+            "submitted_by",
+            "approved_at",
+            "approved_by",
+            "rejected_at",
+            "rejected_by",
+            "rejection_reason",
+            "source_external_id",
+            "source_metadata",
+        ]
+
+        if export_format == "csv":
+            response = HttpResponse(content_type="text/csv")
+            response["Content-Disposition"] = 'attachment; filename="timesheets.csv"'
+            writer = csv.DictWriter(response, fieldnames=headers)
+            writer.writeheader()
+            for row in rows:
+                writer.writerow(row)
+            return response
+
+        import openpyxl
+
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.title = "Timesheets"
+        sheet.append(headers)
+        for row in rows:
+            sheet.append([str(row.get(header, "")) for header in headers])
+        output = io.BytesIO()
+        workbook.save(output)
+        response = HttpResponse(
+            output.getvalue(),
+            content_type=(
+                "application/vnd.openxmlformats-officedocument." "spreadsheetml.sheet"
+            ),
+        )
+        response["Content-Disposition"] = 'attachment; filename="timesheets.xlsx"'
+        return response
+
+
+@extend_schema(tags=["Time Tracking"])
+class JiraSettingsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(responses={200: JiraConnectionSerializer, 403: None})
+    def get(self, request):
+        require_jira_admin(request.user)
+        return Response(JiraConnectionSerializer(JiraConnection.get_solo()).data)
+
+    @extend_schema(
+        request=JiraConnectionSerializer,
+        responses={200: JiraConnectionSerializer, 400: None, 403: None},
+    )
+    def patch(self, request):
+        require_jira_admin(request.user)
+        connection = JiraConnection.get_solo()
+        serializer = JiraConnectionSerializer(
+            connection, data=request.data, partial=True
+        )
+        serializer.is_valid(raise_exception=True)
+        connection = serializer.save()
+        return Response(JiraConnectionSerializer(connection).data)
+
+
+@extend_schema(tags=["Time Tracking"])
+class JiraTestConnectionView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(responses={200: JiraConnectionSerializer, 400: None, 403: None})
+    def post(self, request):
+        require_jira_admin(request.user)
+        connection = JiraConnection.get_solo()
+        result = test_jira_connection(connection)
+        connection.last_test_status = result["status"]
+        connection.last_test_message = result["message"]
+        connection.last_test_metadata = result["metadata"]
+        connection.last_test_at = timezone.now()
+        connection.save(
+            update_fields=[
+                "last_test_status",
+                "last_test_message",
+                "last_test_metadata",
+                "last_test_at",
+                "updated_at",
+            ]
+        )
+        response_status = (
+            status.HTTP_200_OK
+            if result["status"] == "success"
+            else status.HTTP_400_BAD_REQUEST
+        )
+        return Response(
+            JiraConnectionSerializer(connection).data, status=response_status
+        )
+
+
+@extend_schema(tags=["Time Tracking"])
+class JiraMappingsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(responses={200: None, 403: None})
+    def get(self, request):
+        require_jira_admin(request.user)
+        return Response(_jira_mappings_payload())
+
+    @extend_schema(
+        request=JiraMappingMutationSerializer,
+        responses={201: None, 400: None, 403: None},
+    )
+    def post(self, request):
+        require_jira_admin(request.user)
+        serializer = JiraMappingMutationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        mapping = _save_jira_mapping(serializer.validated_data)
+        return Response(
+            _serialize_jira_mapping(mapping), status=status.HTTP_201_CREATED
+        )
+
+    @extend_schema(
+        request=JiraMappingMutationSerializer,
+        responses={200: None, 400: None, 403: None, 404: None},
+    )
+    def patch(self, request):
+        require_jira_admin(request.user)
+        serializer = JiraMappingMutationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        if "id" not in serializer.validated_data:
+            return Response(
+                {"id": "Mapping id is required for patch."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        mapping = _save_jira_mapping(serializer.validated_data)
+        return Response(_serialize_jira_mapping(mapping))
+
+
+@extend_schema(tags=["Time Tracking"])
+class JiraProjectDiscoveryView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        request=JiraProjectDiscoverySerializer,
+        responses={200: None, 400: None, 403: None},
+    )
+    def post(self, request):
+        require_jira_admin(request.user)
+        serializer = JiraProjectDiscoverySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        api_token = data.get("api_token")
+        if api_token and data.get("base_url") and data.get("auth_email"):
+            connection = JiraConnection(
+                base_url=data["base_url"],
+                auth_email=data["auth_email"],
+                enabled=True,
+            )
+        else:
+            saved_connection = JiraConnection.get_solo()
+            connection = JiraConnection(
+                base_url=data.get("base_url") or saved_connection.base_url,
+                auth_email=data.get("auth_email") or saved_connection.auth_email,
+                enabled=True,
+            )
+            connection.api_token_encrypted = saved_connection.api_token_encrypted
+        if api_token:
+            connection.set_api_token(api_token)
+
+        return Response(
+            discover_jira_project_ids(
+                connection,
+                date_from=data["date_from"],
+                date_to=data["date_to"],
+                limit=data["limit"],
+            )
+        )
+
+
+def _jira_mappings_payload():
+    return {
+        "users": JiraUserMappingSerializer(
+            JiraUserMapping.objects.select_related("employee__user"), many=True
+        ).data,
+        "projects": JiraProjectMappingSerializer(
+            JiraProjectMapping.objects.select_related("project"), many=True
+        ).data,
+        "issues": JiraIssueMappingSerializer(
+            JiraIssueMapping.objects.select_related("task__project"), many=True
+        ).data,
+    }
+
+
+def _serialize_jira_mapping(mapping):
+    if isinstance(mapping, JiraUserMapping):
+        return {"mapping_type": "user", **JiraUserMappingSerializer(mapping).data}
+    if isinstance(mapping, JiraProjectMapping):
+        return {"mapping_type": "project", **JiraProjectMappingSerializer(mapping).data}
+    return {"mapping_type": "issue", **JiraIssueMappingSerializer(mapping).data}
+
+
+def _save_jira_mapping(data):
+    mapping_type = data["mapping_type"]
+    pk = data.get("id")
+    if mapping_type == "user":
+        instance = JiraUserMapping.objects.filter(pk=pk).first() if pk else None
+        payload = {
+            "jira_account_id": data.get("jira_account_id"),
+            "jira_display_name": data.get("jira_display_name", ""),
+            "employee_id": data.get("employee_id"),
+            "is_active": data.get("is_active", True),
+        }
+        payload = {key: value for key, value in payload.items() if value is not None}
+        serializer = JiraUserMappingSerializer(
+            instance, data=payload, partial=bool(instance)
+        )
+    elif mapping_type == "project":
+        instance = JiraProjectMapping.objects.filter(pk=pk).first() if pk else None
+        payload = {
+            "jira_project_key": data.get("jira_project_key"),
+            "jira_project_name": data.get("jira_project_name", ""),
+            "project_id": data.get("project_id"),
+            "is_active": data.get("is_active", True),
+        }
+        payload = {key: value for key, value in payload.items() if value is not None}
+        serializer = JiraProjectMappingSerializer(
+            instance, data=payload, partial=bool(instance)
+        )
+    else:
+        instance = JiraIssueMapping.objects.filter(pk=pk).first() if pk else None
+        payload = {
+            "jira_issue_key": data.get("jira_issue_key"),
+            "jira_issue_id": data.get("jira_issue_id", ""),
+            "task_id": data.get("task_id"),
+            "is_active": data.get("is_active", True),
+        }
+        payload = {key: value for key, value in payload.items() if value is not None}
+        serializer = JiraIssueMappingSerializer(
+            instance, data=payload, partial=bool(instance)
+        )
+    if pk and instance is None:
+        raise serializers.ValidationError({"id": "Mapping not found."})
+    serializer.is_valid(raise_exception=True)
+    return serializer.save()
+
+
+def _jira_filters_from_data(data):
+    return JiraImportFilters(
+        date_from=data["date_from"],
+        date_to=data["date_to"],
+        employee_id=data.get("employee_id"),
+        project_id=data.get("project_id"),
+        jira_project_key=data.get("jira_project_key", ""),
+        jira_issue_key=data.get("jira_issue_key", ""),
+        worklog_id=data.get("worklog_id", ""),
+    )
+
+
+@extend_schema(tags=["Time Tracking"])
+class JiraImportPreviewView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        request=JiraImportPreviewSerializer,
+        responses={200: None, 400: None, 403: None},
+    )
+    def post(self, request):
+        require_jira_admin(request.user)
+        serializer = JiraImportPreviewSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        filters_obj = _jira_filters_from_data(serializer.validated_data)
+        worklogs = serializer.validated_data.get("worklogs")
+        if worklogs is None:
+            worklogs = fetch_jira_worklogs(JiraConnection.get_solo(), filters_obj)
+        return Response(
+            preview_jira_worklogs(filters=filters_obj, raw_worklogs=worklogs)
+        )
+
+
+@extend_schema(tags=["Time Tracking"])
+class JiraImportCommitView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        request=JiraImportCommitSerializer,
+        responses={200: None, 400: None, 403: None},
+    )
+    def post(self, request):
+        require_jira_admin(request.user)
+        serializer = JiraImportCommitSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        filters_obj = _jira_filters_from_data(serializer.validated_data)
+        worklogs = serializer.validated_data.get("worklogs")
+        if worklogs is None:
+            worklogs = fetch_jira_worklogs(JiraConnection.get_solo(), filters_obj)
+        return Response(
+            commit_jira_worklogs(
+                user=request.user,
+                filters=filters_obj,
+                raw_worklogs=worklogs,
+            )
+        )
+
+
+@extend_schema(tags=["Time Tracking"])
+class TempoSettingsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(responses={200: TempoConnectionSerializer, 403: None})
+    def get(self, request):
+        require_tempo_admin(request.user)
+        return Response(TempoConnectionSerializer(TempoConnection.get_solo()).data)
+
+    @extend_schema(
+        request=TempoConnectionSerializer,
+        responses={200: TempoConnectionSerializer, 400: None, 403: None},
+    )
+    def patch(self, request):
+        require_tempo_admin(request.user)
+        connection = TempoConnection.get_solo()
+        serializer = TempoConnectionSerializer(
+            connection, data=request.data, partial=True
+        )
+        serializer.is_valid(raise_exception=True)
+        connection = serializer.save()
+        return Response(TempoConnectionSerializer(connection).data)
+
+
+@extend_schema(tags=["Time Tracking"])
+class TempoTestConnectionView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        request=TempoConnectionSerializer,
+        responses={200: TempoConnectionSerializer, 400: None, 403: None},
+    )
+    def post(self, request):
+        require_tempo_admin(request.user)
+        connection = TempoConnection.get_solo()
+        if request.data:
+            serializer = TempoConnectionSerializer(
+                connection, data=request.data, partial=True
+            )
+            serializer.is_valid(raise_exception=True)
+            connection = serializer.save()
+        result = test_tempo_connection(connection)
+        connection.last_test_status = result["status"]
+        connection.last_test_message = result["message"]
+        connection.last_test_metadata = result["metadata"]
+        connection.last_test_at = timezone.now()
+        connection.save(
+            update_fields=[
+                "last_test_status",
+                "last_test_message",
+                "last_test_metadata",
+                "last_test_at",
+                "updated_at",
+            ]
+        )
+        response_status = (
+            status.HTTP_200_OK
+            if result["status"] == "success"
+            else status.HTTP_400_BAD_REQUEST
+        )
+        return Response(
+            TempoConnectionSerializer(connection).data, status=response_status
+        )
+
+
+@extend_schema(tags=["Time Tracking"])
+class TempoMappingsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(responses={200: None, 403: None})
+    def get(self, request):
+        require_tempo_admin(request.user)
+        return Response(_tempo_mappings_payload())
+
+    @extend_schema(
+        request=TempoMappingMutationSerializer,
+        responses={201: None, 400: None, 403: None},
+    )
+    def post(self, request):
+        require_tempo_admin(request.user)
+        serializer = TempoMappingMutationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        mapping = _save_tempo_mapping(serializer.validated_data)
+        return Response(
+            _serialize_tempo_mapping(mapping), status=status.HTTP_201_CREATED
+        )
+
+    @extend_schema(
+        request=TempoMappingMutationSerializer,
+        responses={200: None, 400: None, 403: None, 404: None},
+    )
+    def patch(self, request):
+        require_tempo_admin(request.user)
+        serializer = TempoMappingMutationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        if "id" not in serializer.validated_data:
+            return Response(
+                {"id": "Mapping id is required for patch."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        mapping = _save_tempo_mapping(serializer.validated_data)
+        return Response(_serialize_tempo_mapping(mapping))
+
+
+@extend_schema(tags=["Time Tracking"])
+class TempoProjectDiscoveryView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        request=TempoProjectDiscoverySerializer,
+        responses={200: None, 400: None, 403: None},
+    )
+    def post(self, request):
+        require_tempo_admin(request.user)
+        serializer = TempoProjectDiscoverySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        api_token = data.get("api_token")
+        if api_token and data.get("base_url"):
+            connection = TempoConnection(base_url=data["base_url"], enabled=True)
+        else:
+            saved_connection = TempoConnection.get_solo()
+            connection = TempoConnection(
+                base_url=data.get("base_url") or saved_connection.base_url,
+                enabled=True,
+            )
+            connection.api_token_encrypted = saved_connection.api_token_encrypted
+        if api_token:
+            connection.set_api_token(api_token)
+
+        return Response(
+            discover_tempo_project_ids(
+                connection,
+                date_from=data["date_from"],
+                date_to=data["date_to"],
+                limit=data["limit"],
+            )
+        )
+
+
+def _tempo_mappings_payload():
+    return {
+        "users": TempoUserMappingSerializer(
+            TempoUserMapping.objects.select_related("employee__user"), many=True
+        ).data,
+        "accounts": TempoAccountMappingSerializer(
+            TempoAccountMapping.objects.select_related("project"), many=True
+        ).data,
+        "projects": TempoProjectMappingSerializer(
+            TempoProjectMapping.objects.select_related("project"), many=True
+        ).data,
+        "teams": TempoTeamMappingSerializer(
+            TempoTeamMapping.objects.select_related("project"), many=True
+        ).data,
+    }
+
+
+def _serialize_tempo_mapping(mapping):
+    if isinstance(mapping, TempoUserMapping):
+        return {"mapping_type": "user", **TempoUserMappingSerializer(mapping).data}
+    if isinstance(mapping, TempoAccountMapping):
+        return {
+            "mapping_type": "account",
+            **TempoAccountMappingSerializer(mapping).data,
+        }
+    if isinstance(mapping, TempoProjectMapping):
+        return {
+            "mapping_type": "project",
+            **TempoProjectMappingSerializer(mapping).data,
+        }
+    return {"mapping_type": "team", **TempoTeamMappingSerializer(mapping).data}
+
+
+def _save_tempo_mapping(data):
+    mapping_type = data["mapping_type"]
+    pk = data.get("id")
+    if mapping_type == "user":
+        instance = TempoUserMapping.objects.filter(pk=pk).first() if pk else None
+        payload = {
+            "tempo_user_id": data.get("tempo_user_id"),
+            "tempo_display_name": data.get("tempo_display_name", ""),
+            "employee_id": data.get("employee_id"),
+            "is_active": data.get("is_active", True),
+        }
+        serializer_class = TempoUserMappingSerializer
+    elif mapping_type == "account":
+        instance = TempoAccountMapping.objects.filter(pk=pk).first() if pk else None
+        payload = {
+            "tempo_account_id": data.get("tempo_account_id"),
+            "tempo_account_key": data.get("tempo_account_key", ""),
+            "tempo_account_name": data.get("tempo_account_name", ""),
+            "project_id": data.get("project_id"),
+            "is_active": data.get("is_active", True),
+        }
+        serializer_class = TempoAccountMappingSerializer
+    elif mapping_type == "project":
+        instance = TempoProjectMapping.objects.filter(pk=pk).first() if pk else None
+        payload = {
+            "tempo_project_id": data.get("tempo_project_id"),
+            "tempo_project_key": data.get("tempo_project_key", ""),
+            "tempo_project_name": data.get("tempo_project_name", ""),
+            "project_id": data.get("project_id"),
+            "is_active": data.get("is_active", True),
+        }
+        serializer_class = TempoProjectMappingSerializer
+    else:
+        instance = TempoTeamMapping.objects.filter(pk=pk).first() if pk else None
+        payload = {
+            "tempo_team_id": data.get("tempo_team_id"),
+            "tempo_team_name": data.get("tempo_team_name", ""),
+            "project_id": data.get("project_id"),
+            "is_active": data.get("is_active", True),
+        }
+        serializer_class = TempoTeamMappingSerializer
+    if pk and instance is None:
+        raise serializers.ValidationError({"id": "Mapping not found."})
+    payload = {key: value for key, value in payload.items() if value is not None}
+    serializer = serializer_class(instance, data=payload, partial=bool(instance))
+    serializer.is_valid(raise_exception=True)
+    return serializer.save()
+
+
+def _tempo_filters_from_data(data):
+    return TempoImportFilters(
+        date_from=data["date_from"],
+        date_to=data["date_to"],
+        employee_id=data.get("employee_id"),
+        tempo_team_id=data.get("tempo_team_id", ""),
+        tempo_account_id=data.get("tempo_account_id", ""),
+        tempo_account_key=data.get("tempo_account_key", ""),
+        tempo_project_id=data.get("tempo_project_id", ""),
+        project_id=data.get("project_id"),
+        jira_issue_key=data.get("jira_issue_key", ""),
+        worklog_id=data.get("worklog_id", ""),
+    )
+
+
+@extend_schema(tags=["Time Tracking"])
+class TempoImportPreviewView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        request=TempoImportPreviewSerializer,
+        responses={200: None, 400: None, 403: None},
+    )
+    def post(self, request):
+        require_tempo_admin(request.user)
+        serializer = TempoImportPreviewSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        filters_obj = _tempo_filters_from_data(serializer.validated_data)
+        worklogs = serializer.validated_data.get("worklogs")
+        if worklogs is None:
+            worklogs = fetch_tempo_worklogs(TempoConnection.get_solo(), filters_obj)
+        return Response(
+            preview_tempo_worklogs(filters=filters_obj, raw_worklogs=worklogs)
+        )
+
+
+@extend_schema(tags=["Time Tracking"])
+class TempoImportCommitView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        request=TempoImportCommitSerializer,
+        responses={200: None, 400: None, 403: None},
+    )
+    def post(self, request):
+        require_tempo_admin(request.user)
+        serializer = TempoImportCommitSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        filters_obj = _tempo_filters_from_data(serializer.validated_data)
+        worklogs = serializer.validated_data.get("worklogs")
+        if worklogs is None:
+            worklogs = fetch_tempo_worklogs(TempoConnection.get_solo(), filters_obj)
+        return Response(
+            commit_tempo_worklogs(
+                user=request.user,
+                filters=filters_obj,
+                raw_worklogs=worklogs,
+            )
+        )
+
+
+@extend_schema(tags=["Time Tracking"])
+class TimeDocumentImportUploadView(APIView):
+    permission_classes = [IsAuthenticated]
+    parser_classes = [parsers.MultiPartParser, parsers.FormParser]
+
+    @extend_schema(
+        request=TimeDocumentImportUploadSerializer,
+        responses={201: TimeImportBatchSerializer, 400: None, 403: None},
+    )
+    def post(self, request):
+        require_document_import_admin(request.user)
+        serializer = TimeDocumentImportUploadSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        batch = upload_document_import(
+            user=request.user,
+            uploaded_file=serializer.validated_data["file"],
+        )
+        return Response(
+            TimeImportBatchSerializer(batch).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+@extend_schema(tags=["Time Tracking"])
+class TimeDocumentImportColumnMapView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def _get_batch(self, batch_id):
+        return TimeImportBatch.objects.prefetch_related("rows").get(pk=batch_id)
+
+    @extend_schema(
+        request=TimeDocumentImportColumnMapSerializer,
+        responses={200: TimeImportBatchSerializer, 400: None, 403: None, 404: None},
+    )
+    def post(self, request, batch_id):
+        require_document_import_admin(request.user)
+        try:
+            batch = self._get_batch(batch_id)
+        except TimeImportBatch.DoesNotExist:
+            return Response(
+                {"detail": "Import batch not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        serializer = TimeDocumentImportColumnMapSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        batch = map_columns(
+            user=request.user,
+            batch=batch,
+            mapping=serializer.validated_data["column_mapping"],
+        )
+        return Response(TimeImportBatchSerializer(batch).data)
+
+
+@extend_schema(tags=["Time Tracking"])
+class TimeImportBatchPreviewView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(responses={200: TimeImportBatchSerializer, 403: None, 404: None})
+    def get(self, request, batch_id):
+        require_document_import_admin(request.user)
+        try:
+            batch = TimeImportBatch.objects.prefetch_related("rows").get(pk=batch_id)
+        except TimeImportBatch.DoesNotExist:
+            return Response(
+                {"detail": "Import batch not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        validate_batch_rows(batch)
+        return Response(TimeImportBatchSerializer(batch).data)
+
+
+@extend_schema(tags=["Time Tracking"])
+class TimeImportBatchListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(responses={200: TimeImportBatchSerializer(many=True), 403: None})
+    def get(self, request):
+        require_document_import_admin(request.user)
+        queryset = TimeImportBatch.objects.select_related(
+            "uploaded_by__user"
+        ).prefetch_related("rows")
+        source_type = request.query_params.get("source_type")
+        batch_status = request.query_params.get("status")
+        uploaded_by = request.query_params.get("uploaded_by")
+        date_from = request.query_params.get("date_from")
+        date_to = request.query_params.get("date_to")
+        if source_type:
+            queryset = queryset.filter(source_type=source_type)
+        if batch_status:
+            queryset = queryset.filter(status=batch_status)
+        if uploaded_by:
+            queryset = queryset.filter(uploaded_by_id=uploaded_by)
+        if date_from:
+            queryset = queryset.filter(created_at__date__gte=date_from)
+        if date_to:
+            queryset = queryset.filter(created_at__date__lte=date_to)
+        return Response(TimeImportBatchSerializer(queryset, many=True).data)
+
+
+@extend_schema(tags=["Time Tracking"])
+class TimeImportBatchDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(responses={200: TimeImportBatchSerializer, 403: None, 404: None})
+    def get(self, request, batch_id):
+        require_document_import_admin(request.user)
+        try:
+            batch = (
+                TimeImportBatch.objects.select_related("uploaded_by__user")
+                .prefetch_related("rows")
+                .get(pk=batch_id)
+            )
+        except TimeImportBatch.DoesNotExist:
+            return Response(
+                {"detail": "Import batch not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response(TimeImportBatchSerializer(batch).data)
+
+
+@extend_schema(tags=["Time Tracking"])
+class TimeTrackingSourceChangeReviewView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(responses={200: TimeEntrySerializer(many=True), 403: None})
+    def get(self, request):
+        if not has_time_tracking_permission(request.user, "approve_team_timesheets"):
+            return Response(
+                {"detail": "You do not have permission to review source changes."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        queryset = _scoped_time_entries(request.user).filter(
+            source_metadata__source_change_flag__in=[
+                TimeEntrySourceChangeFlag.CHANGED,
+                TimeEntrySourceChangeFlag.DELETED,
+                TimeEntrySourceChangeFlag.REVIEW_REQUIRED,
+            ]
+        )
+        queryset = _apply_time_entry_filters(queryset, request.query_params)
+        return Response(TimeEntrySerializer(queryset, many=True).data)
+
+
+@extend_schema(tags=["Time Tracking"])
+class TimeTrackingSourceChangeResolveView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        request=TimeSourceChangeResolveSerializer,
+        responses={200: TimeEntrySerializer, 400: None, 403: None, 404: None},
+    )
+    def post(self, request, entry_id):
+        if not has_time_tracking_permission(request.user, "approve_team_timesheets"):
+            return Response(
+                {"detail": "You do not have permission to resolve source changes."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        try:
+            entry = _scoped_time_entries(request.user).get(pk=entry_id)
+        except TimeEntry.DoesNotExist:
+            return Response(
+                {"detail": "Time entry not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        serializer = TimeSourceChangeResolveSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        action = serializer.validated_data["action"]
+        metadata = dict(entry.source_metadata or {})
+        if action == "accept_current":
+            metadata["source_change_flag"] = TimeEntrySourceChangeFlag.NONE
+            entry.source_metadata = metadata
+            entry.save(update_fields=["source_metadata", "updated_at"])
+            message = "Accepted current BloomHub time entry value."
+        elif action == "apply_source":
+            if entry.status == TimeEntryStatus.APPROVED:
+                return Response(
+                    {"detail": "Approved entries cannot be changed by source review."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            pending = metadata.get("source_pending_update") or {}
+            if "work_date" in pending:
+                parsed_date = parse_date(pending["work_date"])
+                if parsed_date is None:
+                    return Response(
+                        {"detail": "Pending source update contains invalid work_date."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                entry.work_date = parsed_date
+            if "hours" in pending:
+                entry.hours = Decimal(str(pending["hours"]))
+            if "notes" in pending:
+                entry.notes = pending["notes"]
+            metadata["source_change_flag"] = TimeEntrySourceChangeFlag.NONE
+            metadata.pop("source_pending_update", None)
+            entry.source_metadata = metadata
+            entry.duplicate_fingerprint = fingerprint_for_entry(entry)
+            entry.full_clean()
+            entry.save()
+            message = "Applied source update to unapproved time entry."
+        else:
+            message = "Left source change flagged for later review."
+        log_time_entry_event(
+            entry,
+            TimeEntryAuditEventType.SOURCE_CHANGED,
+            profile_for_user(request.user),
+            message,
+            {
+                "action": action,
+                "note": serializer.validated_data.get("note", ""),
+            },
+        )
+        return Response(TimeEntrySerializer(entry).data)
+
+
+@extend_schema(tags=["Time Tracking"])
+class TimeImportBatchCommitView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(responses={200: TimeImportBatchSerializer, 403: None, 404: None})
+    def post(self, request, batch_id):
+        require_document_import_admin(request.user)
+        try:
+            batch = TimeImportBatch.objects.prefetch_related("rows").get(pk=batch_id)
+        except TimeImportBatch.DoesNotExist:
+            return Response(
+                {"detail": "Import batch not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        batch = commit_document_import(user=request.user, batch=batch)
+        return Response(TimeImportBatchSerializer(batch).data)
 
 
 @extend_schema(tags=["Training & Development"])

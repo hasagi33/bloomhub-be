@@ -7996,6 +7996,1302 @@ paths:
           description: No response body
         '404':
           description: No response body
+  /api/time-entries/:
+    get:
+      operationId: time_entries_list
+      parameters:
+      - in: query
+        name: employee
+        schema:
+          type: integer
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - in: query
+        name: project
+        schema:
+          type: integer
+      - in: query
+        name: source_type
+        schema:
+          type: string
+          enum:
+          - document_import
+          - jira
+          - manual
+          - tempo
+        description: |-
+          * `manual` - Manual
+          * `jira` - Jira
+          * `tempo` - Tempo
+          * `document_import` - Document Import
+      - in: query
+        name: status
+        schema:
+          type: string
+          enum:
+          - approved
+          - draft
+          - rejected
+          - submitted
+        description: |-
+          * `draft` - Draft
+          * `submitted` - Submitted
+          * `approved` - Approved
+          * `rejected` - Rejected
+      - in: query
+        name: task
+        schema:
+          type: integer
+      - in: query
+        name: work_date
+        schema:
+          type: string
+          format: date
+      tags:
+      - Time Tracking
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TimeEntry'
+          description: ''
+    post:
+      operationId: time_entries_create
+      tags:
+      - Time Tracking
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TimeEntryRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TimeEntryRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TimeEntryRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeEntry'
+          description: ''
+  /api/time-entries/{id}/:
+    get:
+      operationId: time_entries_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Time Entry.
+        required: true
+      tags:
+      - Time Tracking
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeEntry'
+          description: ''
+    put:
+      operationId: time_entries_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Time Entry.
+        required: true
+      tags:
+      - Time Tracking
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TimeEntryRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TimeEntryRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TimeEntryRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeEntry'
+          description: ''
+    patch:
+      operationId: time_entries_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Time Entry.
+        required: true
+      tags:
+      - Time Tracking
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedTimeEntryRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedTimeEntryRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedTimeEntryRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeEntry'
+          description: ''
+    delete:
+      operationId: time_entries_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Time Entry.
+        required: true
+      tags:
+      - Time Tracking
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/time-entries/{id}/approve/:
+    post:
+      operationId: time_entries_approve_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Time Entry.
+        required: true
+      tags:
+      - Time Tracking
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TimeEntryRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TimeEntryRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TimeEntryRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeEntry'
+          description: ''
+        '400':
+          description: No response body
+        '403':
+          description: No response body
+  /api/time-entries/{id}/reject/:
+    post:
+      operationId: time_entries_reject_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Time Entry.
+        required: true
+      tags:
+      - Time Tracking
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TimeEntryRejectRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TimeEntryRejectRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TimeEntryRejectRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeEntry'
+          description: ''
+        '400':
+          description: No response body
+        '403':
+          description: No response body
+  /api/time-entries/submit-week/:
+    post:
+      operationId: time_entries_submit_week_create
+      parameters:
+      - in: query
+        name: employee
+        schema:
+          type: integer
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - in: query
+        name: project
+        schema:
+          type: integer
+      - in: query
+        name: source_type
+        schema:
+          type: string
+          enum:
+          - document_import
+          - jira
+          - manual
+          - tempo
+        description: |-
+          * `manual` - Manual
+          * `jira` - Jira
+          * `tempo` - Tempo
+          * `document_import` - Document Import
+      - in: query
+        name: status
+        schema:
+          type: string
+          enum:
+          - approved
+          - draft
+          - rejected
+          - submitted
+        description: |-
+          * `draft` - Draft
+          * `submitted` - Submitted
+          * `approved` - Approved
+          * `rejected` - Rejected
+      - in: query
+        name: task
+        schema:
+          type: integer
+      - in: query
+        name: work_date
+        schema:
+          type: string
+          format: date
+      tags:
+      - Time Tracking
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TimeEntrySubmitWeekRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TimeEntrySubmitWeekRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TimeEntrySubmitWeekRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TimeEntry'
+          description: ''
+        '400':
+          description: No response body
+        '403':
+          description: No response body
+  /api/time-imports/:
+    get:
+      operationId: time_imports_list
+      tags:
+      - Time Tracking
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TimeImportBatch'
+          description: ''
+        '403':
+          description: No response body
+  /api/time-imports/{batch_id}/:
+    get:
+      operationId: time_imports_retrieve
+      parameters:
+      - in: path
+        name: batch_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Time Tracking
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeImportBatch'
+          description: ''
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+  /api/time-imports/{batch_id}/commit/:
+    post:
+      operationId: time_imports_commit_create
+      parameters:
+      - in: path
+        name: batch_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Time Tracking
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeImportBatch'
+          description: ''
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+  /api/time-imports/{batch_id}/preview/:
+    get:
+      operationId: time_imports_preview_retrieve
+      parameters:
+      - in: path
+        name: batch_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Time Tracking
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeImportBatch'
+          description: ''
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+  /api/time-imports/documents/{batch_id}/map-columns/:
+    post:
+      operationId: time_imports_documents_map_columns_create
+      parameters:
+      - in: path
+        name: batch_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Time Tracking
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TimeDocumentImportColumnMapRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TimeDocumentImportColumnMapRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TimeDocumentImportColumnMapRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeImportBatch'
+          description: ''
+        '400':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+  /api/time-imports/documents/upload/:
+    post:
+      operationId: time_imports_documents_upload_create
+      tags:
+      - Time Tracking
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TimeDocumentImportUploadRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TimeDocumentImportUploadRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeImportBatch'
+          description: ''
+        '400':
+          description: No response body
+        '403':
+          description: No response body
+  /api/time-imports/jira/commit/:
+    post:
+      operationId: time_imports_jira_commit_create
+      tags:
+      - Time Tracking
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JiraImportCommitRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/JiraImportCommitRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/JiraImportCommitRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+        '400':
+          description: No response body
+        '403':
+          description: No response body
+  /api/time-imports/jira/preview/:
+    post:
+      operationId: time_imports_jira_preview_create
+      tags:
+      - Time Tracking
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JiraImportPreviewRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/JiraImportPreviewRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/JiraImportPreviewRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+        '400':
+          description: No response body
+        '403':
+          description: No response body
+  /api/time-imports/tempo/commit/:
+    post:
+      operationId: time_imports_tempo_commit_create
+      tags:
+      - Time Tracking
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TempoImportCommitRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TempoImportCommitRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TempoImportCommitRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+        '400':
+          description: No response body
+        '403':
+          description: No response body
+  /api/time-imports/tempo/preview/:
+    post:
+      operationId: time_imports_tempo_preview_create
+      tags:
+      - Time Tracking
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TempoImportPreviewRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TempoImportPreviewRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TempoImportPreviewRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+        '400':
+          description: No response body
+        '403':
+          description: No response body
+  /api/time-integrations/jira/mappings/:
+    get:
+      operationId: time_integrations_jira_mappings_retrieve
+      tags:
+      - Time Tracking
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+        '403':
+          description: No response body
+    post:
+      operationId: time_integrations_jira_mappings_create
+      tags:
+      - Time Tracking
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JiraMappingMutationRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/JiraMappingMutationRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/JiraMappingMutationRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          description: No response body
+        '400':
+          description: No response body
+        '403':
+          description: No response body
+    patch:
+      operationId: time_integrations_jira_mappings_partial_update
+      tags:
+      - Time Tracking
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedJiraMappingMutationRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedJiraMappingMutationRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedJiraMappingMutationRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+        '400':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+  /api/time-integrations/jira/project-discovery/:
+    post:
+      operationId: time_integrations_jira_project_discovery_create
+      tags:
+      - Time Tracking
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JiraProjectDiscoveryRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/JiraProjectDiscoveryRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/JiraProjectDiscoveryRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+        '400':
+          description: No response body
+        '403':
+          description: No response body
+  /api/time-integrations/jira/settings/:
+    get:
+      operationId: time_integrations_jira_settings_retrieve
+      tags:
+      - Time Tracking
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JiraConnection'
+          description: ''
+        '403':
+          description: No response body
+    patch:
+      operationId: time_integrations_jira_settings_partial_update
+      tags:
+      - Time Tracking
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedJiraConnectionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedJiraConnectionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedJiraConnectionRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JiraConnection'
+          description: ''
+        '400':
+          description: No response body
+        '403':
+          description: No response body
+  /api/time-integrations/jira/test-connection/:
+    post:
+      operationId: time_integrations_jira_test_connection_create
+      tags:
+      - Time Tracking
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JiraConnection'
+          description: ''
+        '400':
+          description: No response body
+        '403':
+          description: No response body
+  /api/time-integrations/tempo/mappings/:
+    get:
+      operationId: time_integrations_tempo_mappings_retrieve
+      tags:
+      - Time Tracking
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+        '403':
+          description: No response body
+    post:
+      operationId: time_integrations_tempo_mappings_create
+      tags:
+      - Time Tracking
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TempoMappingMutationRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TempoMappingMutationRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TempoMappingMutationRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          description: No response body
+        '400':
+          description: No response body
+        '403':
+          description: No response body
+    patch:
+      operationId: time_integrations_tempo_mappings_partial_update
+      tags:
+      - Time Tracking
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedTempoMappingMutationRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedTempoMappingMutationRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedTempoMappingMutationRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+        '400':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+  /api/time-integrations/tempo/project-discovery/:
+    post:
+      operationId: time_integrations_tempo_project_discovery_create
+      tags:
+      - Time Tracking
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TempoProjectDiscoveryRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TempoProjectDiscoveryRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TempoProjectDiscoveryRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+        '400':
+          description: No response body
+        '403':
+          description: No response body
+  /api/time-integrations/tempo/settings/:
+    get:
+      operationId: time_integrations_tempo_settings_retrieve
+      tags:
+      - Time Tracking
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TempoConnection'
+          description: ''
+        '403':
+          description: No response body
+    patch:
+      operationId: time_integrations_tempo_settings_partial_update
+      tags:
+      - Time Tracking
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedTempoConnectionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedTempoConnectionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedTempoConnectionRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TempoConnection'
+          description: ''
+        '400':
+          description: No response body
+        '403':
+          description: No response body
+  /api/time-integrations/tempo/test-connection/:
+    post:
+      operationId: time_integrations_tempo_test_connection_create
+      tags:
+      - Time Tracking
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TempoConnectionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TempoConnectionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TempoConnectionRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TempoConnection'
+          description: ''
+        '400':
+          description: No response body
+        '403':
+          description: No response body
+  /api/time-tasks/:
+    get:
+      operationId: time_tasks_list
+      parameters:
+      - in: query
+        name: is_active
+        schema:
+          type: boolean
+      - in: query
+        name: jira_issue_key
+        schema:
+          type: string
+      - in: query
+        name: jira_project_key
+        schema:
+          type: string
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - in: query
+        name: project
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - Time Tracking
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TimeTask'
+          description: ''
+    post:
+      operationId: time_tasks_create
+      tags:
+      - Time Tracking
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TimeTaskRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TimeTaskRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TimeTaskRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeTask'
+          description: ''
+  /api/time-tasks/{id}/:
+    get:
+      operationId: time_tasks_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Time Task.
+        required: true
+      tags:
+      - Time Tracking
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeTask'
+          description: ''
+    put:
+      operationId: time_tasks_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Time Task.
+        required: true
+      tags:
+      - Time Tracking
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TimeTaskRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TimeTaskRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TimeTaskRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeTask'
+          description: ''
+    patch:
+      operationId: time_tasks_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Time Task.
+        required: true
+      tags:
+      - Time Tracking
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedTimeTaskRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedTimeTaskRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedTimeTaskRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeTask'
+          description: ''
+    delete:
+      operationId: time_tasks_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Time Task.
+        required: true
+      tags:
+      - Time Tracking
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/time-tracking/active-allocations/:
+    get:
+      operationId: time_tracking_active_allocations_retrieve
+      parameters:
+      - in: query
+        name: employee
+        schema:
+          type: integer
+        description: UserProfile id. Alias for employee_id.
+      - in: query
+        name: employee_id
+        schema:
+          type: integer
+      - in: query
+        name: work_date
+        schema:
+          type: string
+        description: Date for active allocation lookup, ISO YYYY-MM-DD. Defaults to
+          today.
+      tags:
+      - Time Tracking
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+        '400':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+  /api/time-tracking/approval-queue/:
+    get:
+      operationId: time_tracking_approval_queue_list
+      tags:
+      - Time Tracking
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TimeEntry'
+          description: ''
+        '400':
+          description: No response body
+        '403':
+          description: No response body
+  /api/time-tracking/exports/timesheets/:
+    get:
+      operationId: time_tracking_exports_timesheets_retrieve
+      parameters:
+      - in: query
+        name: format
+        schema:
+          type: string
+          enum:
+          - csv
+          - json
+          - xlsx
+      tags:
+      - Time Tracking
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: string
+                format: binary
+            text/csv:
+              schema:
+                type: string
+                format: binary
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+          description: ''
+        '400':
+          description: No response body
+        '403':
+          description: No response body
+  /api/time-tracking/planned-vs-actual/:
+    get:
+      operationId: time_tracking_planned_vs_actual_retrieve
+      tags:
+      - Time Tracking
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+        '400':
+          description: No response body
+        '403':
+          description: No response body
+  /api/time-tracking/source-change-review/:
+    get:
+      operationId: time_tracking_source_change_review_list
+      tags:
+      - Time Tracking
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TimeEntry'
+          description: ''
+        '403':
+          description: No response body
+  /api/time-tracking/source-change-review/{entry_id}/resolve/:
+    post:
+      operationId: time_tracking_source_change_review_resolve_create
+      parameters:
+      - in: path
+        name: entry_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Time Tracking
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TimeSourceChangeResolveRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TimeSourceChangeResolveRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TimeSourceChangeResolveRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeEntry'
+          description: ''
+        '400':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
+  /api/time-tracking/weekly-dashboard/:
+    get:
+      operationId: time_tracking_weekly_dashboard_retrieve
+      tags:
+      - Time Tracking
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+        '400':
+          description: No response body
+        '403':
+          description: No response body
+  /api/time-tracking/weekly-summary/:
+    get:
+      operationId: time_tracking_weekly_summary_retrieve
+      parameters:
+      - in: query
+        name: employee
+        schema:
+          type: integer
+        description: UserProfile id. Alias for employee_id.
+      - in: query
+        name: employee_id
+        schema:
+          type: integer
+        description: UserProfile id. Defaults to current user's profile.
+      - in: query
+        name: week_start
+        schema:
+          type: string
+        description: Week start date, ISO format YYYY-MM-DD.
+        required: true
+      tags:
+      - Time Tracking
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+        '400':
+          description: No response body
+        '403':
+          description: No response body
+        '404':
+          description: No response body
   /api/training-budgets/:
     get:
       operationId: training_budgets_list
@@ -8445,6 +9741,16 @@ components:
       required:
       - endpoints
       - message
+    ActionEnum:
+      enum:
+      - accept_current
+      - apply_source
+      - leave_flagged
+      type: string
+      description: |-
+        * `accept_current` - accept_current
+        * `apply_source` - apply_source
+        * `leave_flagged` - leave_flagged
     AllowedRolesEnum:
       enum:
       - employee
@@ -10778,6 +12084,167 @@ components:
           minLength: 1
       required:
       - id_token
+    JiraConnection:
+      type: object
+      properties:
+        base_url:
+          type: string
+          format: uri
+          maxLength: 200
+        auth_email:
+          type: string
+          format: email
+          maxLength: 254
+        has_api_token:
+          type: boolean
+          readOnly: true
+        enabled:
+          type: boolean
+        last_test_status:
+          type: string
+          readOnly: true
+        last_test_message:
+          type: string
+          readOnly: true
+        last_test_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        last_test_metadata:
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - has_api_token
+      - last_test_at
+      - last_test_message
+      - last_test_metadata
+      - last_test_status
+      - updated_at
+    JiraImportCommitRequest:
+      type: object
+      properties:
+        date_from:
+          type: string
+          format: date
+        date_to:
+          type: string
+          format: date
+        employee_id:
+          type: integer
+        project_id:
+          type: integer
+        jira_project_key:
+          type: string
+        jira_issue_key:
+          type: string
+        worklog_id:
+          type: string
+        worklogs:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+      required:
+      - date_from
+      - date_to
+    JiraImportPreviewRequest:
+      type: object
+      properties:
+        date_from:
+          type: string
+          format: date
+        date_to:
+          type: string
+          format: date
+        employee_id:
+          type: integer
+        project_id:
+          type: integer
+        jira_project_key:
+          type: string
+        jira_issue_key:
+          type: string
+        worklog_id:
+          type: string
+        worklogs:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+      required:
+      - date_from
+      - date_to
+    JiraMappingMutationMappingTypeEnum:
+      enum:
+      - user
+      - project
+      - issue
+      type: string
+      description: |-
+        * `user` - user
+        * `project` - project
+        * `issue` - issue
+    JiraMappingMutationRequest:
+      type: object
+      properties:
+        mapping_type:
+          $ref: '#/components/schemas/JiraMappingMutationMappingTypeEnum'
+        id:
+          type: integer
+        jira_account_id:
+          type: string
+        jira_display_name:
+          type: string
+        employee_id:
+          type: integer
+        jira_project_key:
+          type: string
+        jira_project_name:
+          type: string
+        project_id:
+          type: integer
+        jira_issue_key:
+          type: string
+        jira_issue_id:
+          type: string
+        task_id:
+          type: integer
+        is_active:
+          type: boolean
+      required:
+      - mapping_type
+    JiraProjectDiscoveryRequest:
+      type: object
+      properties:
+        base_url:
+          type: string
+          format: uri
+          minLength: 1
+        auth_email:
+          type: string
+          format: email
+        api_token:
+          type: string
+          writeOnly: true
+        date_from:
+          type: string
+          format: date
+        date_to:
+          type: string
+          format: date
+        limit:
+          type: integer
+          maximum: 1000
+          minimum: 1
     JobListingDetail:
       type: object
       description: Full listing payload for the role drawer.
@@ -12231,6 +13698,49 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ProjectAssignmentRequest'
+    PatchedJiraConnectionRequest:
+      type: object
+      properties:
+        base_url:
+          type: string
+          format: uri
+          maxLength: 200
+        auth_email:
+          type: string
+          format: email
+          maxLength: 254
+        api_token:
+          type: string
+          writeOnly: true
+        enabled:
+          type: boolean
+    PatchedJiraMappingMutationRequest:
+      type: object
+      properties:
+        mapping_type:
+          $ref: '#/components/schemas/JiraMappingMutationMappingTypeEnum'
+        id:
+          type: integer
+        jira_account_id:
+          type: string
+        jira_display_name:
+          type: string
+        employee_id:
+          type: integer
+        jira_project_key:
+          type: string
+        jira_project_name:
+          type: string
+        project_id:
+          type: integer
+        jira_issue_key:
+          type: string
+        jira_issue_id:
+          type: string
+        task_id:
+          type: integer
+        is_active:
+          type: boolean
     PatchedJobListingWriteRequest:
       type: object
       description: Write serialiser used by HR/admin to create or update a listing.
@@ -12296,16 +13806,14 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -12640,6 +14148,109 @@ components:
           type: string
           description: Optional external vendor or service provider
           maxLength: 200
+    PatchedTempoConnectionRequest:
+      type: object
+      properties:
+        base_url:
+          type: string
+          format: uri
+          minLength: 1
+          maxLength: 200
+        api_token:
+          type: string
+          writeOnly: true
+        enabled:
+          type: boolean
+    PatchedTempoMappingMutationRequest:
+      type: object
+      properties:
+        mapping_type:
+          $ref: '#/components/schemas/TempoMappingMutationMappingTypeEnum'
+        id:
+          type: integer
+        tempo_user_id:
+          type: string
+        tempo_display_name:
+          type: string
+        employee_id:
+          type: integer
+        tempo_account_id:
+          type: string
+        tempo_account_key:
+          type: string
+        tempo_account_name:
+          type: string
+        tempo_project_id:
+          type: string
+        tempo_project_key:
+          type: string
+        tempo_project_name:
+          type: string
+        tempo_team_id:
+          type: string
+        tempo_team_name:
+          type: string
+        project_id:
+          type: integer
+        is_active:
+          type: boolean
+    PatchedTimeEntryRequest:
+      type: object
+      properties:
+        employee_id:
+          type: integer
+        project_id:
+          type: integer
+        task_id:
+          type: integer
+          nullable: true
+        work_date:
+          type: string
+          format: date
+        start_time:
+          type: string
+          format: time
+          nullable: true
+        end_time:
+          type: string
+          format: time
+          nullable: true
+        hours:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,2})?$
+        notes:
+          type: string
+        source_type:
+          allOf:
+          - $ref: '#/components/schemas/TimeEntrySourceTypeEnum'
+          default: manual
+        status:
+          $ref: '#/components/schemas/TimeEntryStatusEnum'
+        source_external_id:
+          type: string
+          default: ''
+          maxLength: 150
+        source_metadata: {}
+    PatchedTimeTaskRequest:
+      type: object
+      properties:
+        project_id:
+          type: integer
+        name:
+          type: string
+          minLength: 1
+          maxLength: 150
+        description:
+          type: string
+        jira_issue_key:
+          type: string
+          maxLength: 50
+        jira_project_key:
+          type: string
+          maxLength: 50
+        is_active:
+          type: boolean
     PatchedTrainingBudgetRequest:
       type: object
       description: Serializer for training budget.
@@ -12648,9 +14259,8 @@ components:
           type: integer
         fiscal_year:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           description: Fiscal year for which budget is allocated
         allocated_budget:
           type: string
@@ -12736,16 +14346,14 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -12770,16 +14378,14 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -12812,16 +14418,14 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -12867,16 +14471,14 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -15117,6 +16719,716 @@ components:
           minLength: 1
           default: ''
           maxLength: 255
+    TempoConnection:
+      type: object
+      properties:
+        base_url:
+          type: string
+          format: uri
+          maxLength: 200
+        has_api_token:
+          type: boolean
+          readOnly: true
+        enabled:
+          type: boolean
+        last_test_status:
+          type: string
+          readOnly: true
+        last_test_message:
+          type: string
+          readOnly: true
+        last_test_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        last_test_metadata:
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - has_api_token
+      - last_test_at
+      - last_test_message
+      - last_test_metadata
+      - last_test_status
+      - updated_at
+    TempoConnectionRequest:
+      type: object
+      properties:
+        base_url:
+          type: string
+          format: uri
+          minLength: 1
+          maxLength: 200
+        api_token:
+          type: string
+          writeOnly: true
+        enabled:
+          type: boolean
+    TempoImportCommitRequest:
+      type: object
+      properties:
+        date_from:
+          type: string
+          format: date
+        date_to:
+          type: string
+          format: date
+        employee_id:
+          type: integer
+        tempo_team_id:
+          type: string
+        tempo_account_id:
+          type: string
+        tempo_account_key:
+          type: string
+        tempo_project_id:
+          type: string
+        project_id:
+          type: integer
+        jira_issue_key:
+          type: string
+        worklog_id:
+          type: string
+        worklogs:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+      required:
+      - date_from
+      - date_to
+    TempoImportPreviewRequest:
+      type: object
+      properties:
+        date_from:
+          type: string
+          format: date
+        date_to:
+          type: string
+          format: date
+        employee_id:
+          type: integer
+        tempo_team_id:
+          type: string
+        tempo_account_id:
+          type: string
+        tempo_account_key:
+          type: string
+        tempo_project_id:
+          type: string
+        project_id:
+          type: integer
+        jira_issue_key:
+          type: string
+        worklog_id:
+          type: string
+        worklogs:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+      required:
+      - date_from
+      - date_to
+    TempoMappingMutationMappingTypeEnum:
+      enum:
+      - user
+      - account
+      - project
+      - team
+      type: string
+      description: |-
+        * `user` - user
+        * `account` - account
+        * `project` - project
+        * `team` - team
+    TempoMappingMutationRequest:
+      type: object
+      properties:
+        mapping_type:
+          $ref: '#/components/schemas/TempoMappingMutationMappingTypeEnum'
+        id:
+          type: integer
+        tempo_user_id:
+          type: string
+        tempo_display_name:
+          type: string
+        employee_id:
+          type: integer
+        tempo_account_id:
+          type: string
+        tempo_account_key:
+          type: string
+        tempo_account_name:
+          type: string
+        tempo_project_id:
+          type: string
+        tempo_project_key:
+          type: string
+        tempo_project_name:
+          type: string
+        tempo_team_id:
+          type: string
+        tempo_team_name:
+          type: string
+        project_id:
+          type: integer
+        is_active:
+          type: boolean
+      required:
+      - mapping_type
+    TempoProjectDiscoveryRequest:
+      type: object
+      properties:
+        base_url:
+          type: string
+          format: uri
+          minLength: 1
+        api_token:
+          type: string
+          writeOnly: true
+        date_from:
+          type: string
+          format: date
+        date_to:
+          type: string
+          format: date
+        limit:
+          type: integer
+          maximum: 1000
+          minimum: 1
+    TimeDocumentImportColumnMapRequest:
+      type: object
+      properties:
+        column_mapping:
+          type: object
+          additionalProperties:
+            type: string
+            minLength: 1
+      required:
+      - column_mapping
+    TimeDocumentImportUploadRequest:
+      type: object
+      properties:
+        file:
+          type: string
+          format: binary
+      required:
+      - file
+    TimeEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        employee_id:
+          type: integer
+        employee_name:
+          type: string
+          readOnly: true
+        project_id:
+          type: integer
+        project_name:
+          type: string
+          readOnly: true
+        task_id:
+          type: integer
+          nullable: true
+        task_name:
+          type: string
+          readOnly: true
+        work_date:
+          type: string
+          format: date
+        start_time:
+          type: string
+          format: time
+          nullable: true
+        end_time:
+          type: string
+          format: time
+          nullable: true
+        hours:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,2})?$
+        notes:
+          type: string
+        source_type:
+          allOf:
+          - $ref: '#/components/schemas/TimeEntrySourceTypeEnum'
+          default: manual
+        status:
+          $ref: '#/components/schemas/TimeEntryStatusEnum'
+        source_external_id:
+          type: string
+          default: ''
+          maxLength: 150
+        source_metadata: {}
+        duplicate_fingerprint:
+          type: string
+          readOnly: true
+        duplicate_of:
+          type: string
+          readOnly: true
+        submitted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        submitted_by:
+          type: integer
+          readOnly: true
+          nullable: true
+        approved_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        approved_by:
+          type: integer
+          readOnly: true
+          nullable: true
+        rejected_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        rejected_by:
+          type: integer
+          readOnly: true
+          nullable: true
+        rejection_reason:
+          type: string
+          readOnly: true
+        audit_events:
+          type: array
+          items:
+            $ref: '#/components/schemas/TimeEntryAuditEvent'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - approved_at
+      - approved_by
+      - audit_events
+      - created_at
+      - duplicate_fingerprint
+      - duplicate_of
+      - employee_name
+      - hours
+      - id
+      - project_id
+      - project_name
+      - rejected_at
+      - rejected_by
+      - rejection_reason
+      - submitted_at
+      - submitted_by
+      - task_name
+      - updated_at
+      - work_date
+    TimeEntryAuditEvent:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        event_type:
+          allOf:
+          - $ref: '#/components/schemas/TimeEntryAuditEventEventTypeEnum'
+          readOnly: true
+        actor:
+          type: integer
+          readOnly: true
+          nullable: true
+        actor_name:
+          type: string
+          readOnly: true
+        message:
+          type: string
+          readOnly: true
+        metadata:
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - actor
+      - actor_name
+      - created_at
+      - event_type
+      - id
+      - message
+      - metadata
+    TimeEntryAuditEventEventTypeEnum:
+      enum:
+      - created
+      - updated
+      - submitted
+      - approved
+      - rejected
+      - deleted
+      - imported
+      - corrected
+      - source_changed
+      type: string
+      description: |-
+        * `created` - Created
+        * `updated` - Updated
+        * `submitted` - Submitted
+        * `approved` - Approved
+        * `rejected` - Rejected
+        * `deleted` - Deleted
+        * `imported` - Imported
+        * `corrected` - Corrected
+        * `source_changed` - Source Changed
+    TimeEntryRejectRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          minLength: 1
+      required:
+      - reason
+    TimeEntryRequest:
+      type: object
+      properties:
+        employee_id:
+          type: integer
+        project_id:
+          type: integer
+        task_id:
+          type: integer
+          nullable: true
+        work_date:
+          type: string
+          format: date
+        start_time:
+          type: string
+          format: time
+          nullable: true
+        end_time:
+          type: string
+          format: time
+          nullable: true
+        hours:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,2})?$
+        notes:
+          type: string
+        source_type:
+          allOf:
+          - $ref: '#/components/schemas/TimeEntrySourceTypeEnum'
+          default: manual
+        status:
+          $ref: '#/components/schemas/TimeEntryStatusEnum'
+        source_external_id:
+          type: string
+          default: ''
+          maxLength: 150
+        source_metadata: {}
+      required:
+      - hours
+      - project_id
+      - work_date
+    TimeEntrySourceTypeEnum:
+      enum:
+      - manual
+      - jira
+      - tempo
+      - document_import
+      type: string
+      description: |-
+        * `manual` - Manual
+        * `jira` - Jira
+        * `tempo` - Tempo
+        * `document_import` - Document Import
+    TimeEntryStatusEnum:
+      enum:
+      - draft
+      - submitted
+      - approved
+      - rejected
+      type: string
+      description: |-
+        * `draft` - Draft
+        * `submitted` - Submitted
+        * `approved` - Approved
+        * `rejected` - Rejected
+    TimeEntrySubmitWeekRequest:
+      type: object
+      properties:
+        employee_id:
+          type: integer
+        week_start:
+          type: string
+          format: date
+      required:
+      - week_start
+    TimeImportBatch:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        source_type:
+          allOf:
+          - $ref: '#/components/schemas/TimeImportBatchSourceTypeEnum'
+          readOnly: true
+        file_name:
+          type: string
+          readOnly: true
+        uploaded_by:
+          type: integer
+          readOnly: true
+          nullable: true
+        uploaded_by_name:
+          type: string
+          readOnly: true
+        requested_filters:
+          readOnly: true
+        column_mapping:
+          readOnly: true
+        detected_columns:
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/TimeImportBatchStatusEnum'
+          readOnly: true
+        total_rows:
+          type: integer
+          readOnly: true
+        valid_rows:
+          type: integer
+          readOnly: true
+        error_rows:
+          type: integer
+          readOnly: true
+        skipped_rows:
+          type: integer
+          readOnly: true
+        committed_rows:
+          type: integer
+          readOnly: true
+        validation_messages:
+          readOnly: true
+        rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/TimeImportRow'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - column_mapping
+      - committed_rows
+      - created_at
+      - detected_columns
+      - error_rows
+      - file_name
+      - id
+      - requested_filters
+      - rows
+      - skipped_rows
+      - source_type
+      - status
+      - total_rows
+      - updated_at
+      - uploaded_by
+      - uploaded_by_name
+      - valid_rows
+      - validation_messages
+    TimeImportBatchSourceTypeEnum:
+      enum:
+      - jira
+      - tempo
+      - document_import
+      type: string
+      description: |-
+        * `jira` - Jira
+        * `tempo` - Tempo
+        * `document_import` - Document Import
+    TimeImportBatchStatusEnum:
+      enum:
+      - uploaded
+      - needs_mapping
+      - previewed
+      - partially_committed
+      - committed
+      - failed
+      type: string
+      description: |-
+        * `uploaded` - Uploaded
+        * `needs_mapping` - Needs Mapping
+        * `previewed` - Previewed
+        * `partially_committed` - Partially Committed
+        * `committed` - Committed
+        * `failed` - Failed
+    TimeImportRow:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        sheet_name:
+          type: string
+          readOnly: true
+        table_index:
+          type: integer
+          readOnly: true
+          nullable: true
+        row_number:
+          type: integer
+          readOnly: true
+        row_index:
+          type: integer
+          readOnly: true
+        raw_data:
+          readOnly: true
+        parsed_data:
+          readOnly: true
+        original_row_fingerprint:
+          type: string
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/TimeImportRowStatusEnum'
+          readOnly: true
+        validation_messages:
+          readOnly: true
+        committed_entry_id:
+          type: integer
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - committed_entry_id
+      - created_at
+      - id
+      - original_row_fingerprint
+      - parsed_data
+      - raw_data
+      - row_index
+      - row_number
+      - sheet_name
+      - status
+      - table_index
+      - updated_at
+      - validation_messages
+    TimeImportRowStatusEnum:
+      enum:
+      - pending
+      - valid
+      - error
+      - skipped
+      - committed
+      type: string
+      description: |-
+        * `pending` - Pending
+        * `valid` - Valid
+        * `error` - Error
+        * `skipped` - Skipped
+        * `committed` - Committed
+    TimeSourceChangeResolveRequest:
+      type: object
+      properties:
+        action:
+          $ref: '#/components/schemas/ActionEnum'
+        note:
+          type: string
+      required:
+      - action
+    TimeTask:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        project_id:
+          type: integer
+        project_name:
+          type: string
+          readOnly: true
+        name:
+          type: string
+          maxLength: 150
+        description:
+          type: string
+        jira_issue_key:
+          type: string
+          maxLength: 50
+        jira_project_key:
+          type: string
+          maxLength: 50
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - id
+      - name
+      - project_id
+      - project_name
+      - updated_at
+    TimeTaskRequest:
+      type: object
+      properties:
+        project_id:
+          type: integer
+        name:
+          type: string
+          minLength: 1
+          maxLength: 150
+        description:
+          type: string
+        jira_issue_key:
+          type: string
+          maxLength: 50
+        jira_project_key:
+          type: string
+          maxLength: 50
+        is_active:
+          type: boolean
+      required:
+      - name
+      - project_id
     Token:
       type: object
       properties:
@@ -15144,9 +17456,8 @@ components:
           readOnly: true
         fiscal_year:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           description: Fiscal year for which budget is allocated
         allocated_budget:
           type: string
@@ -15202,9 +17513,8 @@ components:
           type: integer
         fiscal_year:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           description: Fiscal year for which budget is allocated
         allocated_budget:
           type: string

@@ -179,7 +179,68 @@ class ProjectStage(models.TextChoices):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# 7. Leave Management
+# 7. Time Tracking
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class TimeEntrySourceType(models.TextChoices):
+    MANUAL = "manual", "Manual"
+    JIRA = "jira", "Jira"
+    TEMPO = "tempo", "Tempo"
+    DOCUMENT_IMPORT = "document_import", "Document Import"
+
+
+class ImportBatchSource(models.TextChoices):
+    JIRA = "jira", "Jira"
+    TEMPO = "tempo", "Tempo"
+    DOCUMENT_IMPORT = "document_import", "Document Import"
+
+
+class TimeEntryStatus(models.TextChoices):
+    DRAFT = "draft", "Draft"
+    SUBMITTED = "submitted", "Submitted"
+    APPROVED = "approved", "Approved"
+    REJECTED = "rejected", "Rejected"
+
+
+class TimeEntryAuditEventType(models.TextChoices):
+    CREATED = "created", "Created"
+    UPDATED = "updated", "Updated"
+    SUBMITTED = "submitted", "Submitted"
+    APPROVED = "approved", "Approved"
+    REJECTED = "rejected", "Rejected"
+    DELETED = "deleted", "Deleted"
+    IMPORTED = "imported", "Imported"
+    CORRECTED = "corrected", "Corrected"
+    SOURCE_CHANGED = "source_changed", "Source Changed"
+
+
+class TimeEntrySourceChangeFlag(models.TextChoices):
+    NONE = "none", "None"
+    CHANGED = "changed", "Changed"
+    DELETED = "deleted", "Deleted"
+    REVIEW_REQUIRED = "review_required", "Review Required"
+
+
+class ImportBatchStatus(models.TextChoices):
+    UPLOADED = "uploaded", "Uploaded"
+    NEEDS_MAPPING = "needs_mapping", "Needs Mapping"
+    PREVIEWED = "previewed", "Previewed"
+    PARTIALLY_COMMITTED = "partially_committed", "Partially Committed"
+    COMMITTED = "committed", "Committed"
+    FAILED = "failed", "Failed"
+
+
+class ImportRowStatus(models.TextChoices):
+    PENDING = "pending", "Pending"
+    VALID = "valid", "Valid"
+    ERROR = "error", "Error"
+    SKIPPED = "skipped", "Skipped"
+    COMMITTED = "committed", "Committed"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 8. Leave Management
 # ──────────────────────────────────────────────────────────────────────────────
 
 

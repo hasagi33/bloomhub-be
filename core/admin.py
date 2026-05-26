@@ -10,6 +10,10 @@ from .models import (
     EmployeeDocument,
     Equipment,
     EquipmentAssignment,
+    JiraConnection,
+    JiraIssueMapping,
+    JiraProjectMapping,
+    JiraUserMapping,
     LeaveAdjustment,
     LeaveApprovalWorkflow,
     LeaveBalance,
@@ -27,6 +31,16 @@ from .models import (
     Role,
     SalaryRecord,
     TechnologyTag,
+    TempoAccountMapping,
+    TempoConnection,
+    TempoProjectMapping,
+    TempoTeamMapping,
+    TempoUserMapping,
+    TimeEntry,
+    TimeEntryAuditEvent,
+    TimeImportBatch,
+    TimeImportRow,
+    TimeTask,
     TrainingBudget,
     TrainingEntry,
     UserProfile,
@@ -116,6 +130,170 @@ class ProjectAdmin(admin.ModelAdmin):
 class EquipmentAdmin(admin.ModelAdmin):
     list_display = ("name", "serial_number")
     search_fields = ("name", "serial_number")
+
+
+@admin.register(TimeTask)
+class TimeTaskAdmin(admin.ModelAdmin):
+    list_display = (
+        "name",
+        "project",
+        "jira_issue_key",
+        "jira_project_key",
+        "is_active",
+    )
+    list_filter = ("is_active", "project")
+    search_fields = ("name", "project__name", "jira_issue_key", "jira_project_key")
+
+
+@admin.register(TimeEntry)
+class TimeEntryAdmin(admin.ModelAdmin):
+    list_display = (
+        "employee",
+        "project",
+        "task",
+        "work_date",
+        "start_time",
+        "end_time",
+        "hours",
+        "source_type",
+        "status",
+    )
+    list_filter = ("source_type", "status", "project", "work_date")
+    search_fields = (
+        "employee__full_name",
+        "employee__user__username",
+        "project__name",
+        "task__name",
+        "source_external_id",
+    )
+    readonly_fields = ("duplicate_fingerprint", "created_at", "updated_at")
+
+
+@admin.register(TimeEntryAuditEvent)
+class TimeEntryAuditEventAdmin(admin.ModelAdmin):
+    list_display = ("time_entry", "event_type", "actor", "created_at")
+    list_filter = ("event_type", "created_at")
+    search_fields = ("time_entry__employee__full_name", "message")
+
+
+class TimeImportRowInline(admin.TabularInline):
+    model = TimeImportRow
+    extra = 0
+    readonly_fields = (
+        "row_number",
+        "status",
+        "validation_messages",
+        "committed_entry",
+    )
+    fields = ("row_number", "status", "validation_messages", "committed_entry")
+    can_delete = False
+
+
+@admin.register(TimeImportBatch)
+class TimeImportBatchAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "source_type",
+        "file_name",
+        "status",
+        "total_rows",
+        "valid_rows",
+        "error_rows",
+        "committed_rows",
+        "created_at",
+    )
+    list_filter = ("source_type", "status", "created_at")
+    search_fields = ("file_name",)
+    readonly_fields = (
+        "detected_columns",
+        "validation_messages",
+        "created_at",
+        "updated_at",
+    )
+    inlines = [TimeImportRowInline]
+
+
+@admin.register(JiraConnection)
+class JiraConnectionAdmin(admin.ModelAdmin):
+    list_display = (
+        "base_url",
+        "auth_email",
+        "enabled",
+        "last_test_status",
+        "last_test_at",
+    )
+    readonly_fields = (
+        "api_token_encrypted",
+        "last_test_status",
+        "last_test_message",
+        "last_test_at",
+        "last_test_metadata",
+        "created_at",
+        "updated_at",
+    )
+
+
+@admin.register(JiraUserMapping)
+class JiraUserMappingAdmin(admin.ModelAdmin):
+    list_display = ("jira_account_id", "jira_display_name", "employee", "is_active")
+    list_filter = ("is_active",)
+    search_fields = ("jira_account_id", "jira_display_name", "employee__full_name")
+
+
+@admin.register(JiraProjectMapping)
+class JiraProjectMappingAdmin(admin.ModelAdmin):
+    list_display = ("jira_project_key", "jira_project_name", "project", "is_active")
+    list_filter = ("is_active",)
+    search_fields = ("jira_project_key", "jira_project_name", "project__name")
+
+
+@admin.register(JiraIssueMapping)
+class JiraIssueMappingAdmin(admin.ModelAdmin):
+    list_display = ("jira_issue_key", "jira_issue_id", "task", "is_active")
+    list_filter = ("is_active",)
+    search_fields = ("jira_issue_key", "jira_issue_id", "task__name")
+
+
+@admin.register(TempoConnection)
+class TempoConnectionAdmin(admin.ModelAdmin):
+    list_display = ("base_url", "enabled", "last_test_status", "last_test_at")
+    readonly_fields = (
+        "api_token_encrypted",
+        "last_test_status",
+        "last_test_message",
+        "last_test_at",
+        "last_test_metadata",
+        "created_at",
+        "updated_at",
+    )
+
+
+@admin.register(TempoUserMapping)
+class TempoUserMappingAdmin(admin.ModelAdmin):
+    list_display = ("tempo_user_id", "tempo_display_name", "employee", "is_active")
+    list_filter = ("is_active",)
+    search_fields = ("tempo_user_id", "tempo_display_name", "employee__full_name")
+
+
+@admin.register(TempoAccountMapping)
+class TempoAccountMappingAdmin(admin.ModelAdmin):
+    list_display = ("tempo_account_id", "tempo_account_key", "project", "is_active")
+    list_filter = ("is_active",)
+    search_fields = ("tempo_account_id", "tempo_account_key", "project__name")
+
+
+@admin.register(TempoProjectMapping)
+class TempoProjectMappingAdmin(admin.ModelAdmin):
+    list_display = ("tempo_project_id", "tempo_project_key", "project", "is_active")
+    list_filter = ("is_active",)
+    search_fields = ("tempo_project_id", "tempo_project_key", "project__name")
+
+
+@admin.register(TempoTeamMapping)
+class TempoTeamMappingAdmin(admin.ModelAdmin):
+    list_display = ("tempo_team_id", "tempo_team_name", "project", "is_active")
+    list_filter = ("is_active",)
+    search_fields = ("tempo_team_id", "tempo_team_name", "project__name")
 
 
 @admin.register(EmployeeDocument)

@@ -1,8 +1,10 @@
+from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
 from django.contrib.auth.models import User
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime, parse_time
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
@@ -37,6 +39,10 @@ from core.models import (
     DocumentVersion,
     EmployeeDocument,
     EmployeeProfileChangeHistory,
+    JiraConnection,
+    JiraIssueMapping,
+    JiraProjectMapping,
+    JiraUserMapping,
     JobListing,
     LeaveAdjustment,
     LeaveApprovalWorkflow,
@@ -62,6 +68,16 @@ from core.models import (
     TechnologyTag,
     TemplateField,
     TemplateGeneratedDocument,
+    TempoAccountMapping,
+    TempoConnection,
+    TempoProjectMapping,
+    TempoTeamMapping,
+    TempoUserMapping,
+    TimeEntry,
+    TimeEntryAuditEvent,
+    TimeImportBatch,
+    TimeImportRow,
+    TimeTask,
     TrainingBudget,
     TrainingEntry,
     UserProfile,
@@ -76,6 +92,11 @@ from core.services.profile_change_history import (
     normalize_manager_ids,
     normalize_trimmed_string,
     role_value,
+)
+from core.services.time_tracking_service import (
+    find_duplicate,
+    fingerprint_for_entry,
+    profile_for_user,
 )
 from core.utils import (
     apply_profile_updates_and_save,
@@ -349,6 +370,708 @@ class ProjectAssignmentSerializer(serializers.ModelSerializer):
                 {"end_date": "End date cannot be before start date."}
             )
         return attrs
+
+
+class TimeTaskSerializer(serializers.ModelSerializer):
+    project_id = serializers.PrimaryKeyRelatedField(
+        source="project", queryset=Project.objects.all()
+    )
+    project_name = serializers.CharField(source="project.name", read_only=True)
+
+    class Meta:
+        model = TimeTask
+        fields = [
+            "id",
+            "project_id",
+            "project_name",
+            "name",
+            "description",
+            "jira_issue_key",
+            "jira_project_key",
+            "is_active",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["created_at", "updated_at", "project_name"]
+
+    def validate_jira_issue_key(self, value):
+        return (value or "").strip().upper()
+
+    def validate_jira_project_key(self, value):
+        return (value or "").strip().upper()
+
+
+class TimeEntryAuditEventSerializer(serializers.ModelSerializer):
+    actor_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TimeEntryAuditEvent
+        fields = [
+            "id",
+            "event_type",
+            "actor",
+            "actor_name",
+            "message",
+            "metadata",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+    def get_actor_name(self, obj):
+        if obj.actor_id is None:
+            return ""
+        return obj.actor.full_name or obj.actor.user.username
+
+
+class TimeEntrySerializer(serializers.ModelSerializer):
+    start_time = serializers.TimeField(required=False, allow_null=True)
+    end_time = serializers.TimeField(required=False, allow_null=True)
+    employee_id = serializers.PrimaryKeyRelatedField(
+        source="employee",
+        queryset=UserProfile.objects.all(),
+        required=False,
+    )
+    employee_name = serializers.SerializerMethodField()
+    project_id = serializers.PrimaryKeyRelatedField(
+        source="project", queryset=Project.objects.all()
+    )
+    project_name = serializers.CharField(source="project.name", read_only=True)
+    task_id = serializers.PrimaryKeyRelatedField(
+        source="task",
+        queryset=TimeTask.objects.all(),
+        required=False,
+        allow_null=True,
+    )
+    task_name = serializers.CharField(source="task.name", read_only=True)
+    duplicate_of = serializers.SerializerMethodField()
+    audit_events = TimeEntryAuditEventSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = TimeEntry
+        fields = [
+            "id",
+            "employee_id",
+            "employee_name",
+            "project_id",
+            "project_name",
+            "task_id",
+            "task_name",
+            "work_date",
+            "start_time",
+            "end_time",
+            "hours",
+            "notes",
+            "source_type",
+            "status",
+            "source_external_id",
+            "source_metadata",
+            "duplicate_fingerprint",
+            "duplicate_of",
+            "submitted_at",
+            "submitted_by",
+            "approved_at",
+            "approved_by",
+            "rejected_at",
+            "rejected_by",
+            "rejection_reason",
+            "audit_events",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "duplicate_fingerprint",
+            "duplicate_of",
+            "submitted_at",
+            "submitted_by",
+            "approved_at",
+            "approved_by",
+            "rejected_at",
+            "rejected_by",
+            "rejection_reason",
+            "audit_events",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_employee_name(self, obj):
+        return obj.employee.full_name or obj.employee.user.username
+
+    def get_duplicate_of(self, obj):
+        duplicate = find_duplicate(obj)
+        return duplicate.id if duplicate else None
+
+    def to_internal_value(self, data):
+        data = data.copy()
+        for field in ("start_time", "end_time"):
+            if field not in data or not isinstance(data[field], str):
+                continue
+            parsed_time = parse_time(data[field])
+            if parsed_time is None:
+                for input_format in (
+                    "%I:%M%p",
+                    "%I:%M %p",
+                    "%I:%M:%S%p",
+                    "%I:%M:%S %p",
+                ):
+                    try:
+                        parsed_time = datetime.strptime(
+                            data[field].strip().upper(), input_format
+                        ).time()
+                    except ValueError:
+                        continue
+                    break
+            if parsed_time is not None:
+                data[field] = parsed_time.isoformat()
+            else:
+                parsed_datetime = parse_datetime(data[field])
+                if parsed_datetime is not None:
+                    data[field] = (
+                        parsed_datetime.time().replace(tzinfo=None).isoformat()
+                    )
+        return super().to_internal_value(data)
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        request = self.context.get("request")
+        if self.instance is not None:
+            immutable_fields = {"source_type", "source_external_id", "source_metadata"}
+            changed = immutable_fields.intersection(self.initial_data.keys())
+            if changed:
+                raise serializers.ValidationError(
+                    {
+                        field: "Source fields are immutable after creation."
+                        for field in changed
+                    }
+                )
+
+        employee = attrs.get("employee") or getattr(self.instance, "employee", None)
+        if employee is None:
+            employee = profile_for_user(request.user) if request else None
+            if employee is not None:
+                attrs["employee"] = employee
+        if employee is None:
+            raise serializers.ValidationError({"employee_id": "Employee is required."})
+
+        work_date = attrs.get("work_date") or getattr(self.instance, "work_date", None)
+        if work_date is not None and work_date.weekday() >= 5:
+            raise serializers.ValidationError(
+                {"work_date": "Time entries cannot be submitted for weekends."}
+            )
+
+        project = attrs.get("project") or getattr(self.instance, "project", None)
+        task = (
+            attrs.get("task")
+            if "task" in attrs
+            else getattr(self.instance, "task", None)
+        )
+        if task is not None and project is not None and task.project_id != project.id:
+            raise serializers.ValidationError(
+                {"task_id": "Task must belong to the selected project."}
+            )
+        return attrs
+
+    def create(self, validated_data):
+        entry = TimeEntry(**validated_data)
+        entry.duplicate_fingerprint = fingerprint_for_entry(entry)
+        entry.full_clean()
+        entry.save()
+        return entry
+
+    def update(self, instance, validated_data):
+        for field, value in validated_data.items():
+            setattr(instance, field, value)
+        instance.duplicate_fingerprint = fingerprint_for_entry(instance)
+        instance.full_clean()
+        instance.save()
+        return instance
+
+
+class TimeEntrySubmitWeekSerializer(serializers.Serializer):
+    employee_id = serializers.PrimaryKeyRelatedField(
+        source="employee",
+        queryset=UserProfile.objects.all(),
+        required=False,
+    )
+    week_start = serializers.DateField()
+
+
+class TimeEntryRejectSerializer(serializers.Serializer):
+    reason = serializers.CharField()
+
+
+class JiraConnectionSerializer(serializers.ModelSerializer):
+    api_token = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    has_api_token = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = JiraConnection
+        fields = [
+            "base_url",
+            "auth_email",
+            "api_token",
+            "has_api_token",
+            "enabled",
+            "last_test_status",
+            "last_test_message",
+            "last_test_at",
+            "last_test_metadata",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "has_api_token",
+            "last_test_status",
+            "last_test_message",
+            "last_test_at",
+            "last_test_metadata",
+            "created_at",
+            "updated_at",
+        ]
+
+    def validate_base_url(self, value):
+        return (value or "").strip().rstrip("/")
+
+    def update(self, instance, validated_data):
+        token = validated_data.pop("api_token", None)
+        for field, value in validated_data.items():
+            setattr(instance, field, value)
+        if token is not None:
+            instance.set_api_token(token)
+        instance.full_clean()
+        instance.save()
+        return instance
+
+
+class JiraUserMappingSerializer(serializers.ModelSerializer):
+    employee_id = serializers.PrimaryKeyRelatedField(
+        source="employee", queryset=UserProfile.objects.all()
+    )
+    employee_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = JiraUserMapping
+        fields = [
+            "id",
+            "jira_account_id",
+            "jira_display_name",
+            "employee_id",
+            "employee_name",
+            "is_active",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["employee_name", "created_at", "updated_at"]
+
+    def get_employee_name(self, obj):
+        return obj.employee.full_name or obj.employee.user.username
+
+
+class JiraProjectMappingSerializer(serializers.ModelSerializer):
+    project_id = serializers.PrimaryKeyRelatedField(
+        source="project", queryset=Project.objects.all()
+    )
+    project_name = serializers.CharField(source="project.name", read_only=True)
+
+    class Meta:
+        model = JiraProjectMapping
+        fields = [
+            "id",
+            "jira_project_key",
+            "jira_project_name",
+            "project_id",
+            "project_name",
+            "is_active",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["project_name", "created_at", "updated_at"]
+
+    def validate_jira_project_key(self, value):
+        return (value or "").strip().upper()
+
+
+class JiraIssueMappingSerializer(serializers.ModelSerializer):
+    task_id = serializers.PrimaryKeyRelatedField(
+        source="task", queryset=TimeTask.objects.select_related("project")
+    )
+    task_name = serializers.CharField(source="task.name", read_only=True)
+    project_id = serializers.IntegerField(source="task.project_id", read_only=True)
+    project_name = serializers.CharField(source="task.project.name", read_only=True)
+
+    class Meta:
+        model = JiraIssueMapping
+        fields = [
+            "id",
+            "jira_issue_key",
+            "jira_issue_id",
+            "task_id",
+            "task_name",
+            "project_id",
+            "project_name",
+            "is_active",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "task_name",
+            "project_id",
+            "project_name",
+            "created_at",
+            "updated_at",
+        ]
+
+    def validate_jira_issue_key(self, value):
+        return (value or "").strip().upper()
+
+
+class JiraMappingMutationSerializer(serializers.Serializer):
+    mapping_type = serializers.ChoiceField(choices=["user", "project", "issue"])
+    id = serializers.IntegerField(required=False)
+    jira_account_id = serializers.CharField(required=False, allow_blank=True)
+    jira_display_name = serializers.CharField(required=False, allow_blank=True)
+    employee_id = serializers.IntegerField(required=False)
+    jira_project_key = serializers.CharField(required=False, allow_blank=True)
+    jira_project_name = serializers.CharField(required=False, allow_blank=True)
+    project_id = serializers.IntegerField(required=False)
+    jira_issue_key = serializers.CharField(required=False, allow_blank=True)
+    jira_issue_id = serializers.CharField(required=False, allow_blank=True)
+    task_id = serializers.IntegerField(required=False)
+    is_active = serializers.BooleanField(required=False)
+
+
+class JiraProjectDiscoverySerializer(serializers.Serializer):
+    base_url = serializers.URLField(required=False)
+    auth_email = serializers.EmailField(required=False, allow_blank=True)
+    api_token = serializers.CharField(required=False, allow_blank=True, write_only=True)
+    date_from = serializers.DateField(required=False)
+    date_to = serializers.DateField(required=False)
+    limit = serializers.IntegerField(required=False, min_value=1, max_value=1000)
+
+    def validate_base_url(self, value):
+        return (value or "").strip().rstrip("/")
+
+    def validate(self, attrs):
+        today = timezone.localdate()
+        attrs.setdefault("date_to", today)
+        attrs.setdefault("date_from", today - timedelta(days=30))
+        attrs.setdefault("limit", 1000)
+        if attrs["date_to"] < attrs["date_from"]:
+            raise serializers.ValidationError(
+                {"date_to": "date_to cannot be before date_from."}
+            )
+        return attrs
+
+
+class JiraImportPreviewSerializer(serializers.Serializer):
+    date_from = serializers.DateField()
+    date_to = serializers.DateField()
+    employee_id = serializers.IntegerField(required=False)
+    project_id = serializers.IntegerField(required=False)
+    jira_project_key = serializers.CharField(required=False, allow_blank=True)
+    jira_issue_key = serializers.CharField(required=False, allow_blank=True)
+    worklog_id = serializers.CharField(required=False, allow_blank=True)
+    worklogs = serializers.ListField(
+        child=serializers.DictField(), required=False, allow_empty=True
+    )
+
+    def validate(self, attrs):
+        if attrs["date_to"] < attrs["date_from"]:
+            raise serializers.ValidationError(
+                {"date_to": "date_to cannot be before date_from."}
+            )
+        if attrs.get("jira_project_key"):
+            attrs["jira_project_key"] = attrs["jira_project_key"].strip().upper()
+        if attrs.get("jira_issue_key"):
+            attrs["jira_issue_key"] = attrs["jira_issue_key"].strip().upper()
+        return attrs
+
+
+class JiraImportCommitSerializer(JiraImportPreviewSerializer):
+    pass
+
+
+class TempoConnectionSerializer(serializers.ModelSerializer):
+    api_token = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    has_api_token = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = TempoConnection
+        fields = [
+            "base_url",
+            "api_token",
+            "has_api_token",
+            "enabled",
+            "last_test_status",
+            "last_test_message",
+            "last_test_at",
+            "last_test_metadata",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "has_api_token",
+            "last_test_status",
+            "last_test_message",
+            "last_test_at",
+            "last_test_metadata",
+            "created_at",
+            "updated_at",
+        ]
+
+    def validate_base_url(self, value):
+        return (value or "").strip().rstrip("/")
+
+    def update(self, instance, validated_data):
+        token = validated_data.pop("api_token", None)
+        for field, value in validated_data.items():
+            setattr(instance, field, value)
+        if token is not None:
+            instance.set_api_token(token)
+        instance.full_clean()
+        instance.save()
+        return instance
+
+
+class TempoUserMappingSerializer(serializers.ModelSerializer):
+    employee_id = serializers.PrimaryKeyRelatedField(
+        source="employee", queryset=UserProfile.objects.all()
+    )
+    employee_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TempoUserMapping
+        fields = [
+            "id",
+            "tempo_user_id",
+            "tempo_display_name",
+            "employee_id",
+            "employee_name",
+            "is_active",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["employee_name", "created_at", "updated_at"]
+
+    def get_employee_name(self, obj):
+        return obj.employee.full_name or obj.employee.user.username
+
+
+class TempoAccountMappingSerializer(serializers.ModelSerializer):
+    project_id = serializers.PrimaryKeyRelatedField(
+        source="project", queryset=Project.objects.all()
+    )
+    project_name = serializers.CharField(source="project.name", read_only=True)
+
+    class Meta:
+        model = TempoAccountMapping
+        fields = [
+            "id",
+            "tempo_account_id",
+            "tempo_account_key",
+            "tempo_account_name",
+            "project_id",
+            "project_name",
+            "is_active",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["project_name", "created_at", "updated_at"]
+
+    def validate_tempo_account_key(self, value):
+        return (value or "").strip().upper()
+
+
+class TempoProjectMappingSerializer(serializers.ModelSerializer):
+    project_id = serializers.PrimaryKeyRelatedField(
+        source="project", queryset=Project.objects.all()
+    )
+    project_name = serializers.CharField(source="project.name", read_only=True)
+
+    class Meta:
+        model = TempoProjectMapping
+        fields = [
+            "id",
+            "tempo_project_id",
+            "tempo_project_key",
+            "tempo_project_name",
+            "project_id",
+            "project_name",
+            "is_active",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["project_name", "created_at", "updated_at"]
+
+    def validate_tempo_project_key(self, value):
+        return (value or "").strip().upper()
+
+
+class TempoTeamMappingSerializer(serializers.ModelSerializer):
+    project_id = serializers.PrimaryKeyRelatedField(
+        source="project", queryset=Project.objects.all()
+    )
+    project_name = serializers.CharField(source="project.name", read_only=True)
+
+    class Meta:
+        model = TempoTeamMapping
+        fields = [
+            "id",
+            "tempo_team_id",
+            "tempo_team_name",
+            "project_id",
+            "project_name",
+            "is_active",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["project_name", "created_at", "updated_at"]
+
+
+class TempoMappingMutationSerializer(serializers.Serializer):
+    mapping_type = serializers.ChoiceField(
+        choices=["user", "account", "project", "team"]
+    )
+    id = serializers.IntegerField(required=False)
+    tempo_user_id = serializers.CharField(required=False, allow_blank=True)
+    tempo_display_name = serializers.CharField(required=False, allow_blank=True)
+    employee_id = serializers.IntegerField(required=False)
+    tempo_account_id = serializers.CharField(required=False, allow_blank=True)
+    tempo_account_key = serializers.CharField(required=False, allow_blank=True)
+    tempo_account_name = serializers.CharField(required=False, allow_blank=True)
+    tempo_project_id = serializers.CharField(required=False, allow_blank=True)
+    tempo_project_key = serializers.CharField(required=False, allow_blank=True)
+    tempo_project_name = serializers.CharField(required=False, allow_blank=True)
+    tempo_team_id = serializers.CharField(required=False, allow_blank=True)
+    tempo_team_name = serializers.CharField(required=False, allow_blank=True)
+    project_id = serializers.IntegerField(required=False)
+    is_active = serializers.BooleanField(required=False)
+
+
+class TempoProjectDiscoverySerializer(serializers.Serializer):
+    base_url = serializers.URLField(required=False)
+    api_token = serializers.CharField(required=False, allow_blank=True, write_only=True)
+    date_from = serializers.DateField(required=False)
+    date_to = serializers.DateField(required=False)
+    limit = serializers.IntegerField(required=False, min_value=1, max_value=1000)
+
+    def validate_base_url(self, value):
+        return (value or "").strip().rstrip("/")
+
+    def validate(self, attrs):
+        today = timezone.localdate()
+        attrs.setdefault("date_to", today)
+        attrs.setdefault("date_from", today - timedelta(days=30))
+        attrs.setdefault("limit", 1000)
+        if attrs["date_to"] < attrs["date_from"]:
+            raise serializers.ValidationError(
+                {"date_to": "date_to cannot be before date_from."}
+            )
+        return attrs
+
+
+class TempoImportPreviewSerializer(serializers.Serializer):
+    date_from = serializers.DateField()
+    date_to = serializers.DateField()
+    employee_id = serializers.IntegerField(required=False)
+    tempo_team_id = serializers.CharField(required=False, allow_blank=True)
+    tempo_account_id = serializers.CharField(required=False, allow_blank=True)
+    tempo_account_key = serializers.CharField(required=False, allow_blank=True)
+    tempo_project_id = serializers.CharField(required=False, allow_blank=True)
+    project_id = serializers.IntegerField(required=False)
+    jira_issue_key = serializers.CharField(required=False, allow_blank=True)
+    worklog_id = serializers.CharField(required=False, allow_blank=True)
+    worklogs = serializers.ListField(
+        child=serializers.DictField(), required=False, allow_empty=True
+    )
+
+    def validate(self, attrs):
+        if attrs["date_to"] < attrs["date_from"]:
+            raise serializers.ValidationError(
+                {"date_to": "date_to cannot be before date_from."}
+            )
+        if attrs.get("tempo_account_key"):
+            attrs["tempo_account_key"] = attrs["tempo_account_key"].strip().upper()
+        if attrs.get("jira_issue_key"):
+            attrs["jira_issue_key"] = attrs["jira_issue_key"].strip().upper()
+        return attrs
+
+
+class TempoImportCommitSerializer(TempoImportPreviewSerializer):
+    pass
+
+
+class TimeImportRowSerializer(serializers.ModelSerializer):
+    committed_entry_id = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = TimeImportRow
+        fields = [
+            "id",
+            "sheet_name",
+            "table_index",
+            "row_number",
+            "row_index",
+            "raw_data",
+            "parsed_data",
+            "original_row_fingerprint",
+            "status",
+            "validation_messages",
+            "committed_entry_id",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
+
+
+class TimeImportBatchSerializer(serializers.ModelSerializer):
+    rows = TimeImportRowSerializer(many=True, read_only=True)
+    uploaded_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TimeImportBatch
+        fields = [
+            "id",
+            "source_type",
+            "file_name",
+            "uploaded_by",
+            "uploaded_by_name",
+            "requested_filters",
+            "column_mapping",
+            "detected_columns",
+            "status",
+            "total_rows",
+            "valid_rows",
+            "error_rows",
+            "skipped_rows",
+            "committed_rows",
+            "validation_messages",
+            "rows",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
+
+    def get_uploaded_by_name(self, obj):
+        if obj.uploaded_by_id is None:
+            return ""
+        return obj.uploaded_by.full_name or obj.uploaded_by.user.username
+
+
+class TimeDocumentImportUploadSerializer(serializers.Serializer):
+    file = serializers.FileField()
+
+
+class TimeDocumentImportColumnMapSerializer(serializers.Serializer):
+    column_mapping = serializers.DictField(
+        child=serializers.CharField(allow_blank=False)
+    )
+
+
+class TimeSourceChangeResolveSerializer(serializers.Serializer):
+    action = serializers.ChoiceField(
+        choices=["accept_current", "apply_source", "leave_flagged"]
+    )
+    note = serializers.CharField(required=False, allow_blank=True)
 
 
 class ProjectSerializer(serializers.ModelSerializer):

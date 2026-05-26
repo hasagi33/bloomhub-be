@@ -18,6 +18,9 @@ django-cors-headers>=4.4
 # Avatar generation
 Pillow>=10.0.0
 qrcode[pil]>=8.0
+python-docx>=1.1
+openpyxl>=3.1
+cryptography>=42.0
 
 # Dev / test / tooling (optional in prod)
 black>=24.0
@@ -67,6 +70,7 @@ PyJWT==2.12.1
 pytest==9.0.2
 pytest-django==4.12.0
 python-dateutil==2.9.0.post0
+python-docx>=1.1
 python-discovery==1.1.1
 python-dotenv==1.2.2
 pytokens==0.4.1

@@ -30,6 +30,9 @@ from .enums import (
     EmployeeDocumentSourceType,
     EmployeeDocumentType,
     EmploymentStatus,
+    ImportBatchSource,
+    ImportBatchStatus,
+    ImportRowStatus,
     JobListingStatus,
     LeaveRequestStatus,
     LeaveType,
@@ -51,11 +54,15 @@ from .enums import (
     TemplateFieldType,
     TemplateStatus,
     TemplateVisibility,
+    TimeEntryAuditEventType,
+    TimeEntrySourceType,
+    TimeEntryStatus,
     TrackedField,
 )
 from .enums import (
     DocumentCategory as _DocumentCategory,
 )
+from .services.credential_encryption import decrypt_secret, encrypt_secret
 
 DEFAULT_LEAVE_POLICIES = [
     {
@@ -361,6 +368,284 @@ class Project(models.Model):
         verbose_name = "Project"
         verbose_name_plural = "Projects"
         ordering = ["name"]
+
+
+class TimeTask(models.Model):
+    project = models.ForeignKey(
+        Project, on_delete=models.CASCADE, related_name="time_tasks"
+    )
+    name = models.CharField(max_length=150)
+    description = models.TextField(blank=True, default="")
+    jira_issue_key = models.CharField(max_length=50, blank=True, default="")
+    jira_project_key = models.CharField(max_length=50, blank=True, default="")
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Time Task"
+        verbose_name_plural = "Time Tasks"
+        ordering = ["project__name", "name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project", "name"], name="unique_time_task_name_per_project"
+            ),
+            models.UniqueConstraint(
+                fields=["jira_issue_key"],
+                condition=~models.Q(jira_issue_key=""),
+                name="unique_time_task_jira_issue_key",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["project", "is_active"]),
+            models.Index(fields=["jira_issue_key"]),
+            models.Index(fields=["jira_project_key"]),
+        ]
+
+    def __str__(self):
+        return f"{self.project.name}: {self.name}"
+
+
+class JiraConnection(models.Model):
+    base_url = models.URLField(blank=True, default="")
+    auth_email = models.EmailField(blank=True, default="")
+    api_token_encrypted = models.TextField(blank=True, default="")
+    enabled = models.BooleanField(default=False)
+    last_test_status = models.CharField(max_length=30, blank=True, default="")
+    last_test_message = models.TextField(blank=True, default="")
+    last_test_at = models.DateTimeField(null=True, blank=True)
+    last_test_metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Jira Connection"
+        verbose_name_plural = "Jira Connections"
+
+    @classmethod
+    def get_solo(cls):
+        connection, _ = cls.objects.get_or_create(pk=1)
+        return connection
+
+    def set_api_token(self, token: str):
+        self.api_token_encrypted = encrypt_secret(token)
+
+    def get_api_token(self) -> str:
+        return decrypt_secret(
+            self.api_token_encrypted, legacy_salt="bloomhub-jira-api-token"
+        )
+
+    @property
+    def has_api_token(self) -> bool:
+        return bool(self.api_token_encrypted)
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+
+        if self.enabled and not all(
+            [self.base_url, self.auth_email, self.has_api_token]
+        ):
+            raise ValidationError(
+                "Enabled Jira connection requires base URL, auth email, and API token."
+            )
+
+    def __str__(self):
+        return self.base_url or "Jira Connection"
+
+
+class JiraUserMapping(models.Model):
+    jira_account_id = models.CharField(max_length=150, unique=True)
+    jira_display_name = models.CharField(max_length=255, blank=True, default="")
+    employee = models.ForeignKey(
+        "UserProfile", on_delete=models.CASCADE, related_name="jira_user_mappings"
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Jira User Mapping"
+        verbose_name_plural = "Jira User Mappings"
+        ordering = ["jira_display_name", "jira_account_id"]
+
+    def __str__(self):
+        return f"{self.jira_account_id} -> {self.employee}"
+
+
+class JiraProjectMapping(models.Model):
+    jira_project_key = models.CharField(max_length=50, unique=True)
+    jira_project_name = models.CharField(max_length=255, blank=True, default="")
+    project = models.ForeignKey(
+        Project, on_delete=models.CASCADE, related_name="jira_project_mappings"
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Jira Project Mapping"
+        verbose_name_plural = "Jira Project Mappings"
+        ordering = ["jira_project_key"]
+
+    def save(self, *args, **kwargs):
+        self.jira_project_key = (self.jira_project_key or "").strip().upper()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.jira_project_key} -> {self.project}"
+
+
+class JiraIssueMapping(models.Model):
+    jira_issue_key = models.CharField(max_length=50, unique=True)
+    jira_issue_id = models.CharField(max_length=100, blank=True, default="")
+    task = models.ForeignKey(
+        TimeTask, on_delete=models.CASCADE, related_name="jira_issue_mappings"
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Jira Issue Mapping"
+        verbose_name_plural = "Jira Issue Mappings"
+        ordering = ["jira_issue_key"]
+
+    def save(self, *args, **kwargs):
+        self.jira_issue_key = (self.jira_issue_key or "").strip().upper()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.jira_issue_key} -> {self.task}"
+
+
+class TempoConnection(models.Model):
+    base_url = models.URLField(default="https://api.tempo.io/4")
+    api_token_encrypted = models.TextField(blank=True, default="")
+    enabled = models.BooleanField(default=False)
+    last_test_status = models.CharField(max_length=30, blank=True, default="")
+    last_test_message = models.TextField(blank=True, default="")
+    last_test_at = models.DateTimeField(null=True, blank=True)
+    last_test_metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Tempo Connection"
+        verbose_name_plural = "Tempo Connections"
+
+    @classmethod
+    def get_solo(cls):
+        connection, _ = cls.objects.get_or_create(pk=1)
+        return connection
+
+    def set_api_token(self, token: str):
+        self.api_token_encrypted = encrypt_secret(token)
+
+    def get_api_token(self) -> str:
+        return decrypt_secret(
+            self.api_token_encrypted, legacy_salt="bloomhub-tempo-api-token"
+        )
+
+    @property
+    def has_api_token(self) -> bool:
+        return bool(self.api_token_encrypted)
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+
+        if self.enabled and not all([self.base_url, self.has_api_token]):
+            raise ValidationError(
+                "Enabled Tempo connection requires base URL and API token."
+            )
+
+    def __str__(self):
+        return self.base_url or "Tempo Connection"
+
+
+class TempoUserMapping(models.Model):
+    tempo_user_id = models.CharField(max_length=150, unique=True)
+    tempo_display_name = models.CharField(max_length=255, blank=True, default="")
+    employee = models.ForeignKey(
+        "UserProfile", on_delete=models.CASCADE, related_name="tempo_user_mappings"
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Tempo User Mapping"
+        verbose_name_plural = "Tempo User Mappings"
+        ordering = ["tempo_display_name", "tempo_user_id"]
+
+    def __str__(self):
+        return f"{self.tempo_user_id} -> {self.employee}"
+
+
+class TempoAccountMapping(models.Model):
+    tempo_account_id = models.CharField(max_length=150, unique=True)
+    tempo_account_key = models.CharField(max_length=150, blank=True, default="")
+    tempo_account_name = models.CharField(max_length=255, blank=True, default="")
+    project = models.ForeignKey(
+        Project, on_delete=models.CASCADE, related_name="tempo_account_mappings"
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Tempo Account Mapping"
+        verbose_name_plural = "Tempo Account Mappings"
+        ordering = ["tempo_account_key", "tempo_account_id"]
+
+    def save(self, *args, **kwargs):
+        self.tempo_account_key = (self.tempo_account_key or "").strip().upper()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.tempo_account_id} -> {self.project}"
+
+
+class TempoProjectMapping(models.Model):
+    tempo_project_id = models.CharField(max_length=150, unique=True)
+    tempo_project_key = models.CharField(max_length=150, blank=True, default="")
+    tempo_project_name = models.CharField(max_length=255, blank=True, default="")
+    project = models.ForeignKey(
+        Project, on_delete=models.CASCADE, related_name="tempo_project_mappings"
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Tempo Project Mapping"
+        verbose_name_plural = "Tempo Project Mappings"
+        ordering = ["tempo_project_key", "tempo_project_id"]
+
+    def save(self, *args, **kwargs):
+        self.tempo_project_key = (self.tempo_project_key or "").strip().upper()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.tempo_project_id} -> {self.project}"
+
+
+class TempoTeamMapping(models.Model):
+    tempo_team_id = models.CharField(max_length=150, unique=True)
+    tempo_team_name = models.CharField(max_length=255, blank=True, default="")
+    project = models.ForeignKey(
+        Project, on_delete=models.CASCADE, related_name="tempo_team_mappings"
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Tempo Team Mapping"
+        verbose_name_plural = "Tempo Team Mappings"
+        ordering = ["tempo_team_name", "tempo_team_id"]
+
+    def __str__(self):
+        return f"{self.tempo_team_id} -> {self.project}"
 
 
 class Equipment(models.Model):
@@ -836,6 +1121,242 @@ class ProjectAssignment(models.Model):
     def __str__(self):
         status = "current" if not self.end_date else f"until {self.end_date}"
         return f"{self.user_profile.user.username} @ {self.project.name} ({status})"
+
+
+class TimeEntry(models.Model):
+    employee = models.ForeignKey(
+        UserProfile, on_delete=models.CASCADE, related_name="time_entries"
+    )
+    project = models.ForeignKey(
+        Project, on_delete=models.PROTECT, related_name="time_entries"
+    )
+    task = models.ForeignKey(
+        TimeTask,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="time_entries",
+    )
+    work_date = models.DateField()
+    start_time = models.TimeField(null=True, blank=True)
+    end_time = models.TimeField(null=True, blank=True)
+    hours = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        validators=[
+            MinValueValidator(Decimal("0.01")),
+            MaxValueValidator(Decimal("24")),
+        ],
+    )
+    notes = models.TextField(blank=True, default="")
+    source_type = models.CharField(
+        max_length=30,
+        choices=TimeEntrySourceType.choices,
+        default=TimeEntrySourceType.MANUAL,
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=TimeEntryStatus.choices,
+        default=TimeEntryStatus.DRAFT,
+    )
+    source_external_id = models.CharField(max_length=150, blank=True, default="")
+    source_metadata = models.JSONField(default=dict, blank=True)
+    duplicate_fingerprint = models.CharField(max_length=64, db_index=True)
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    submitted_by = models.ForeignKey(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="submitted_time_entries",
+    )
+    approved_at = models.DateTimeField(null=True, blank=True)
+    approved_by = models.ForeignKey(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="approved_time_entries",
+    )
+    rejected_at = models.DateTimeField(null=True, blank=True)
+    rejected_by = models.ForeignKey(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="rejected_time_entries",
+    )
+    rejection_reason = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Time Entry"
+        verbose_name_plural = "Time Entries"
+        ordering = ["-work_date", "start_time", "employee_id", "project_id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["source_type", "source_external_id"],
+                condition=~models.Q(source_external_id=""),
+                name="unique_time_entry_external_source",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["employee", "work_date"]),
+            models.Index(fields=["employee", "work_date", "start_time"]),
+            models.Index(fields=["project", "work_date"]),
+            models.Index(fields=["status", "work_date"]),
+            models.Index(fields=["source_type", "source_external_id"]),
+        ]
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+
+        errors = {}
+        if self.task_id and self.project_id and self.task.project_id != self.project_id:
+            errors["task"] = "Task must belong to the selected project."
+        if self.hours is None or self.hours <= 0:
+            errors["hours"] = "Hours must be greater than zero."
+        if self.hours and self.hours > Decimal("24"):
+            errors["hours"] = "Hours cannot exceed 24 for a single day."
+        if self.source_type != TimeEntrySourceType.MANUAL and not self.source_metadata:
+            errors["source_metadata"] = (
+                "Imported entries must preserve source metadata."
+            )
+        if errors:
+            raise ValidationError(errors)
+
+    def __str__(self):
+        return f"{self.employee} {self.work_date} {self.hours}h"
+
+
+class TimeEntryAuditEvent(models.Model):
+    time_entry = models.ForeignKey(
+        TimeEntry, on_delete=models.CASCADE, related_name="audit_events"
+    )
+    event_type = models.CharField(
+        max_length=30, choices=TimeEntryAuditEventType.choices
+    )
+    actor = models.ForeignKey(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="time_entry_audit_events",
+    )
+    message = models.TextField(blank=True, default="")
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Time Entry Audit Event"
+        verbose_name_plural = "Time Entry Audit Events"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["time_entry", "event_type"]),
+            models.Index(fields=["actor", "created_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.time_entry_id} {self.event_type}"
+
+
+def time_import_upload_to(instance: "TimeImportBatch", filename: str) -> str:
+    now = timezone.now()
+    return f"time_imports/{now:%Y/%m}/{filename}"
+
+
+class TimeImportBatch(models.Model):
+    source_type = models.CharField(
+        max_length=30,
+        choices=ImportBatchSource.choices,
+        default=ImportBatchSource.DOCUMENT_IMPORT,
+    )
+    file_name = models.CharField(max_length=255, blank=True, default="")
+    source_file = models.FileField(
+        upload_to=time_import_upload_to, null=True, blank=True
+    )
+    uploaded_by = models.ForeignKey(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="time_import_batches",
+    )
+    requested_filters = models.JSONField(default=dict, blank=True)
+    column_mapping = models.JSONField(default=dict, blank=True)
+    detected_columns = models.JSONField(default=dict, blank=True)
+    status = models.CharField(
+        max_length=30,
+        choices=ImportBatchStatus.choices,
+        default=ImportBatchStatus.UPLOADED,
+    )
+    total_rows = models.PositiveIntegerField(default=0)
+    valid_rows = models.PositiveIntegerField(default=0)
+    error_rows = models.PositiveIntegerField(default=0)
+    skipped_rows = models.PositiveIntegerField(default=0)
+    committed_rows = models.PositiveIntegerField(default=0)
+    validation_messages = models.JSONField(default=list, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Time Import Batch"
+        verbose_name_plural = "Time Import Batches"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["source_type", "status"]),
+            models.Index(fields=["uploaded_by", "created_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.source_type} import {self.pk or 'new'}"
+
+
+class TimeImportRow(models.Model):
+    batch = models.ForeignKey(
+        TimeImportBatch, on_delete=models.CASCADE, related_name="rows"
+    )
+    sheet_name = models.CharField(max_length=150, blank=True, default="")
+    table_index = models.PositiveIntegerField(null=True, blank=True)
+    row_number = models.PositiveIntegerField()
+    row_index = models.PositiveIntegerField()
+    raw_data = models.JSONField(default=dict, blank=True)
+    parsed_data = models.JSONField(default=dict, blank=True)
+    original_row_fingerprint = models.CharField(max_length=64, db_index=True)
+    status = models.CharField(
+        max_length=30,
+        choices=ImportRowStatus.choices,
+        default=ImportRowStatus.PENDING,
+    )
+    validation_messages = models.JSONField(default=list, blank=True)
+    committed_entry = models.ForeignKey(
+        TimeEntry,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="import_rows",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Time Import Row"
+        verbose_name_plural = "Time Import Rows"
+        ordering = ["batch_id", "row_index"]
+        indexes = [
+            models.Index(fields=["batch", "status"]),
+            models.Index(fields=["original_row_fingerprint"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["batch", "row_index"],
+                name="unique_time_import_row_index_per_batch",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Batch {self.batch_id} row {self.row_number}"
 
 
 class EquipmentAssignment(models.Model):
