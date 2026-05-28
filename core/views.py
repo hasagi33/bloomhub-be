@@ -47,6 +47,10 @@ from .constants import (
     EMPLOYEE_PROFILE_FILTERSET_FIELDS,
     EMPLOYEE_PROFILE_ORDERING_FIELDS,
     EMPLOYEE_PROFILE_SEARCH_FIELDS,
+    LEAVE_BALANCE_SNAPSHOT_FILTERSET_FIELDS,
+    LEAVE_BALANCE_SNAPSHOT_ORDERING_FIELDS,
+    LEAVE_MONTHLY_AGGREGATE_FILTERSET_FIELDS,
+    LEAVE_MONTHLY_AGGREGATE_ORDERING_FIELDS,
 )
 from .enums import (
     ProjectAssignmentStatus,
@@ -84,6 +88,8 @@ from .models import (
     JobListingStatus,
     LeaveAdjustment,
     LeaveBalance,
+    LeaveBalanceSnapshot,
+    LeaveMonthlyAggregate,
     LeavePolicy,
     LeaveRequest,
     Notification,
@@ -118,6 +124,7 @@ from .models import (
     UserTemplateSnippet,
 )
 from .permissions import (
+    CanRefreshLeaveAnalytics,
     IsCompensationAdminOrOwnReadOnly,
     CanReviewApplication,
     IsCPFLevelChangeEditor,
@@ -125,11 +132,13 @@ from .permissions import (
     IsHRAdminForAdjustment,
     IsHRAdminOrReadOnlyOwnProfile,
     IsHrOrAdmin,
+    IsLeaveAnalyticsViewer,
     IsManagerForApproval,
     IsReviewCreator,
     IsReviewEditor,
     IsReviewViewer,
     IsTrainingBudgetEditor,
+    _get_user_profile,
     can_attach_review_documents,
     can_edit_review_note,
     can_manage_cpf_level_changes,
@@ -140,6 +149,7 @@ from .permissions import (
     get_asset_permissions,
     get_asset_scope,
     has_asset_permission,
+    has_leave_analytics_view_permission,
     has_review_permission,
     is_compensation_admin,
 )
@@ -201,7 +211,14 @@ from .serializers import (
     JobListingListSerializer,
     JobListingWriteSerializer,
     LeaveAdjustmentSerializer,
+    LeaveAnalyticsDepartmentRowSerializer,
+    LeaveAnalyticsEmployeeSummarySerializer,
+    LeaveAnalyticsMonthRowSerializer,
+    LeaveAnalyticsRefreshResponseSerializer,
+    LeaveAnalyticsYearTotalsSerializer,
     LeaveBalanceSerializer,
+    LeaveBalanceSnapshotSerializer,
+    LeaveMonthlyAggregateSerializer,
     LeavePolicySerializer,
     LeaveRequestApproveSerializer,
     LeaveRequestCreateSerializer,
@@ -9312,6 +9329,422 @@ class NotificationViewSet(
         return Response({"count": count}, status=status.HTTP_200_OK)
 
 
+# ──────────────────────────────────────────
+# Leave Analytics
+# ──────────────────────────────────────────
+
+
+@extend_schema_view(
+    list=extend_schema(
+        tags=["Leave Analytics"],
+        summary="List leave monthly aggregate buckets",
+    ),
+    retrieve=extend_schema(
+        tags=["Leave Analytics"],
+        summary="Retrieve one aggregate bucket",
+    ),
+)
+class LeaveAnalyticsViewSet(
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    viewsets.GenericViewSet,
+):
+    """
+    Read-only access to pre-materialized leave analytics.
+
+    Source rows are owned by `LeaveMonthlyAggregate` (per
+    employee/leave_type/year/month). Composite reports — monthly trend, yearly
+    totals, department breakdown, per-employee summary — are exposed as
+    `@action` endpoints that reduce the fact table on the database side.
+
+    Refresh is gated behind `CanRefreshLeaveAnalytics` and writes via the
+    `core.services.leave_analytics_service` module rather than mutating the
+    table from this view directly.
+    """
+
+    queryset = LeaveMonthlyAggregate.objects.select_related("employee__user").all()
+    serializer_class = LeaveMonthlyAggregateSerializer
+    permission_classes = [IsLeaveAnalyticsViewer]
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = LEAVE_MONTHLY_AGGREGATE_FILTERSET_FIELDS
+    ordering_fields = LEAVE_MONTHLY_AGGREGATE_ORDERING_FIELDS
+    ordering = ["-year", "-month", "employee_id", "leave_type"]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.user
+        if has_leave_analytics_view_permission(user):
+            return qs
+        profile = _get_user_profile(user)
+        if profile is None:
+            return qs.none()
+        return qs.filter(employee=profile)
+
+    def _scoped_employee_qs(self):
+        """Employees the caller is allowed to see in analytics responses."""
+        user = self.request.user
+        if has_leave_analytics_view_permission(user):
+            return UserProfile.objects.select_related("user").all()
+        profile = _get_user_profile(user)
+        if profile is None:
+            return UserProfile.objects.none()
+        return UserProfile.objects.select_related("user").filter(id=profile.id)
+
+    @staticmethod
+    def _parse_year(raw, *, default=None):
+        if raw is None or raw == "":
+            return default
+        try:
+            return int(raw)
+        except (TypeError, ValueError) as exc:
+            raise ValidationError({"year": "year must be an integer"}) from exc
+
+    @extend_schema(
+        tags=["Leave Analytics"],
+        summary="Monthly leave trend for a given year",
+        parameters=[
+            OpenApiParameter(
+                name="year",
+                required=True,
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+            ),
+            OpenApiParameter(
+                name="leave_type",
+                required=False,
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+            ),
+        ],
+        responses={200: LeaveAnalyticsMonthRowSerializer(many=True)},
+    )
+    @action(detail=False, methods=["get"], url_path="monthly")
+    def monthly(self, request):
+        from datetime import date as _date
+
+        from .enums import LeaveType
+
+        year = self._parse_year(
+            request.query_params.get("year"), default=timezone.now().year
+        )
+        leave_type = request.query_params.get("leave_type") or None
+
+        qs = self.get_queryset().filter(year=year)
+        if leave_type:
+            qs = qs.filter(leave_type=leave_type)
+
+        rows = (
+            qs.values("month", "leave_type")
+            .annotate(total=models.Sum("approved_days"))
+            .order_by("month", "leave_type")
+        )
+
+        bucketed: dict[int, dict[str, int]] = {
+            m: {lt: 0 for lt in LeaveType.values} for m in range(1, 13)
+        }
+        for row in rows:
+            bucketed[row["month"]][row["leave_type"]] = row["total"] or 0
+
+        payload = []
+        for month in range(1, 13):
+            total = sum(bucketed[month].values())
+            payload.append(
+                {
+                    "year": year,
+                    "month": month,
+                    "month_label": _date(year, month, 1).strftime("%b"),
+                    "total": total,
+                    "by_type": bucketed[month],
+                }
+            )
+
+        serializer = LeaveAnalyticsMonthRowSerializer(payload, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        tags=["Leave Analytics"],
+        summary="Yearly totals broken down by leave type",
+        parameters=[
+            OpenApiParameter(
+                name="year",
+                required=True,
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+            ),
+        ],
+        responses={200: LeaveAnalyticsYearTotalsSerializer},
+    )
+    @action(detail=False, methods=["get"], url_path="yearly-totals")
+    def yearly_totals(self, request):
+        from core.services.leave_analytics_service import yearly_totals_by_type
+
+        from .enums import LeaveRequestStatus, LeaveType
+
+        year = self._parse_year(
+            request.query_params.get("year"), default=timezone.now().year
+        )
+
+        scope_qs = self.get_queryset().filter(year=year)
+        if has_leave_analytics_view_permission(request.user):
+            totals = yearly_totals_by_type(year)
+        else:
+            totals = {lt: 0 for lt in LeaveType.values}
+            rows = scope_qs.values("leave_type").annotate(
+                total=models.Sum("approved_days")
+            )
+            for row in rows:
+                totals[row["leave_type"]] = row["total"] or 0
+
+        pending_total = scope_qs.aggregate(p=models.Sum("pending_days")).get("p") or 0
+
+        if has_leave_analytics_view_permission(request.user):
+            headcount = UserProfile.objects.count()
+            today = timezone.now().date()
+            on_leave_today = (
+                LeaveRequest.objects.filter(
+                    status=LeaveRequestStatus.APPROVED,
+                    start_date__lte=today,
+                    end_date__gte=today,
+                )
+                .values("employee_id")
+                .distinct()
+                .count()
+            )
+        else:
+            profile = _get_user_profile(request.user)
+            headcount = 1 if profile is not None else 0
+            today = timezone.now().date()
+            on_leave_today = (
+                LeaveRequest.objects.filter(
+                    employee=profile,
+                    status=LeaveRequestStatus.APPROVED,
+                    start_date__lte=today,
+                    end_date__gte=today,
+                ).exists()
+                if profile is not None
+                else 0
+            )
+            on_leave_today = int(bool(on_leave_today))
+
+        serializer = LeaveAnalyticsYearTotalsSerializer(
+            {
+                "year": year,
+                "total": sum(totals.values()),
+                "by_type": totals,
+                "pending_total": pending_total,
+                "headcount": headcount,
+                "on_leave_today": on_leave_today,
+            }
+        )
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        tags=["Leave Analytics"],
+        summary="Department-level breakdown for a year",
+        parameters=[
+            OpenApiParameter(
+                name="year",
+                required=True,
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+            ),
+        ],
+        responses={200: LeaveAnalyticsDepartmentRowSerializer(many=True)},
+    )
+    @action(detail=False, methods=["get"], url_path="departments")
+    def departments(self, request):
+        from .enums import LeaveType
+
+        if not has_leave_analytics_view_permission(request.user):
+            raise PermissionDenied(
+                "Department-level analytics require Vacations.view_dept_trends"
+            )
+
+        year = self._parse_year(
+            request.query_params.get("year"), default=timezone.now().year
+        )
+
+        headcount_by_dept: dict[str, int] = defaultdict(int)
+        for profile in UserProfile.objects.only("id", "department"):
+            headcount_by_dept[profile.department or "Unassigned"] += 1
+
+        rows = (
+            LeaveMonthlyAggregate.objects.filter(year=year)
+            .select_related("employee")
+            .values("employee__department", "leave_type")
+            .annotate(total=models.Sum("approved_days"))
+        )
+
+        bucketed: dict[str, dict[str, int]] = defaultdict(
+            lambda: {lt: 0 for lt in LeaveType.values}
+        )
+        for row in rows:
+            dept = row["employee__department"] or "Unassigned"
+            bucketed[dept][row["leave_type"]] = row["total"] or 0
+
+        payload = []
+        for dept, by_type in bucketed.items():
+            payload.append(
+                {
+                    "department": dept,
+                    "headcount": headcount_by_dept.get(dept, 0),
+                    "total": sum(by_type.values()),
+                    "by_type": by_type,
+                }
+            )
+        payload.sort(key=lambda r: r["total"], reverse=True)
+
+        serializer = LeaveAnalyticsDepartmentRowSerializer(payload, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        tags=["Leave Analytics"],
+        summary="Per-employee yearly summary",
+        parameters=[
+            OpenApiParameter(
+                name="year",
+                required=True,
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+            ),
+        ],
+        responses={
+            200: LeaveAnalyticsEmployeeSummarySerializer(many=True),
+        },
+    )
+    @action(detail=False, methods=["get"], url_path="employees")
+    def employees(self, request):
+        from .enums import LeaveType
+
+        year = self._parse_year(
+            request.query_params.get("year"), default=timezone.now().year
+        )
+
+        employees_qs = self._scoped_employee_qs()
+        employee_ids = list(employees_qs.values_list("id", flat=True))
+
+        balances = {
+            (b.employee_id, b.leave_type): b
+            for b in LeaveBalance.objects.filter(
+                year=year, employee_id__in=employee_ids
+            )
+        }
+        policy_allowance = {
+            p.leave_type: p.allocated_days_per_year for p in LeavePolicy.objects.all()
+        }
+
+        agg_rows = (
+            LeaveMonthlyAggregate.objects.filter(
+                year=year, employee_id__in=employee_ids
+            )
+            .values("employee_id", "leave_type")
+            .annotate(total=models.Sum("approved_days"))
+        )
+
+        per_employee: dict[int, dict[str, int]] = defaultdict(
+            lambda: {lt: 0 for lt in LeaveType.values}
+        )
+        for row in agg_rows:
+            per_employee[row["employee_id"]][row["leave_type"]] = row["total"] or 0
+
+        payload = []
+        for emp in employees_qs:
+            by_type = per_employee.get(emp.id, {lt: 0 for lt in LeaveType.values})
+            vacation_used = by_type.get(LeaveType.VACATION, 0)
+            balance = balances.get((emp.id, LeaveType.VACATION))
+            allocation = (
+                balance.allocated + balance.carryover
+                if balance is not None
+                else policy_allowance.get(LeaveType.VACATION, 0)
+            )
+            payload.append(
+                {
+                    "employee_id": emp.id,
+                    "employee_name": emp.user.get_full_name() or emp.user.username,
+                    "role": getattr(emp.role, "name", None),
+                    "department": emp.department,
+                    "total": sum(by_type.values()),
+                    "vacation_used": vacation_used,
+                    "vacation_remaining": max(allocation - vacation_used, 0),
+                    "by_type": by_type,
+                }
+            )
+        payload.sort(key=lambda r: r["total"], reverse=True)
+
+        serializer = LeaveAnalyticsEmployeeSummarySerializer(payload, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        tags=["Leave Analytics"],
+        summary="Rebuild the analytics fact table",
+        request=None,
+        responses={200: LeaveAnalyticsRefreshResponseSerializer},
+    )
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="refresh",
+        permission_classes=[CanRefreshLeaveAnalytics],
+    )
+    def refresh(self, request):
+        from core.services.leave_analytics_service import (
+            materialize_leave_monthly_aggregates,
+            snapshot_leave_balances,
+        )
+
+        year_from = self._parse_year(request.data.get("year_from"))
+        year_to = self._parse_year(request.data.get("year_to"))
+        year_range = None
+        if year_from is not None or year_to is not None:
+            if year_from is None or year_to is None:
+                raise ValidationError(
+                    "Pass year_from and year_to together, or neither."
+                )
+            if year_from > year_to:
+                raise ValidationError("year_from cannot exceed year_to.")
+            year_range = (year_from, year_to)
+
+        agg_stats = materialize_leave_monthly_aggregates(year_range=year_range)
+        snap_stats = snapshot_leave_balances()
+
+        serializer = LeaveAnalyticsRefreshResponseSerializer(
+            {
+                **agg_stats,
+                "snapshots": snap_stats,
+            }
+        )
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+@extend_schema_view(
+    list=extend_schema(
+        tags=["Leave Analytics"],
+        summary="List historical leave balance snapshots",
+    ),
+)
+class LeaveBalanceSnapshotViewSet(
+    mixins.ListModelMixin,
+    viewsets.GenericViewSet,
+):
+    """Read-only access to `LeaveBalanceSnapshot` for trend reporting."""
+
+    queryset = LeaveBalanceSnapshot.objects.select_related("employee__user").all()
+    serializer_class = LeaveBalanceSnapshotSerializer
+    permission_classes = [IsLeaveAnalyticsViewer]
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = LEAVE_BALANCE_SNAPSHOT_FILTERSET_FIELDS
+    ordering_fields = LEAVE_BALANCE_SNAPSHOT_ORDERING_FIELDS
+    ordering = ["-snapshot_date", "employee_id", "leave_type"]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.user
+        if has_leave_analytics_view_permission(user):
+            return qs
+        profile = _get_user_profile(user)
+        if profile is None:
+            return qs.none()
+        return qs.filter(employee=profile)
 class BonusRecordViewSet(viewsets.ModelViewSet):
     """Bonus records (Compensation module).
 

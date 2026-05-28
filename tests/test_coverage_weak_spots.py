@@ -273,12 +273,12 @@ def test_training_budget_service_edge_cases(monkeypatch):
         "core.services.training_budget_service.create_notification",
         lambda **kwargs: notifications.append(kwargs) or True,
     )
-    # alert_budget = TrainingBudget.objects.create(
-    #     employee=emp,
-    #     fiscal_year=current_year,
-    #     allocated_budget=Decimal("100.00"),
-    #     used_budget=Decimal("0.00"),
-    # )
+    TrainingBudget.objects.create(
+        employee=emp,
+        fiscal_year=current_year,
+        allocated_budget=Decimal("100.00"),
+        used_budget=Decimal("0.00"),
+    )
     TrainingEntry.objects.create(
         employee=emp,
         course_title="Course",

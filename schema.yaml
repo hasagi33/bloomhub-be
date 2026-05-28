@@ -4917,6 +4917,418 @@ paths:
               schema:
                 $ref: '#/components/schemas/LeaveAdjustment'
           description: ''
+  /api/leave-analytics/:
+    get:
+      operationId: leave_analytics_list
+      description: |-
+        Read-only access to pre-materialized leave analytics.
+
+        Source rows are owned by `LeaveMonthlyAggregate` (per
+        employee/leave_type/year/month). Composite reports — monthly trend, yearly
+        totals, department breakdown, per-employee summary — are exposed as
+        `@action` endpoints that reduce the fact table on the database side.
+
+        Refresh is gated behind `CanRefreshLeaveAnalytics` and writes via the
+        `core.services.leave_analytics_service` module rather than mutating the
+        table from this view directly.
+      summary: List leave monthly aggregate buckets
+      parameters:
+      - in: query
+        name: employee
+        schema:
+          type: integer
+      - in: query
+        name: leave_type
+        schema:
+          type: string
+          enum:
+          - bereavement
+          - maternity
+          - paternity
+          - personal
+          - sick
+          - unpaid
+          - vacation
+          - wfh
+        description: |-
+          * `vacation` - Vacation
+          * `sick` - Sick Leave
+          * `wfh` - Work From Home
+          * `personal` - Personal
+          * `maternity` - Maternity
+          * `paternity` - Paternity
+          * `bereavement` - Bereavement
+          * `unpaid` - Unpaid Leave
+      - in: query
+        name: month
+        schema:
+          type: integer
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - in: query
+        name: year
+        schema:
+          type: integer
+      tags:
+      - Leave Analytics
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LeaveMonthlyAggregate'
+          description: ''
+  /api/leave-analytics/{id}/:
+    get:
+      operationId: leave_analytics_retrieve
+      description: |-
+        Read-only access to pre-materialized leave analytics.
+
+        Source rows are owned by `LeaveMonthlyAggregate` (per
+        employee/leave_type/year/month). Composite reports — monthly trend, yearly
+        totals, department breakdown, per-employee summary — are exposed as
+        `@action` endpoints that reduce the fact table on the database side.
+
+        Refresh is gated behind `CanRefreshLeaveAnalytics` and writes via the
+        `core.services.leave_analytics_service` module rather than mutating the
+        table from this view directly.
+      summary: Retrieve one aggregate bucket
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Leave Monthly Aggregate.
+        required: true
+      tags:
+      - Leave Analytics
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveMonthlyAggregate'
+          description: ''
+  /api/leave-analytics/departments/:
+    get:
+      operationId: leave_analytics_departments_list
+      description: |-
+        Read-only access to pre-materialized leave analytics.
+
+        Source rows are owned by `LeaveMonthlyAggregate` (per
+        employee/leave_type/year/month). Composite reports — monthly trend, yearly
+        totals, department breakdown, per-employee summary — are exposed as
+        `@action` endpoints that reduce the fact table on the database side.
+
+        Refresh is gated behind `CanRefreshLeaveAnalytics` and writes via the
+        `core.services.leave_analytics_service` module rather than mutating the
+        table from this view directly.
+      summary: Department-level breakdown for a year
+      parameters:
+      - in: query
+        name: employee
+        schema:
+          type: integer
+      - in: query
+        name: leave_type
+        schema:
+          type: string
+          enum:
+          - bereavement
+          - maternity
+          - paternity
+          - personal
+          - sick
+          - unpaid
+          - vacation
+          - wfh
+        description: |-
+          * `vacation` - Vacation
+          * `sick` - Sick Leave
+          * `wfh` - Work From Home
+          * `personal` - Personal
+          * `maternity` - Maternity
+          * `paternity` - Paternity
+          * `bereavement` - Bereavement
+          * `unpaid` - Unpaid Leave
+      - in: query
+        name: month
+        schema:
+          type: integer
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - in: query
+        name: year
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Leave Analytics
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LeaveAnalyticsDepartmentRow'
+          description: ''
+  /api/leave-analytics/employees/:
+    get:
+      operationId: leave_analytics_employees_list
+      description: |-
+        Read-only access to pre-materialized leave analytics.
+
+        Source rows are owned by `LeaveMonthlyAggregate` (per
+        employee/leave_type/year/month). Composite reports — monthly trend, yearly
+        totals, department breakdown, per-employee summary — are exposed as
+        `@action` endpoints that reduce the fact table on the database side.
+
+        Refresh is gated behind `CanRefreshLeaveAnalytics` and writes via the
+        `core.services.leave_analytics_service` module rather than mutating the
+        table from this view directly.
+      summary: Per-employee yearly summary
+      parameters:
+      - in: query
+        name: employee
+        schema:
+          type: integer
+      - in: query
+        name: leave_type
+        schema:
+          type: string
+          enum:
+          - bereavement
+          - maternity
+          - paternity
+          - personal
+          - sick
+          - unpaid
+          - vacation
+          - wfh
+        description: |-
+          * `vacation` - Vacation
+          * `sick` - Sick Leave
+          * `wfh` - Work From Home
+          * `personal` - Personal
+          * `maternity` - Maternity
+          * `paternity` - Paternity
+          * `bereavement` - Bereavement
+          * `unpaid` - Unpaid Leave
+      - in: query
+        name: month
+        schema:
+          type: integer
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - in: query
+        name: year
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Leave Analytics
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LeaveAnalyticsEmployeeSummary'
+          description: ''
+  /api/leave-analytics/monthly/:
+    get:
+      operationId: leave_analytics_monthly_list
+      description: |-
+        Read-only access to pre-materialized leave analytics.
+
+        Source rows are owned by `LeaveMonthlyAggregate` (per
+        employee/leave_type/year/month). Composite reports — monthly trend, yearly
+        totals, department breakdown, per-employee summary — are exposed as
+        `@action` endpoints that reduce the fact table on the database side.
+
+        Refresh is gated behind `CanRefreshLeaveAnalytics` and writes via the
+        `core.services.leave_analytics_service` module rather than mutating the
+        table from this view directly.
+      summary: Monthly leave trend for a given year
+      parameters:
+      - in: query
+        name: employee
+        schema:
+          type: integer
+      - in: query
+        name: leave_type
+        schema:
+          type: string
+      - in: query
+        name: month
+        schema:
+          type: integer
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - in: query
+        name: year
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Leave Analytics
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LeaveAnalyticsMonthRow'
+          description: ''
+  /api/leave-analytics/refresh/:
+    post:
+      operationId: leave_analytics_refresh_create
+      description: |-
+        Read-only access to pre-materialized leave analytics.
+
+        Source rows are owned by `LeaveMonthlyAggregate` (per
+        employee/leave_type/year/month). Composite reports — monthly trend, yearly
+        totals, department breakdown, per-employee summary — are exposed as
+        `@action` endpoints that reduce the fact table on the database side.
+
+        Refresh is gated behind `CanRefreshLeaveAnalytics` and writes via the
+        `core.services.leave_analytics_service` module rather than mutating the
+        table from this view directly.
+      summary: Rebuild the analytics fact table
+      tags:
+      - Leave Analytics
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveAnalyticsRefreshResponse'
+          description: ''
+  /api/leave-analytics/yearly-totals/:
+    get:
+      operationId: leave_analytics_yearly_totals_retrieve
+      description: |-
+        Read-only access to pre-materialized leave analytics.
+
+        Source rows are owned by `LeaveMonthlyAggregate` (per
+        employee/leave_type/year/month). Composite reports — monthly trend, yearly
+        totals, department breakdown, per-employee summary — are exposed as
+        `@action` endpoints that reduce the fact table on the database side.
+
+        Refresh is gated behind `CanRefreshLeaveAnalytics` and writes via the
+        `core.services.leave_analytics_service` module rather than mutating the
+        table from this view directly.
+      summary: Yearly totals broken down by leave type
+      parameters:
+      - in: query
+        name: year
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Leave Analytics
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveAnalyticsYearTotals'
+          description: ''
+  /api/leave-balance-snapshots/:
+    get:
+      operationId: leave_balance_snapshots_list
+      description: Read-only access to `LeaveBalanceSnapshot` for trend reporting.
+      summary: List historical leave balance snapshots
+      parameters:
+      - in: query
+        name: employee
+        schema:
+          type: integer
+      - in: query
+        name: leave_type
+        schema:
+          type: string
+          enum:
+          - bereavement
+          - maternity
+          - paternity
+          - personal
+          - sick
+          - unpaid
+          - vacation
+          - wfh
+        description: |-
+          * `vacation` - Vacation
+          * `sick` - Sick Leave
+          * `wfh` - Work From Home
+          * `personal` - Personal
+          * `maternity` - Maternity
+          * `paternity` - Paternity
+          * `bereavement` - Bereavement
+          * `unpaid` - Unpaid Leave
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - in: query
+        name: snapshot_date
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: year
+        schema:
+          type: integer
+      tags:
+      - Leave Analytics
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LeaveBalanceSnapshot'
+          description: ''
   /api/leave-balances/:
     get:
       operationId: leave_balances_list
@@ -13390,6 +13802,124 @@ components:
       - new_allocated
       - old_allocated
       - reason
+    LeaveAnalyticsDepartmentRow:
+      type: object
+      description: One row of `departments` action output (per-department leave totals).
+      properties:
+        department:
+          type: string
+        headcount:
+          type: integer
+        total:
+          type: integer
+        by_type:
+          type: object
+          additionalProperties:
+            type: integer
+      required:
+      - by_type
+      - department
+      - headcount
+      - total
+    LeaveAnalyticsEmployeeSummary:
+      type: object
+      description: One row of `employees` action output (per-employee yearly summary).
+      properties:
+        employee_id:
+          type: integer
+        employee_name:
+          type: string
+        role:
+          type: string
+          nullable: true
+        department:
+          type: string
+          nullable: true
+        total:
+          type: integer
+        vacation_used:
+          type: integer
+        vacation_remaining:
+          type: integer
+        by_type:
+          type: object
+          additionalProperties:
+            type: integer
+      required:
+      - by_type
+      - department
+      - employee_id
+      - employee_name
+      - role
+      - total
+      - vacation_remaining
+      - vacation_used
+    LeaveAnalyticsMonthRow:
+      type: object
+      description: One row of `monthly` action output (year + month bucket totals
+        by type).
+      properties:
+        year:
+          type: integer
+        month:
+          type: integer
+        month_label:
+          type: string
+        total:
+          type: integer
+        by_type:
+          type: object
+          additionalProperties:
+            type: integer
+      required:
+      - by_type
+      - month
+      - month_label
+      - total
+      - year
+    LeaveAnalyticsRefreshResponse:
+      type: object
+      description: Shape of the `refresh` action response.
+      properties:
+        created_count:
+          type: integer
+        updated_count:
+          type: integer
+        deleted_count:
+          type: integer
+          default: 0
+        snapshots:
+          type: object
+          additionalProperties:
+            type: integer
+      required:
+      - created_count
+      - updated_count
+    LeaveAnalyticsYearTotals:
+      type: object
+      description: Shape of `yearly_totals` action output (also doubles as KPI payload).
+      properties:
+        year:
+          type: integer
+        total:
+          type: integer
+        by_type:
+          type: object
+          additionalProperties:
+            type: integer
+        pending_total:
+          type: integer
+        headcount:
+          type: integer
+        on_leave_today:
+          type: integer
+      required:
+      - by_type
+      - headcount
+      - on_leave_today
+      - pending_total
+      - total
+      - year
     LeaveBalance:
       type: object
       description: Serializer for LeaveBalance model.
@@ -13446,6 +13976,148 @@ components:
       - leave_type_display
       - remaining
       - used
+      - year
+    LeaveBalanceSnapshot:
+      type: object
+      description: Read-only serializer for `LeaveBalanceSnapshot` rows.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        employee_id:
+          type: integer
+          readOnly: true
+        employee_name:
+          type: string
+          readOnly: true
+        leave_type:
+          allOf:
+          - $ref: '#/components/schemas/LeaveTypeEnum'
+          readOnly: true
+        leave_type_display:
+          type: string
+          readOnly: true
+        year:
+          type: integer
+          readOnly: true
+          description: Calendar year for the balance
+        snapshot_date:
+          type: string
+          format: date
+          readOnly: true
+          description: Date the snapshot was taken (UTC date)
+        allocated:
+          type: integer
+          readOnly: true
+        used:
+          type: integer
+          readOnly: true
+        carryover:
+          type: integer
+          readOnly: true
+        remaining:
+          type: integer
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - allocated
+      - carryover
+      - created_at
+      - employee_id
+      - employee_name
+      - id
+      - leave_type
+      - leave_type_display
+      - remaining
+      - snapshot_date
+      - updated_at
+      - used
+      - year
+    LeaveMonthlyAggregate:
+      type: object
+      description: Read-only serializer for `LeaveMonthlyAggregate` fact rows.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        employee_id:
+          type: integer
+          readOnly: true
+        employee_name:
+          type: string
+          readOnly: true
+        department:
+          type: string
+          readOnly: true
+        leave_type:
+          allOf:
+          - $ref: '#/components/schemas/LeaveTypeEnum'
+          readOnly: true
+        leave_type_display:
+          type: string
+          readOnly: true
+        year:
+          type: integer
+          readOnly: true
+          description: Calendar year
+        month:
+          type: integer
+          readOnly: true
+          description: Calendar month (1-12)
+        approved_days:
+          type: integer
+          readOnly: true
+          description: Working days from approved leaves in this bucket
+        pending_days:
+          type: integer
+          readOnly: true
+          description: Working days from pending leaves in this bucket
+        rejected_days:
+          type: integer
+          readOnly: true
+          description: Working days from rejected leaves in this bucket
+        cancelled_days:
+          type: integer
+          readOnly: true
+          description: Working days from cancelled leaves in this bucket
+        total_days:
+          type: integer
+          readOnly: true
+        requests_count:
+          type: integer
+          readOnly: true
+          description: Number of distinct LeaveRequest rows contributing to this bucket
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - approved_days
+      - cancelled_days
+      - created_at
+      - department
+      - employee_id
+      - employee_name
+      - id
+      - leave_type
+      - leave_type_display
+      - month
+      - pending_days
+      - rejected_days
+      - requests_count
+      - total_days
+      - updated_at
       - year
     LeavePolicy:
       type: object

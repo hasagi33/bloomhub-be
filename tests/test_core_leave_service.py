@@ -143,6 +143,11 @@ def test_calculate_and_validate_leave_request_branches():
     assert ok is True and msg is None
 
 
+def _next_monday_at_least(min_offset: int) -> date:
+    candidate = date.today() + timedelta(days=min_offset)
+    return candidate + timedelta(days=(7 - candidate.weekday()) % 7)
+
+
 @pytest.mark.django_db
 def test_leave_approval_rejection_and_balance_changes(monkeypatch):
     employee, emp_profile = _create_user("employee")
@@ -150,11 +155,12 @@ def test_leave_approval_rejection_and_balance_changes(monkeypatch):
     hr_user, hr_profile = _create_user("hr")
     _setup_leave(emp_profile, used=2)
 
+    request_start = _next_monday_at_least(7)
     request = LeaveRequest.objects.create(
         employee=emp_profile,
         leave_type=LeaveType.VACATION,
-        start_date=date.today() + timedelta(days=7),
-        end_date=date.today() + timedelta(days=9),
+        start_date=request_start,
+        end_date=request_start + timedelta(days=2),
         reason="holiday",
     )
     Project.objects.create(name="Proj", project_type="internal", status="active")
@@ -192,11 +198,12 @@ def test_leave_approval_rejection_and_balance_changes(monkeypatch):
     assert balance.used == 5
     assert calls
 
+    request2_start = _next_monday_at_least(14)
     request2 = LeaveRequest.objects.create(
         employee=emp_profile,
         leave_type=LeaveType.VACATION,
-        start_date=date.today() + timedelta(days=11),
-        end_date=date.today() + timedelta(days=12),
+        start_date=request2_start,
+        end_date=request2_start + timedelta(days=1),
         reason="retry",
     )
     ok, msg = leave_service.reject_leave_request(request2, lead_profile, "nope")

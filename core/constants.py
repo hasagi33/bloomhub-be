@@ -2,6 +2,8 @@
 
 from decimal import Decimal
 
+from core.enums import LeaveRequestStatus
+
 REGISTER_FIELDS = [
     "username",
     "email",
@@ -133,3 +135,43 @@ DOCUMENT_CATEGORY_DEFAULT_VISIBILITY = {
     "benefits": ["employee"],
     "other": ["employee"],
 }
+
+# Leave Analytics ─────────────────────────────────────────────────────────────
+# Maps each LeaveRequest.status to the LeaveMonthlyAggregate field it feeds.
+# `lead_approved` lands in `pending_days` because the request has not yet
+# completed HR approval, so the days are not yet consumed from the balance.
+LEAVE_ANALYTICS_STATUS_BUCKET = {
+    LeaveRequestStatus.PENDING: "pending_days",
+    LeaveRequestStatus.LEAD_APPROVED: "pending_days",
+    LeaveRequestStatus.APPROVED: "approved_days",
+    LeaveRequestStatus.REJECTED: "rejected_days",
+    LeaveRequestStatus.CANCELLED: "cancelled_days",
+}
+
+LEAVE_ANALYTICS_TRACKED_STATUSES = tuple(LEAVE_ANALYTICS_STATUS_BUCKET.keys())
+
+LEAVE_MONTHLY_AGGREGATE_FILTERSET_FIELDS = [
+    "employee",
+    "leave_type",
+    "year",
+    "month",
+]
+LEAVE_MONTHLY_AGGREGATE_ORDERING_FIELDS = [
+    "year",
+    "month",
+    "leave_type",
+    "approved_days",
+    "updated_at",
+]
+LEAVE_BALANCE_SNAPSHOT_FILTERSET_FIELDS = [
+    "employee",
+    "leave_type",
+    "year",
+    "snapshot_date",
+]
+LEAVE_BALANCE_SNAPSHOT_ORDERING_FIELDS = [
+    "snapshot_date",
+    "year",
+    "leave_type",
+    "remaining",
+]

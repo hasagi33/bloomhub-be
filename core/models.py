@@ -7,7 +7,7 @@ from django.contrib.auth.models import User
 from django.core.files.base import ContentFile
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
-from django.db.models.signals import post_save
+from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
 from django.utils import timezone
 from django.utils.text import slugify
@@ -2227,6 +2227,36 @@ class LeaveRequest(models.Model):
         return overlapping.exists()
 
 
+def _rebuild_leave_analytics_for(employee_id: int) -> None:
+    from django.db import transaction as _transaction
+
+    from core.services.leave_analytics_service import (
+        materialize_leave_monthly_aggregates,
+    )
+
+    def _run():
+        employee = UserProfile.objects.filter(pk=employee_id).first()
+        if employee is None:
+            return
+        materialize_leave_monthly_aggregates(employee=employee)
+
+    _transaction.on_commit(_run)
+
+
+@receiver(post_save, sender=LeaveRequest)
+def rebuild_leave_analytics_on_request_save(sender, instance, **kwargs):
+    if kwargs.get("raw") or instance.employee_id is None:
+        return
+    _rebuild_leave_analytics_for(instance.employee_id)
+
+
+@receiver(post_delete, sender=LeaveRequest)
+def rebuild_leave_analytics_on_request_delete(sender, instance, **kwargs):
+    if instance.employee_id is None:
+        return
+    _rebuild_leave_analytics_for(instance.employee_id)
+
+
 class LeaveApprovalWorkflow(models.Model):
     """
     Manages multi-level approval workflow for leave requests.
@@ -2340,6 +2370,113 @@ class LeaveAdjustment(models.Model):
 
     def __str__(self):
         return f"{self.employee.user.get_full_name()} - {self.get_leave_type_display()} adjusted from {self.old_allocated} to {self.new_allocated} days"
+
+
+# ──────────────────────────────────────────
+# Leave Analytics
+# ──────────────────────────────────────────
+
+
+class LeaveMonthlyAggregate(models.Model):
+    """
+    Pre-computed fact table for leave analytics. One row per
+    (employee, leave_type, year, month) bucket. Sourced from LeaveRequest by
+    `leave_analytics_service.materialize_leave_monthly_aggregates`.
+
+    All `*_days` fields are working-day counts (Mon-Fri), distributed across the
+    months they actually fall in (so a leave spanning two months produces two
+    rows). Downstream reports aggregate further by year, dept, etc.
+    """
+
+    employee = models.ForeignKey(
+        UserProfile,
+        on_delete=models.CASCADE,
+        related_name="leave_monthly_aggregates",
+    )
+    leave_type = models.CharField(max_length=20, choices=LeaveType.choices)
+    year = models.PositiveIntegerField(help_text="Calendar year")
+    month = models.PositiveSmallIntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(12)],
+        help_text="Calendar month (1-12)",
+    )
+    approved_days = models.PositiveIntegerField(
+        default=0, help_text="Working days from approved leaves in this bucket"
+    )
+    pending_days = models.PositiveIntegerField(
+        default=0, help_text="Working days from pending leaves in this bucket"
+    )
+    rejected_days = models.PositiveIntegerField(
+        default=0, help_text="Working days from rejected leaves in this bucket"
+    )
+    cancelled_days = models.PositiveIntegerField(
+        default=0, help_text="Working days from cancelled leaves in this bucket"
+    )
+    requests_count = models.PositiveIntegerField(
+        default=0,
+        help_text="Number of distinct LeaveRequest rows contributing to this bucket",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Leave Monthly Aggregate"
+        verbose_name_plural = "Leave Monthly Aggregates"
+        unique_together = ("employee", "leave_type", "year", "month")
+        ordering = ["-year", "-month", "employee", "leave_type"]
+        indexes = [
+            models.Index(fields=["year", "month"]),
+            models.Index(fields=["leave_type", "year", "month"]),
+            models.Index(fields=["employee", "year"]),
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.employee.user.get_full_name()} · "
+            f"{self.get_leave_type_display()} · {self.year}-{self.month:02d} · "
+            f"{self.approved_days}d approved"
+        )
+
+
+class LeaveBalanceSnapshot(models.Model):
+    """
+    Point-in-time snapshot of a `LeaveBalance` row, kept for historical reporting.
+    Allows charting balance drift over time even after the live `LeaveBalance`
+    has been adjusted, carried over, or reset for a new year.
+    """
+
+    employee = models.ForeignKey(
+        UserProfile,
+        on_delete=models.CASCADE,
+        related_name="leave_balance_snapshots",
+    )
+    leave_type = models.CharField(max_length=20, choices=LeaveType.choices)
+    year = models.PositiveIntegerField(help_text="Calendar year for the balance")
+    snapshot_date = models.DateField(
+        help_text="Date the snapshot was taken (UTC date)",
+    )
+    allocated = models.PositiveIntegerField(default=0)
+    used = models.PositiveIntegerField(default=0)
+    carryover = models.PositiveIntegerField(default=0)
+    remaining = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Leave Balance Snapshot"
+        verbose_name_plural = "Leave Balance Snapshots"
+        unique_together = ("employee", "leave_type", "year", "snapshot_date")
+        ordering = ["-snapshot_date", "employee", "leave_type"]
+        indexes = [
+            models.Index(fields=["snapshot_date"]),
+            models.Index(fields=["employee", "year"]),
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.employee.user.get_full_name()} · "
+            f"{self.get_leave_type_display()} · {self.year} @ {self.snapshot_date} · "
+            f"{self.remaining}d remaining"
+        )
 
 
 # ──────────────────────────────────────────

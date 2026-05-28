@@ -50,6 +50,8 @@ from core.models import (
     LeaveAdjustment,
     LeaveApprovalWorkflow,
     LeaveBalance,
+    LeaveBalanceSnapshot,
+    LeaveMonthlyAggregate,
     LeavePolicy,
     LeaveRequest,
     Notification,
@@ -4500,6 +4502,137 @@ class NotificationSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+# ──────────────────────────────────────────
+# Leave Analytics Serializers
+# ──────────────────────────────────────────
+
+
+class LeaveMonthlyAggregateSerializer(serializers.ModelSerializer):
+    """Read-only serializer for `LeaveMonthlyAggregate` fact rows."""
+
+    employee_id = serializers.IntegerField(read_only=True)
+    employee_name = serializers.CharField(
+        source="employee.user.get_full_name", read_only=True
+    )
+    department = serializers.CharField(source="employee.department", read_only=True)
+    leave_type_display = serializers.CharField(
+        source="get_leave_type_display", read_only=True
+    )
+    total_days = serializers.SerializerMethodField()
+
+    class Meta:
+        model = LeaveMonthlyAggregate
+        fields = [
+            "id",
+            "employee_id",
+            "employee_name",
+            "department",
+            "leave_type",
+            "leave_type_display",
+            "year",
+            "month",
+            "approved_days",
+            "pending_days",
+            "rejected_days",
+            "cancelled_days",
+            "total_days",
+            "requests_count",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
+
+    @extend_schema_field(OpenApiTypes.INT)
+    def get_total_days(self, obj: LeaveMonthlyAggregate) -> int:
+        return (
+            obj.approved_days
+            + obj.pending_days
+            + obj.rejected_days
+            + obj.cancelled_days
+        )
+
+
+class LeaveBalanceSnapshotSerializer(serializers.ModelSerializer):
+    """Read-only serializer for `LeaveBalanceSnapshot` rows."""
+
+    employee_id = serializers.IntegerField(read_only=True)
+    employee_name = serializers.CharField(
+        source="employee.user.get_full_name", read_only=True
+    )
+    leave_type_display = serializers.CharField(
+        source="get_leave_type_display", read_only=True
+    )
+
+    class Meta:
+        model = LeaveBalanceSnapshot
+        fields = [
+            "id",
+            "employee_id",
+            "employee_name",
+            "leave_type",
+            "leave_type_display",
+            "year",
+            "snapshot_date",
+            "allocated",
+            "used",
+            "carryover",
+            "remaining",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
+
+
+class LeaveAnalyticsMonthRowSerializer(serializers.Serializer):
+    """One row of `monthly` action output (year + month bucket totals by type)."""
+
+    year = serializers.IntegerField()
+    month = serializers.IntegerField()
+    month_label = serializers.CharField()
+    total = serializers.IntegerField()
+    by_type = serializers.DictField(child=serializers.IntegerField())
+
+
+class LeaveAnalyticsYearTotalsSerializer(serializers.Serializer):
+    """Shape of `yearly_totals` action output (also doubles as KPI payload)."""
+
+    year = serializers.IntegerField()
+    total = serializers.IntegerField()
+    by_type = serializers.DictField(child=serializers.IntegerField())
+    pending_total = serializers.IntegerField()
+    headcount = serializers.IntegerField()
+    on_leave_today = serializers.IntegerField()
+
+
+class LeaveAnalyticsDepartmentRowSerializer(serializers.Serializer):
+    """One row of `departments` action output (per-department leave totals)."""
+
+    department = serializers.CharField()
+    headcount = serializers.IntegerField()
+    total = serializers.IntegerField()
+    by_type = serializers.DictField(child=serializers.IntegerField())
+
+
+class LeaveAnalyticsEmployeeSummarySerializer(serializers.Serializer):
+    """One row of `employees` action output (per-employee yearly summary)."""
+
+    employee_id = serializers.IntegerField()
+    employee_name = serializers.CharField()
+    role = serializers.CharField(allow_blank=True, allow_null=True)
+    department = serializers.CharField(allow_blank=True, allow_null=True)
+    total = serializers.IntegerField()
+    vacation_used = serializers.IntegerField()
+    vacation_remaining = serializers.IntegerField()
+    by_type = serializers.DictField(child=serializers.IntegerField())
+
+
+class LeaveAnalyticsRefreshResponseSerializer(serializers.Serializer):
+    """Shape of the `refresh` action response."""
+
+    created_count = serializers.IntegerField()
+    updated_count = serializers.IntegerField()
+    deleted_count = serializers.IntegerField(required=False, default=0)
+    snapshots = serializers.DictField(child=serializers.IntegerField(), required=False)
 class BonusRecordSerializer(serializers.ModelSerializer):
     employee_name = serializers.SerializerMethodField(read_only=True)
     bonus_type_display = serializers.CharField(
