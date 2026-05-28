@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 from django.contrib.auth.models import User
@@ -97,6 +97,7 @@ from core.services.profile_change_history import (
     role_value,
 )
 from core.services.time_tracking_service import (
+    allocation_context_for,
     find_duplicate,
     fingerprint_for_entry,
     profile_for_user,
@@ -295,6 +296,8 @@ class UploadRolePermissionsResponseSerializer(serializers.Serializer):
 
 
 class ProjectAssignmentSerializer(serializers.ModelSerializer):
+    DEFAULT_WEEKLY_CAPACITY_HOURS = Decimal("40.00")
+
     project_id = serializers.PrimaryKeyRelatedField(
         source="project", queryset=Project.objects.all()
     )
@@ -312,6 +315,14 @@ class ProjectAssignmentSerializer(serializers.ModelSerializer):
     # ProjectAssignment. The allocation would then be:
     #   employee_active_hours_for_project / total_employee_active_hours * 100
     active_projects_count = serializers.SerializerMethodField()
+    weekly_allocation_hours = serializers.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        min_value=Decimal("0.00"),
+        max_value=Decimal("40.00"),
+        required=False,
+        allow_null=True,
+    )
 
     class Meta:
         model = ProjectAssignment
@@ -323,6 +334,7 @@ class ProjectAssignmentSerializer(serializers.ModelSerializer):
             "employee_name",
             "role",
             "allocation_percentage",
+            "weekly_allocation_hours",
             "active_projects_count",
             "start_date",
             "end_date",
@@ -365,12 +377,49 @@ class ProjectAssignmentSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Allocation must be between 0 and 100.")
         return value
 
+    def _hours_from_percentage(self, value):
+        return (
+            self.DEFAULT_WEEKLY_CAPACITY_HOURS * Decimal(int(value)) / Decimal("100")
+        ).quantize(Decimal("0.01"))
+
+    def _percentage_from_hours(self, value):
+        return int(
+            (
+                Decimal(value) * Decimal("100") / self.DEFAULT_WEEKLY_CAPACITY_HOURS
+            ).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+        )
+
     def validate(self, attrs):
         start = attrs.get("start_date") or getattr(self.instance, "start_date", None)
         end = attrs.get("end_date") or getattr(self.instance, "end_date", None)
         if start and end and end < start:
             raise serializers.ValidationError(
                 {"end_date": "End date cannot be before start date."}
+            )
+        has_hours = "weekly_allocation_hours" in attrs
+        has_percentage = "allocation_percentage" in attrs
+        if has_hours and attrs["weekly_allocation_hours"] is not None:
+            hours = Decimal(attrs["weekly_allocation_hours"])
+            derived_percentage = self._percentage_from_hours(hours)
+            if has_percentage:
+                if derived_percentage != int(attrs["allocation_percentage"]):
+                    raise serializers.ValidationError(
+                        {
+                            "weekly_allocation_hours": (
+                                "weekly_allocation_hours must match "
+                                "allocation_percentage."
+                            )
+                        }
+                    )
+            else:
+                attrs["allocation_percentage"] = derived_percentage
+        elif has_percentage:
+            attrs["weekly_allocation_hours"] = self._hours_from_percentage(
+                attrs["allocation_percentage"]
+            )
+        elif self.instance is None:
+            attrs["weekly_allocation_hours"] = self._hours_from_percentage(
+                attrs.get("allocation_percentage", 100)
             )
         return attrs
 
@@ -447,6 +496,7 @@ class TimeEntrySerializer(serializers.ModelSerializer):
     )
     task_name = serializers.CharField(source="task.name", read_only=True)
     duplicate_of = serializers.SerializerMethodField()
+    allocation_context = serializers.SerializerMethodField()
     audit_events = TimeEntryAuditEventSerializer(many=True, read_only=True)
 
     class Meta:
@@ -470,6 +520,7 @@ class TimeEntrySerializer(serializers.ModelSerializer):
             "source_metadata",
             "duplicate_fingerprint",
             "duplicate_of",
+            "allocation_context",
             "submitted_at",
             "submitted_by",
             "approved_at",
@@ -484,6 +535,7 @@ class TimeEntrySerializer(serializers.ModelSerializer):
         read_only_fields = [
             "duplicate_fingerprint",
             "duplicate_of",
+            "allocation_context",
             "submitted_at",
             "submitted_by",
             "approved_at",
@@ -502,6 +554,13 @@ class TimeEntrySerializer(serializers.ModelSerializer):
     def get_duplicate_of(self, obj):
         duplicate = find_duplicate(obj)
         return duplicate.id if duplicate else None
+
+    def get_allocation_context(self, obj):
+        return allocation_context_for(
+            employee=obj.employee,
+            project_id=obj.project_id,
+            work_date=obj.work_date,
+        )
 
     def to_internal_value(self, data):
         data = data.copy()
@@ -791,6 +850,17 @@ class JiraImportPreviewSerializer(serializers.Serializer):
 
 class JiraImportCommitSerializer(JiraImportPreviewSerializer):
     pass
+
+
+class JiraAssignedIssueImportSerializer(serializers.Serializer):
+    employee_id = serializers.IntegerField()
+    max_results = serializers.IntegerField(required=False, min_value=1, max_value=1000)
+    dry_run = serializers.BooleanField(required=False)
+
+    def validate(self, attrs):
+        attrs.setdefault("max_results", 1000)
+        attrs.setdefault("dry_run", False)
+        return attrs
 
 
 class TempoConnectionSerializer(serializers.ModelSerializer):
@@ -1150,6 +1220,7 @@ class ProjectActiveMemberSerializer(serializers.Serializer):
     name = serializers.SerializerMethodField()
     role = serializers.CharField(allow_null=True)
     allocation_percentage = serializers.IntegerField()
+    weekly_allocation_hours = serializers.DecimalField(max_digits=5, decimal_places=2)
     start_date = serializers.DateField()
     end_date = serializers.DateField(allow_null=True)
 

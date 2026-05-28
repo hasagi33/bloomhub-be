@@ -340,6 +340,7 @@ class ProjectAssignmentAdmin(admin.ModelAdmin):
         "project",
         "role",
         "allocation_percentage",
+        "weekly_allocation_hours",
         "status",
         "start_date",
         "end_date",

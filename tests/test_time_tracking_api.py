@@ -177,6 +177,46 @@ class TimeTrackingAPITestCase(APITestCase):
             TimeEntryAuditEventType.CREATED,
         )
 
+    def test_manual_entry_response_includes_allocation_context(self):
+        ProjectAssignment.objects.create(
+            user_profile=self.employee.profile,
+            project=self.project,
+            allocation_percentage=25,
+            weekly_allocation_hours="10.00",
+            start_date=date(2026, 5, 1),
+            status=ProjectAssignmentStatus.ACTIVE,
+        )
+        self._auth(self.employee)
+
+        response = self.client.post(
+            reverse("core:time-entry-list"),
+            self._entry_payload(work_date="2026-05-18"),
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        context = response.data["allocation_context"]
+        self.assertEqual(context["allocation_status"], "allocated")
+        self.assertEqual(context["allocation_percentage"], "25.00")
+        self.assertEqual(context["weekly_allocation_hours"], "10.00")
+        self.assertEqual(context["planned_daily_hours"], "2.00")
+
+    def test_manual_entry_allows_missing_allocation_context(self):
+        self._auth(self.employee)
+
+        response = self.client.post(
+            reverse("core:time-entry-list"),
+            self._entry_payload(
+                project_id=self.other_project.id, task_id=self.other_task.id
+            ),
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        context = response.data["allocation_context"]
+        self.assertEqual(context["allocation_status"], "unallocated")
+        self.assertIsNone(context["weekly_allocation_hours"])
+
     def test_manual_entry_preserves_iso_start_time_wall_clock(self):
         self._auth(self.employee)
         response = self.client.post(
@@ -520,6 +560,32 @@ class TimeTrackingAPITestCase(APITestCase):
         self.assertEqual(response.data["employee_id"], self.employee.profile.id)
         self.assertEqual(response.data["planned_hours"], "40.00")
 
+    def test_weekly_summary_uses_assignment_weekly_allocation_hours(self):
+        ProjectAssignment.objects.create(
+            user_profile=self.employee.profile,
+            project=self.project,
+            allocation_percentage=25,
+            weekly_allocation_hours="12.50",
+            start_date=date(2026, 5, 18),
+            status=ProjectAssignmentStatus.ACTIVE,
+        )
+        self._auth(self.employee)
+
+        response = self.client.get(
+            reverse("core:time_tracking_weekly_summary"),
+            {"week_start": "2026-05-18"},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["planned_hours"], "12.50")
+        self.assertEqual(
+            response.data["projects"][0]["weekly_allocation_hours"], "12.50"
+        )
+        self.assertEqual(
+            response.data["projects"][0]["assignments"][0]["weekly_allocation_hours"],
+            "12.50",
+        )
+
     def test_active_allocations_hide_ended_and_archived_assignments(self):
         archived = Project.objects.create(
             name="Archived",
@@ -559,6 +625,11 @@ class TimeTrackingAPITestCase(APITestCase):
         self.assertEqual(len(response.data["assignments"]), 1)
         self.assertEqual(response.data["assignments"][0]["project_id"], self.project.id)
         self.assertEqual(response.data["remaining_allocation_percentage"], "40.00")
+        self.assertEqual(response.data["total_weekly_allocation_hours"], "24.00")
+        self.assertEqual(response.data["remaining_weekly_allocation_hours"], "16.00")
+        self.assertEqual(
+            response.data["assignments"][0]["weekly_allocation_hours"], "24.00"
+        )
 
     def test_manager_can_view_direct_report_weekly_summary(self):
         ProjectAssignment.objects.create(
@@ -1219,6 +1290,273 @@ class TimeTrackingAPITestCase(APITestCase):
             self.other_project.id,
         )
 
+    def _assigned_issue_response(self, issues, *, is_last=True, next_page_token=""):
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.headers = {}
+        mock_response.json.return_value = {
+            "issues": issues,
+            "isLast": is_last,
+            "nextPageToken": next_page_token,
+        }
+        return mock_response
+
+    def _jira_assigned_issue(self, **overrides):
+        payload = {
+            "id": "70001",
+            "key": "BHB-123",
+            "fields": {
+                "summary": "Build assigned issue import",
+                "description": {
+                    "type": "doc",
+                    "content": [
+                        {
+                            "type": "paragraph",
+                            "content": [{"type": "text", "text": "Sync task details"}],
+                        }
+                    ],
+                },
+                "project": {"key": "BHB", "name": "BloomHub"},
+                "status": {"name": "In Progress"},
+                "updated": "2026-05-25T10:00:00.000+0000",
+            },
+        }
+        payload.update(overrides)
+        return payload
+
+    def _jira_connection(self):
+        connection = JiraConnection.get_solo()
+        connection.base_url = "https://example.atlassian.net"
+        connection.auth_email = "admin@example.com"
+        connection.set_api_token("secret")
+        connection.enabled = True
+        connection.save()
+        return connection
+
+    def test_jira_assigned_issue_import_creates_project_task_and_mappings(self):
+        self._auth(self.manager)
+        self._jira_connection()
+        JiraUserMapping.objects.create(
+            jira_account_id="acct-1",
+            jira_display_name="Employee Jira",
+            employee=self.employee.profile,
+        )
+
+        with patch(
+            "core.services.jira_time_import_service.requests.get",
+            return_value=self._assigned_issue_response([self._jira_assigned_issue()]),
+        ) as get:
+            response = self.client.post(
+                reverse("core:time_jira_assigned_issue_import"),
+                {"employee_id": self.employee.profile.id},
+                format="json",
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["counts"]["created_projects"], 1)
+        self.assertEqual(response.data["counts"]["created_tasks"], 1)
+        self.assertEqual(response.data["counts"]["created_issue_mappings"], 1)
+        self.assertIn('assignee = "acct-1"', get.call_args.kwargs["params"]["jql"])
+        project = Project.objects.get(name="BloomHub")
+        self.assertEqual(project.project_type, ProjectType.INTERNAL)
+        self.assertEqual(project.status, ProjectStatus.ACTIVE)
+        task = TimeTask.objects.get(jira_issue_key="BHB-123")
+        self.assertEqual(task.project, project)
+        self.assertEqual(task.name, "Build assigned issue import")
+        self.assertEqual(task.description, "Sync task details")
+        self.assertTrue(task.is_active)
+        self.assertTrue(
+            JiraProjectMapping.objects.filter(
+                jira_project_key="BHB", project=project, is_active=True
+            ).exists()
+        )
+        self.assertTrue(
+            JiraIssueMapping.objects.filter(
+                jira_issue_key="BHB-123", jira_issue_id="70001", task=task
+            ).exists()
+        )
+
+    def test_jira_assigned_issue_import_is_idempotent_and_updates_task(self):
+        self._auth(self.manager)
+        self._jira_connection()
+        JiraUserMapping.objects.create(
+            jira_account_id="acct-1",
+            jira_display_name="Employee Jira",
+            employee=self.employee.profile,
+        )
+        JiraProjectMapping.objects.create(
+            jira_project_key="BHB",
+            jira_project_name="BloomHub",
+            project=self.project,
+        )
+        task = TimeTask.objects.create(
+            project=self.project,
+            name="Old summary",
+            description="Old description",
+            jira_issue_key="BHB-123",
+            jira_project_key="BHB",
+            is_active=False,
+        )
+        JiraIssueMapping.objects.create(
+            jira_issue_key="BHB-123",
+            jira_issue_id="old",
+            task=task,
+            is_active=False,
+        )
+
+        issue = self._jira_assigned_issue(
+            id="70002",
+            fields={
+                "summary": "Updated summary",
+                "description": "Updated description",
+                "project": {"key": "BHB", "name": "BloomHub"},
+                "status": {"name": "Done"},
+                "updated": "2026-05-25T10:00:00.000+0000",
+            },
+        )
+        with patch(
+            "core.services.jira_time_import_service.requests.get",
+            return_value=self._assigned_issue_response([issue]),
+        ):
+            response = self.client.post(
+                reverse("core:time_jira_assigned_issue_import"),
+                {"employee_id": self.employee.profile.id},
+                format="json",
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["counts"]["created_projects"], 0)
+        self.assertEqual(response.data["counts"]["created_tasks"], 0)
+        self.assertEqual(response.data["counts"]["updated_tasks"], 1)
+        self.assertEqual(response.data["counts"]["updated_issue_mappings"], 1)
+        self.assertEqual(TimeTask.objects.filter(jira_issue_key="BHB-123").count(), 1)
+        task.refresh_from_db()
+        self.assertEqual(task.name, "Updated summary")
+        self.assertEqual(task.description, "Updated description")
+        self.assertTrue(task.is_active)
+        mapping = JiraIssueMapping.objects.get(jira_issue_key="BHB-123")
+        self.assertEqual(mapping.jira_issue_id, "70002")
+        self.assertTrue(mapping.is_active)
+
+    def test_jira_assigned_issue_import_dry_run_does_not_create_rows(self):
+        self._auth(self.manager)
+        self._jira_connection()
+        JiraUserMapping.objects.create(
+            jira_account_id="acct-1",
+            jira_display_name="Employee Jira",
+            employee=self.employee.profile,
+        )
+
+        with patch(
+            "core.services.jira_time_import_service.requests.get",
+            return_value=self._assigned_issue_response([self._jira_assigned_issue()]),
+        ):
+            response = self.client.post(
+                reverse("core:time_jira_assigned_issue_import"),
+                {"employee_id": self.employee.profile.id, "dry_run": True},
+                format="json",
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["dry_run"])
+        self.assertEqual(response.data["counts"]["created_projects"], 1)
+        self.assertEqual(response.data["counts"]["created_tasks"], 1)
+        self.assertFalse(Project.objects.filter(name="BloomHub").exists())
+        self.assertFalse(TimeTask.objects.filter(jira_issue_key="BHB-123").exists())
+        self.assertFalse(
+            JiraProjectMapping.objects.filter(jira_project_key="BHB").exists()
+        )
+        self.assertFalse(
+            JiraIssueMapping.objects.filter(jira_issue_key="BHB-123").exists()
+        )
+
+    def test_jira_assigned_issue_import_paginates_jira_results(self):
+        self._auth(self.manager)
+        self._jira_connection()
+        JiraUserMapping.objects.create(
+            jira_account_id="acct-1",
+            jira_display_name="Employee Jira",
+            employee=self.employee.profile,
+        )
+
+        first_issue = self._jira_assigned_issue()
+        second_issue = self._jira_assigned_issue(
+            id="70002",
+            key="BHB-124",
+            fields={
+                "summary": "Second assigned issue",
+                "description": "",
+                "project": {"key": "BHB", "name": "BloomHub"},
+                "status": {"name": "To Do"},
+                "updated": "2026-05-24T10:00:00.000+0000",
+            },
+        )
+        responses = [
+            self._assigned_issue_response(
+                [first_issue], is_last=False, next_page_token="page-2"
+            ),
+            self._assigned_issue_response([second_issue]),
+        ]
+
+        with patch(
+            "core.services.jira_time_import_service.requests.get",
+            side_effect=responses,
+        ) as get:
+            response = self.client.post(
+                reverse("core:time_jira_assigned_issue_import"),
+                {"employee_id": self.employee.profile.id},
+                format="json",
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["row_count"], 2)
+        self.assertEqual(response.data["counts"]["created_tasks"], 2)
+        self.assertEqual(get.call_count, 2)
+        self.assertEqual(
+            get.call_args_list[1].kwargs["params"]["nextPageToken"], "page-2"
+        )
+
+    def test_jira_assigned_issue_import_requires_enabled_connection(self):
+        self._auth(self.manager)
+        JiraUserMapping.objects.create(
+            jira_account_id="acct-1",
+            jira_display_name="Employee Jira",
+            employee=self.employee.profile,
+        )
+
+        response = self.client.post(
+            reverse("core:time_jira_assigned_issue_import"),
+            {"employee_id": self.employee.profile.id},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("Jira connection is disabled", str(response.data))
+
+    def test_jira_assigned_issue_import_requires_jira_user_mapping(self):
+        self._auth(self.manager)
+        self._jira_connection()
+
+        response = self.client.post(
+            reverse("core:time_jira_assigned_issue_import"),
+            {"employee_id": self.employee.profile.id},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("active Jira user mapping", str(response.data))
+
+    def test_jira_assigned_issue_import_requires_admin_permission(self):
+        self._auth(self.employee)
+
+        response = self.client.post(
+            reverse("core:time_jira_assigned_issue_import"),
+            {"employee_id": self.employee.profile.id},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
     def test_tempo_preview_validates_missing_mappings(self):
         self._auth(self.manager)
 
@@ -1459,6 +1797,64 @@ class TimeTrackingAPITestCase(APITestCase):
                 source_external_id="tw-10001",
             ).exists()
         )
+
+    def test_tempo_preview_flags_duplicate_rows_in_same_import(self):
+        self._create_tempo_mappings()
+        self._auth(self.manager)
+
+        response = self.client.post(
+            reverse("core:time_tempo_import_preview"),
+            {
+                "date_from": "2026-05-18",
+                "date_to": "2026-05-24",
+                "worklogs": [
+                    self._tempo_worklog(),
+                    self._tempo_worklog(tempoWorklogId="tw-duplicate"),
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["rows"][0]["action"], "create")
+        self.assertEqual(response.data["rows"][1]["action"], "skip")
+        self.assertEqual(
+            response.data["rows"][1]["duplicate_worklog_id"],
+            "tw-10001",
+        )
+        self.assertEqual(
+            response.data["rows"][1]["validation_messages"][0]["code"],
+            "duplicate",
+        )
+
+    def test_tempo_commit_marks_batch_row_skipped_for_duplicate(self):
+        self._create_tempo_mappings()
+        self._auth(self.manager)
+
+        response = self.client.post(
+            reverse("core:time_tempo_import_commit"),
+            {
+                "date_from": "2026-05-18",
+                "date_to": "2026-05-24",
+                "worklogs": [
+                    self._tempo_worklog(),
+                    self._tempo_worklog(tempoWorklogId="tw-duplicate"),
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["counts"]["created"], 1)
+        self.assertEqual(response.data["counts"]["skipped"], 1)
+        self.assertEqual(
+            TimeEntry.objects.filter(source_type=TimeEntrySourceType.TEMPO).count(), 1
+        )
+        batch = TimeImportBatch.objects.get(pk=response.data["batch_id"])
+        rows = list(batch.rows.order_by("row_index"))
+        self.assertEqual(rows[0].status, ImportRowStatus.COMMITTED)
+        self.assertEqual(rows[1].status, ImportRowStatus.SKIPPED)
+        self.assertEqual(rows[1].validation_messages[0]["code"], "duplicate")
 
     def _csv_file(self, name="timesheet.csv", rows=None):
         if rows is None:

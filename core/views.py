@@ -49,6 +49,7 @@ from .constants import (
     EMPLOYEE_PROFILE_SEARCH_FIELDS,
 )
 from .enums import (
+    ProjectAssignmentStatus,
     TimeEntryAuditEventType,
     TimeEntrySourceChangeFlag,
     TimeEntrySourceType,
@@ -187,6 +188,7 @@ from .serializers import (
     EmployeeProfileChangeHistorySerializer,
     EmployeeProfileSerializer,
     GoogleExchangeSerializer,
+    JiraAssignedIssueImportSerializer,
     JiraConnectionSerializer,
     JiraImportCommitSerializer,
     JiraImportPreviewSerializer,
@@ -320,10 +322,12 @@ from .services.document_time_import_service import (
     validate_batch_rows,
 )
 from .services.jira_time_import_service import (
+    JiraAssignedIssueImportOptions,
     JiraImportFilters,
     commit_jira_worklogs,
     discover_jira_project_ids,
     fetch_jira_worklogs,
+    import_assigned_jira_issues,
     preview_jira_worklogs,
     require_jira_admin,
     test_jira_connection,
@@ -1950,6 +1954,18 @@ class ProjectAssignmentListCreateView(APIView):
     def _get_project(self, pk):
         return Project.objects.filter(pk=pk).first()
 
+    def _close_overlapping_history(self, assignment):
+        previous_assignments = ProjectAssignment.objects.filter(
+            user_profile=assignment.user_profile,
+            project=assignment.project,
+            start_date__lt=assignment.start_date,
+        ).filter(Q(end_date__isnull=True) | Q(end_date__gte=assignment.start_date))
+        for previous in previous_assignments:
+            previous.end_date = assignment.start_date - timedelta(days=1)
+            if previous.status == ProjectAssignmentStatus.ACTIVE:
+                previous.status = ProjectAssignmentStatus.COMPLETED
+            previous.save(update_fields=["end_date", "status", "updated_at"])
+
     @extend_schema(responses={200: ProjectAssignmentSerializer(many=True), 404: None})
     def get(self, request, project_pk):
         project = self._get_project(project_pk)
@@ -1989,7 +2005,9 @@ class ProjectAssignmentListCreateView(APIView):
         serializer = ProjectAssignmentSerializer(data=data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        assignment = serializer.save()
+        with transaction.atomic():
+            assignment = serializer.save()
+            self._close_overlapping_history(assignment)
         return Response(
             ProjectAssignmentSerializer(assignment).data,
             status=status.HTTP_201_CREATED,
@@ -2001,6 +2019,7 @@ class ProjectAssignmentDetailView(APIView):
     """Retrieve, update, or end a single project assignment."""
 
     permission_classes = [IsAuthenticated]
+    ALLOCATION_FIELDS = {"allocation_percentage", "weekly_allocation_hours"}
 
     def _get_assignment(self, pk):
         return (
@@ -2008,6 +2027,64 @@ class ProjectAssignmentDetailView(APIView):
             .filter(pk=pk)
             .first()
         )
+
+    def _allocation_change_requires_split(self, assignment, validated_data):
+        if not self.ALLOCATION_FIELDS.intersection(validated_data):
+            return False
+        today = timezone.localdate()
+        if assignment.status != ProjectAssignmentStatus.ACTIVE:
+            return False
+        if assignment.start_date >= today:
+            return False
+        if assignment.end_date and assignment.end_date < today:
+            return False
+
+        if "allocation_percentage" in validated_data and int(
+            validated_data["allocation_percentage"]
+        ) != int(assignment.allocation_percentage):
+            return True
+        if "weekly_allocation_hours" in validated_data:
+            old_hours = (
+                Decimal(assignment.weekly_allocation_hours)
+                if assignment.weekly_allocation_hours is not None
+                else None
+            )
+            new_hours = (
+                Decimal(validated_data["weekly_allocation_hours"])
+                if validated_data["weekly_allocation_hours"] is not None
+                else None
+            )
+            return old_hours != new_hours
+        return False
+
+    @transaction.atomic
+    def _split_assignment_for_future_allocation(self, assignment, validated_data):
+        today = timezone.localdate()
+        original_end_date = assignment.end_date
+        assignment.end_date = today - timedelta(days=1)
+        assignment.status = ProjectAssignmentStatus.COMPLETED
+        assignment.save(update_fields=["end_date", "status", "updated_at"])
+
+        new_end_date = validated_data.get("end_date", original_end_date)
+        if new_end_date and new_end_date < today:
+            new_end_date = None
+
+        new_assignment = ProjectAssignment.objects.create(
+            user_profile=validated_data.get("user_profile", assignment.user_profile),
+            project=validated_data.get("project", assignment.project),
+            role=validated_data.get("role", assignment.role),
+            allocation_percentage=validated_data.get(
+                "allocation_percentage", assignment.allocation_percentage
+            ),
+            weekly_allocation_hours=validated_data.get(
+                "weekly_allocation_hours", assignment.weekly_allocation_hours
+            ),
+            start_date=today,
+            end_date=new_end_date,
+            status=validated_data.get("status", ProjectAssignmentStatus.ACTIVE),
+            notes=validated_data.get("notes", assignment.notes),
+        )
+        return new_assignment
 
     @extend_schema(responses={200: ProjectAssignmentSerializer, 404: None})
     def get(self, request, pk):
@@ -2045,7 +2122,14 @@ class ProjectAssignmentDetailView(APIView):
         )
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        assignment = serializer.save()
+        if self._allocation_change_requires_split(
+            assignment, serializer.validated_data
+        ):
+            assignment = self._split_assignment_for_future_allocation(
+                assignment, serializer.validated_data
+            )
+        else:
+            assignment = serializer.save()
         return Response(ProjectAssignmentSerializer(assignment).data)
 
     @extend_schema(responses={204: None, 403: None, 404: None})
@@ -7188,6 +7272,32 @@ class JiraImportPreviewView(APIView):
             worklogs = fetch_jira_worklogs(JiraConnection.get_solo(), filters_obj)
         return Response(
             preview_jira_worklogs(filters=filters_obj, raw_worklogs=worklogs)
+        )
+
+
+@extend_schema(tags=["Time Tracking"])
+class JiraAssignedIssueImportView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        request=JiraAssignedIssueImportSerializer,
+        responses={200: None, 400: None, 403: None},
+    )
+    def post(self, request):
+        require_jira_admin(request.user)
+        serializer = JiraAssignedIssueImportSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        return Response(
+            import_assigned_jira_issues(
+                user=request.user,
+                connection=JiraConnection.get_solo(),
+                options=JiraAssignedIssueImportOptions(
+                    employee_id=data["employee_id"],
+                    max_results=data["max_results"],
+                    dry_run=data["dry_run"],
+                ),
+            )
         )
 
 

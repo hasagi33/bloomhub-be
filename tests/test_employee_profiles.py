@@ -5,10 +5,13 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework import status
 from rest_framework.test import APITestCase
 
+from core.enums import ProjectAssignmentStatus, ProjectType
 from core.models import (
     EmployeeDocument,
     EmployeeProfileChangeHistory,
     Permission,
+    Project,
+    ProjectAssignment,
     Role,
     SalaryRecord,
     TechnologyTag,
@@ -74,6 +77,29 @@ class EmployeeProfileTestCase(APITestCase):
 
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]["email"], "normal@test.com")
+
+    def test_employee_profile_includes_assignment_weekly_allocation_hours(self):
+        project = Project.objects.create(
+            name="Profile Project",
+            project_type=ProjectType.INTERNAL,
+        )
+        ProjectAssignment.objects.create(
+            user_profile=self.normal_profile,
+            project=project,
+            allocation_percentage=40,
+            weekly_allocation_hours="16.00",
+            start_date=date(2026, 5, 1),
+            status=ProjectAssignmentStatus.ACTIVE,
+        )
+
+        self.client.force_authenticate(user=self.hr_user)
+        res = self.client.get(f"/api/employees/{self.normal_profile.id}/")
+
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            res.data["assigned_projects"][0]["weekly_allocation_hours"], "16.00"
+        )
+        self.assertEqual(res.data["assigned_projects"][0]["allocation_percentage"], 40)
 
     def test_hr_can_create_employee(self):
         hr_user = User.objects.get(id=self.hr_user.id)

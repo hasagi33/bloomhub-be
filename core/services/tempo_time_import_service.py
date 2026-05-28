@@ -753,6 +753,7 @@ def preview_tempo_worklogs(
     raw_worklogs: list[dict[str, Any]],
 ) -> dict[str, Any]:
     rows = []
+    seen_fingerprints: dict[str, dict[str, Any]] = {}
     for raw in raw_worklogs:
         row = normalize_tempo_worklog(raw)
         if not _passes_filters(row, filters):
@@ -837,13 +838,23 @@ def preview_tempo_worklogs(
                 )
                 .first()
             )
+            if duplicate is None and fingerprint in seen_fingerprints:
+                duplicate = seen_fingerprints[fingerprint]
             if duplicate:
                 messages.append(
                     {
                         "code": "duplicate",
-                        "message": "Matching time entry already exists from another source.",
+                        "message": (
+                            "Matching time entry already exists or appears more "
+                            "than once in this Tempo import."
+                        ),
                     }
                 )
+            else:
+                seen_fingerprints[fingerprint] = {
+                    "id": None,
+                    "worklog_id": row["worklog_id"],
+                }
 
         status = "valid"
         action = "create"
@@ -879,7 +890,10 @@ def preview_tempo_worklogs(
                 "comment": row["comment"],
                 "status": status,
                 "action": action,
-                "duplicate_entry_id": duplicate.id if duplicate else None,
+                "duplicate_entry_id": getattr(duplicate, "id", None),
+                "duplicate_worklog_id": (
+                    duplicate.get("worklog_id") if isinstance(duplicate, dict) else None
+                ),
                 "existing_entry_id": existing.id if existing else None,
                 "validation_messages": messages,
                 "source_metadata": _source_metadata(row),
@@ -1011,6 +1025,17 @@ def commit_tempo_worklogs(
         entry.duplicate_fingerprint = fingerprint_for_entry(entry)
         duplicate = find_duplicate(entry)
         if duplicate:
+            row["action"] = "skip"
+            row["duplicate_entry_id"] = duplicate.id
+            row.setdefault("validation_messages", []).append(
+                {
+                    "code": "duplicate",
+                    "message": (
+                        "Matching time entry already exists or appears more than "
+                        "once in this Tempo import."
+                    ),
+                }
+            )
             counts["skipped"] += 1
             continue
         entry.full_clean()

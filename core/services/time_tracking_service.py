@@ -27,6 +27,19 @@ TIME_TRACKING_MODULE = "Time Tracking"
 DEFAULT_WEEKLY_CAPACITY_HOURS = Decimal("40.00")
 
 
+def weekly_hours_for_assignment(
+    assignment: ProjectAssignment,
+    weekly_capacity_hours: Decimal = DEFAULT_WEEKLY_CAPACITY_HOURS,
+) -> Decimal:
+    if assignment.weekly_allocation_hours is not None:
+        return Decimal(assignment.weekly_allocation_hours)
+    return (
+        weekly_capacity_hours
+        * Decimal(assignment.allocation_percentage)
+        / Decimal("100")
+    ).quantize(Decimal("0.01"))
+
+
 def has_time_tracking_permission(user, feature_action: str) -> bool:
     if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
         return True
@@ -140,20 +153,20 @@ def active_time_tracking_allocations(*, employee: UserProfile, work_date: date):
     )
     rows = []
     total = Decimal("0.00")
+    total_hours = Decimal("0.00")
     for assignment in assignments:
         allocation = Decimal(assignment.allocation_percentage)
+        weekly_hours = weekly_hours_for_assignment(assignment)
         total += allocation
+        total_hours += weekly_hours
         rows.append(
             {
                 "assignment_id": assignment.id,
                 "project_id": assignment.project_id,
                 "project_name": assignment.project.name,
                 "allocation_percentage": str(allocation.quantize(Decimal("0.01"))),
-                "planned_weekly_hours": str(
-                    (
-                        DEFAULT_WEEKLY_CAPACITY_HOURS * allocation / Decimal("100")
-                    ).quantize(Decimal("0.01"))
-                ),
+                "weekly_allocation_hours": str(weekly_hours.quantize(Decimal("0.01"))),
+                "planned_weekly_hours": str(weekly_hours.quantize(Decimal("0.01"))),
                 "start_date": assignment.start_date.isoformat(),
                 "end_date": (
                     assignment.end_date.isoformat() if assignment.end_date else None
@@ -168,7 +181,59 @@ def active_time_tracking_allocations(*, employee: UserProfile, work_date: date):
         "remaining_allocation_percentage": str(
             max(Decimal("0.00"), Decimal("100.00") - total).quantize(Decimal("0.01"))
         ),
+        "total_weekly_allocation_hours": str(total_hours.quantize(Decimal("0.01"))),
+        "remaining_weekly_allocation_hours": str(
+            max(Decimal("0.00"), DEFAULT_WEEKLY_CAPACITY_HOURS - total_hours).quantize(
+                Decimal("0.01")
+            )
+        ),
         "assignments": rows,
+    }
+
+
+def allocation_context_for(
+    *,
+    employee: UserProfile,
+    project_id: int,
+    work_date: date,
+    weekly_capacity_hours: Decimal = DEFAULT_WEEKLY_CAPACITY_HOURS,
+) -> dict[str, Any]:
+    assignment = (
+        ProjectAssignment.objects.select_related("project")
+        .filter(
+            user_profile=employee,
+            project_id=project_id,
+            start_date__lte=work_date,
+        )
+        .filter(Q(end_date__isnull=True) | Q(end_date__gte=work_date))
+        .order_by("-start_date", "-updated_at")
+        .first()
+    )
+    if assignment is None:
+        return {
+            "allocation_status": "unallocated",
+            "assignment_id": None,
+            "allocation_percentage": None,
+            "weekly_allocation_hours": None,
+            "planned_daily_hours": None,
+            "start_date": None,
+            "end_date": None,
+            "project_status": None,
+        }
+
+    weekly_hours = weekly_hours_for_assignment(assignment, weekly_capacity_hours)
+    planned_daily_hours = (weekly_hours / Decimal("5")).quantize(Decimal("0.01"))
+    return {
+        "allocation_status": "allocated",
+        "assignment_id": assignment.id,
+        "allocation_percentage": str(
+            Decimal(assignment.allocation_percentage).quantize(Decimal("0.01"))
+        ),
+        "weekly_allocation_hours": str(weekly_hours.quantize(Decimal("0.01"))),
+        "planned_daily_hours": str(planned_daily_hours),
+        "start_date": assignment.start_date.isoformat(),
+        "end_date": assignment.end_date.isoformat() if assignment.end_date else None,
+        "project_status": assignment.project.status,
     }
 
 
@@ -264,8 +329,6 @@ def weekly_allocation_summary(
     week_end = week_start + timedelta(days=6)
     days = _date_range(week_start, week_end)
     weekday_count = sum(1 for day in days if day.weekday() < 5) or 5
-    daily_capacity = weekly_capacity_hours / Decimal(weekday_count)
-
     assignments = list(
         ProjectAssignment.objects.select_related("project")
         .filter(user_profile=employee)
@@ -287,6 +350,7 @@ def weekly_allocation_summary(
                 "planned_hours": Decimal("0.00"),
                 "actual_hours": Decimal("0.00"),
                 "allocation_percentage": Decimal("0.00"),
+                "weekly_allocation_hours": Decimal("0.00"),
                 "allocation_status": "allocated",
                 "assignments": [],
             },
@@ -300,13 +364,12 @@ def weekly_allocation_summary(
             if assignment.end_date and day > assignment.end_date:
                 continue
             active_days.append(day)
-        planned = (
-            daily_capacity
-            * Decimal(assignment.allocation_percentage)
-            / Decimal("100")
-            * Decimal(len(active_days))
-        )
+        weekly_hours = weekly_hours_for_assignment(assignment, weekly_capacity_hours)
+        planned = weekly_hours / Decimal(weekday_count) * Decimal(len(active_days))
         row["planned_hours"] += planned
+        row["weekly_allocation_hours"] += (
+            weekly_hours * Decimal(len(active_days)) / Decimal(weekday_count)
+        )
         row["allocation_percentage"] += (
             Decimal(assignment.allocation_percentage)
             * Decimal(len(active_days))
@@ -316,6 +379,7 @@ def weekly_allocation_summary(
             {
                 "assignment_id": assignment.id,
                 "allocation_percentage": assignment.allocation_percentage,
+                "weekly_allocation_hours": str(weekly_hours.quantize(Decimal("0.01"))),
                 "start_date": assignment.start_date.isoformat(),
                 "end_date": (
                     assignment.end_date.isoformat() if assignment.end_date else None
@@ -344,6 +408,7 @@ def weekly_allocation_summary(
                 "planned_hours": Decimal("0.00"),
                 "actual_hours": Decimal("0.00"),
                 "allocation_percentage": Decimal("0.00"),
+                "weekly_allocation_hours": Decimal("0.00"),
                 "allocation_status": "unallocated",
                 "assignments": [],
             },
@@ -376,6 +441,7 @@ def weekly_allocation_summary(
                 "actual_hours": money(row["actual_hours"]),
                 "variance_hours": money(row["actual_hours"] - row["planned_hours"]),
                 "allocation_percentage": money(row["allocation_percentage"]),
+                "weekly_allocation_hours": money(row["weekly_allocation_hours"]),
                 "allocation_status": row["allocation_status"],
                 "assignments": row["assignments"],
             }

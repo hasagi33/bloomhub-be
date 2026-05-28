@@ -1,4 +1,5 @@
 from datetime import date
+from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.urls import reverse
@@ -16,6 +17,7 @@ from core.models import (
     ProjectAssignment,
     Role,
 )
+from core.services.time_tracking_service import weekly_allocation_summary
 
 
 class ProjectsAPITestCase(APITestCase):
@@ -206,6 +208,122 @@ class ProjectsAPITestCase(APITestCase):
         self.assertEqual(response.data["name"], "Alpha")
         member_ids = {m["user_profile_id"] for m in response.data["active_members"]}
         self.assertEqual(member_ids, {self.employee_user.profile.id})
+        member = response.data["active_members"][0]
+        self.assertEqual(member["weekly_allocation_hours"], "40.00")
+
+    def test_assignment_create_accepts_weekly_allocation_hours(self):
+        self._auth(self.hr_user)
+
+        response = self.client.post(
+            reverse("core:project_assignment_list", args=[self.gamma.pk]),
+            {
+                "user_profile_id": self.outsider_user.profile.id,
+                "role": "Developer",
+                "weekly_allocation_hours": "12.50",
+                "start_date": "2026-05-01",
+                "status": ProjectAssignmentStatus.ACTIVE,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["weekly_allocation_hours"], "12.50")
+        self.assertEqual(response.data["allocation_percentage"], 31)
+
+    def test_assignment_rejects_mismatched_hours_and_percentage(self):
+        self._auth(self.hr_user)
+
+        response = self.client.post(
+            reverse("core:project_assignment_list", args=[self.gamma.pk]),
+            {
+                "user_profile_id": self.outsider_user.profile.id,
+                "allocation_percentage": 50,
+                "weekly_allocation_hours": "12.50",
+                "start_date": "2026-05-01",
+                "status": ProjectAssignmentStatus.ACTIVE,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("weekly_allocation_hours", response.data)
+
+    @patch("core.views.timezone.localdate", return_value=date(2026, 5, 21))
+    def test_assignment_allocation_change_only_affects_today_and_future(self, _today):
+        assignment = ProjectAssignment.objects.create(
+            user_profile=self.outsider_user.profile,
+            project=self.gamma,
+            allocation_percentage=50,
+            weekly_allocation_hours="20.00",
+            start_date=date(2026, 5, 1),
+            status=ProjectAssignmentStatus.ACTIVE,
+        )
+        self._auth(self.hr_user)
+
+        response = self.client.patch(
+            reverse("core:project_assignment_detail", args=[assignment.pk]),
+            {"weekly_allocation_hours": "10.00"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        assignment.refresh_from_db()
+        new_assignment = ProjectAssignment.objects.get(pk=response.data["id"])
+        self.assertNotEqual(new_assignment.id, assignment.id)
+        self.assertEqual(assignment.end_date, date(2026, 5, 20))
+        self.assertEqual(assignment.status, ProjectAssignmentStatus.COMPLETED)
+        self.assertEqual(new_assignment.start_date, date(2026, 5, 21))
+        self.assertEqual(new_assignment.weekly_allocation_hours, 10)
+        self.assertEqual(new_assignment.allocation_percentage, 25)
+
+        past = weekly_allocation_summary(
+            employee=self.outsider_user.profile,
+            week_start=date(2026, 5, 11),
+        )
+        changed_week = weekly_allocation_summary(
+            employee=self.outsider_user.profile,
+            week_start=date(2026, 5, 18),
+        )
+        future = weekly_allocation_summary(
+            employee=self.outsider_user.profile,
+            week_start=date(2026, 5, 25),
+        )
+
+        self.assertEqual(past["planned_hours"], "20.00")
+        self.assertEqual(changed_week["planned_hours"], "16.00")
+        self.assertEqual(future["planned_hours"], "10.00")
+
+    def test_assignment_create_closes_previous_overlap_for_same_member_project(self):
+        existing = ProjectAssignment.objects.create(
+            user_profile=self.outsider_user.profile,
+            project=self.gamma,
+            allocation_percentage=50,
+            weekly_allocation_hours="20.00",
+            start_date=date(2026, 5, 1),
+            status=ProjectAssignmentStatus.ACTIVE,
+        )
+        self._auth(self.hr_user)
+
+        response = self.client.post(
+            reverse("core:project_assignment_list", args=[self.gamma.pk]),
+            {
+                "user_profile_id": self.outsider_user.profile.id,
+                "weekly_allocation_hours": "10.00",
+                "start_date": "2026-05-21",
+                "status": ProjectAssignmentStatus.ACTIVE,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        existing.refresh_from_db()
+        self.assertEqual(existing.end_date, date(2026, 5, 20))
+        self.assertEqual(existing.status, ProjectAssignmentStatus.COMPLETED)
+        changed_week = weekly_allocation_summary(
+            employee=self.outsider_user.profile,
+            week_start=date(2026, 5, 18),
+        )
+        self.assertEqual(changed_week["planned_hours"], "16.00")
 
     def test_detail_not_found(self):
         self._auth(self.admin_user)

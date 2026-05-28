@@ -1089,6 +1089,14 @@ class ProjectAssignment(models.Model):
         validators=[MinValueValidator(0), MaxValueValidator(100)],
         help_text="Percent of full-time allocation, 0–100.",
     )
+    weekly_allocation_hours = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        blank=True,
+        null=True,
+        validators=[MinValueValidator(0), MaxValueValidator(40)],
+        help_text="Planned weekly time allotment for this project assignment.",
+    )
     start_date = models.DateField()
     end_date = models.DateField(blank=True, null=True)
     status = models.CharField(
@@ -1121,12 +1129,28 @@ class ProjectAssignment(models.Model):
             0 <= int(self.allocation_percentage) <= 100
         ):
             errors["allocation_percentage"] = "Allocation must be between 0 and 100."
+        if self.weekly_allocation_hours is not None and not (
+            0 <= self.weekly_allocation_hours <= 40
+        ):
+            errors["weekly_allocation_hours"] = (
+                "Weekly allocation hours must be between 0 and 40."
+            )
         if errors:
             raise ValidationError(errors)
 
     @property
     def is_current(self) -> bool:
         return self.end_date is None and self.status == ProjectAssignmentStatus.ACTIVE
+
+    def save(self, *args, **kwargs):
+        if (
+            self.weekly_allocation_hours is None
+            and self.allocation_percentage is not None
+        ):
+            self.weekly_allocation_hours = (
+                Decimal("40.00") * Decimal(self.allocation_percentage) / Decimal("100")
+            ).quantize(Decimal("0.01"))
+        super().save(*args, **kwargs)
 
     def __str__(self):
         status = "current" if not self.end_date else f"until {self.end_date}"

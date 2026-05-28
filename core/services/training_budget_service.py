@@ -107,10 +107,11 @@ def _maybe_notify_threshold(
     re-notifies.
     """
     allocated = budget.allocated_budget or Decimal("0.00")
-    if allocated <= 0:
+    used = budget.used_budget or Decimal("0.00")
+    if allocated <= 0 and used <= 0:
         return
 
-    ratio = (budget.used_budget or Decimal("0.00")) / allocated
+    ratio = Decimal("1.00") if allocated <= 0 else used / allocated
     above = ratio >= TRAINING_BUDGET_WARNING_THRESHOLD
 
     if above and budget.threshold_notified_at is None:
@@ -123,7 +124,10 @@ def _maybe_notify_threshold(
 
 
 def _send_threshold_notifications(budget: TrainingBudget) -> None:
-    percent = int(round(float(budget.budget_percentage_used)))
+    if budget.allocated_budget <= 0 and budget.used_budget > 0:
+        percent = 100
+    else:
+        percent = int(round(float(budget.budget_percentage_used)))
     exceeded = budget.used_budget > budget.allocated_budget
     notif_type = Notification.Type.ALERT if exceeded else Notification.Type.WARNING
 

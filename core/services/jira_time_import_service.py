@@ -14,6 +14,8 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from core.enums import (
     ImportBatchSource,
+    ProjectStatus,
+    ProjectType,
     TimeEntryAuditEventType,
     TimeEntrySourceChangeFlag,
     TimeEntrySourceType,
@@ -47,6 +49,13 @@ class JiraImportFilters:
     jira_project_key: str = ""
     jira_issue_key: str = ""
     worklog_id: str = ""
+
+
+@dataclass(frozen=True)
+class JiraAssignedIssueImportOptions:
+    employee_id: int
+    max_results: int = 1000
+    dry_run: bool = False
 
 
 def require_jira_admin(user):
@@ -248,6 +257,337 @@ def _fetch_jira_search_issues(
         if payload.get("isLast", True) or not page or not next_page_token:
             break
     return issues
+
+
+def _jql_quote(value: str) -> str:
+    return '"' + (value or "").replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def fetch_jira_assigned_issues(
+    connection: JiraConnection, *, jira_account_id: str, max_results: int = 1000
+) -> list[dict[str, Any]]:
+    if not connection.enabled:
+        raise ValidationError("Jira connection is disabled.")
+    if (
+        not connection.base_url
+        or not connection.auth_email
+        or not connection.has_api_token
+    ):
+        raise ValidationError("Jira connection is not configured.")
+
+    issues: list[dict[str, Any]] = []
+    next_page_token = ""
+    page_size = min(max(max_results, 1), 100)
+    url = f"{connection.base_url.rstrip('/')}/rest/api/3/search/jql"
+    jql = f"assignee = {_jql_quote(jira_account_id)} ORDER BY updated DESC"
+    while len(issues) < max_results:
+        params = {
+            "jql": jql,
+            "fields": [
+                "key",
+                "id",
+                "summary",
+                "description",
+                "project",
+                "status",
+                "assignee",
+                "updated",
+            ],
+            "maxResults": min(page_size, max_results - len(issues)),
+        }
+        if next_page_token:
+            params["nextPageToken"] = next_page_token
+        response = _jira_get(connection, url, params=params, timeout=30)
+        if response.status_code >= 400:
+            raise ValidationError(f"Jira returned HTTP {response.status_code}.")
+        payload = response.json()
+        page = payload.get("issues", [])
+        issues.extend(page)
+        next_page_token = payload.get("nextPageToken") or ""
+        if payload.get("isLast", True) or not page or not next_page_token:
+            break
+    return issues[:max_results]
+
+
+def _jira_doc_text(value: Any) -> str:
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, dict):
+        chunks: list[str] = []
+
+        def walk(node: Any) -> None:
+            if isinstance(node, dict):
+                text = node.get("text")
+                if text:
+                    chunks.append(str(text))
+                for child in node.get("content") or []:
+                    walk(child)
+            elif isinstance(node, list):
+                for child in node:
+                    walk(child)
+
+        walk(value)
+        return " ".join(chunks).strip()
+    return ""
+
+
+def _issue_import_payload(issue: dict[str, Any]) -> dict[str, Any]:
+    fields = issue.get("fields") or {}
+    project = fields.get("project") or {}
+    issue_key = (issue.get("key") or "").strip().upper()
+    project_key = (project.get("key") or _jira_project_key(issue_key)).strip().upper()
+    return {
+        "jira_issue_key": issue_key,
+        "jira_issue_id": str(issue.get("id") or ""),
+        "summary": (fields.get("summary") or issue_key).strip() or issue_key,
+        "description": _jira_doc_text(fields.get("description")),
+        "jira_project_key": project_key,
+        "jira_project_name": (project.get("name") or project_key).strip()
+        or project_key,
+        "status_name": ((fields.get("status") or {}).get("name") or "").strip(),
+        "updated": fields.get("updated") or "",
+    }
+
+
+def _assigned_issue_row_error(payload: dict[str, Any], code: str, message: str):
+    return {
+        "jira_issue_key": payload.get("jira_issue_key", ""),
+        "jira_project_key": payload.get("jira_project_key", ""),
+        "project_id": None,
+        "task_id": None,
+        "action": "error",
+        "validation_messages": [{"code": code, "message": message}],
+    }
+
+
+def _task_name_for_issue(
+    *, project: Project, summary: str, issue_key: str, current_task: TimeTask | None
+) -> str:
+    base_name = (summary or issue_key).strip()[:150] or issue_key
+    conflict = TimeTask.objects.filter(project=project, name=base_name)
+    if current_task is not None:
+        conflict = conflict.exclude(pk=current_task.pk)
+    if not conflict.exists():
+        return base_name
+    suffix = f" ({issue_key})"
+    return f"{base_name[: 150 - len(suffix)]}{suffix}"
+
+
+@transaction.atomic
+def import_assigned_jira_issues(
+    *,
+    user,
+    connection: JiraConnection,
+    options: JiraAssignedIssueImportOptions,
+    raw_issues: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    require_jira_admin(user)
+    mapping = (
+        JiraUserMapping.objects.filter(employee_id=options.employee_id, is_active=True)
+        .select_related("employee__user")
+        .first()
+    )
+    if mapping is None:
+        raise ValidationError(
+            "Selected employee does not have an active Jira user mapping."
+        )
+
+    issues = (
+        raw_issues
+        if raw_issues is not None
+        else fetch_jira_assigned_issues(
+            connection,
+            jira_account_id=mapping.jira_account_id,
+            max_results=options.max_results,
+        )
+    )
+    counts = {
+        "created_projects": 0,
+        "created_tasks": 0,
+        "updated_tasks": 0,
+        "created_issue_mappings": 0,
+        "updated_issue_mappings": 0,
+        "errors": 0,
+    }
+    rows = []
+
+    for issue in issues:
+        payload = _issue_import_payload(issue)
+        issue_key = payload["jira_issue_key"]
+        project_key = payload["jira_project_key"]
+        if not issue_key:
+            counts["errors"] += 1
+            rows.append(
+                _assigned_issue_row_error(
+                    payload, "missing_issue_key", "Jira issue key is missing."
+                )
+            )
+            continue
+        if not project_key:
+            counts["errors"] += 1
+            rows.append(
+                _assigned_issue_row_error(
+                    payload, "missing_project_key", "Jira project key is missing."
+                )
+            )
+            continue
+
+        project_mapping = (
+            JiraProjectMapping.objects.filter(jira_project_key=project_key)
+            .select_related("project")
+            .first()
+        )
+        project = (
+            project_mapping.project
+            if project_mapping and project_mapping.is_active
+            else None
+        )
+        created_project = False
+        if project is None:
+            if options.dry_run:
+                project_id = None
+            else:
+                project = Project(
+                    name=payload["jira_project_name"] or project_key,
+                    description=f"Imported from Jira project {project_key}.",
+                    project_type=ProjectType.INTERNAL,
+                    status=ProjectStatus.ACTIVE,
+                )
+                project.full_clean()
+                project.save()
+                if project_mapping:
+                    project_mapping.jira_project_name = payload["jira_project_name"]
+                    project_mapping.project = project
+                    project_mapping.is_active = True
+                    project_mapping.save()
+                else:
+                    JiraProjectMapping.objects.create(
+                        jira_project_key=project_key,
+                        jira_project_name=payload["jira_project_name"],
+                        project=project,
+                        is_active=True,
+                    )
+                project_id = project.id
+            created_project = True
+            counts["created_projects"] += 1
+        else:
+            project_id = project.id
+
+        task = TimeTask.objects.filter(jira_issue_key=issue_key).first()
+        task_created = task is None
+        task_changed = False
+        if options.dry_run:
+            task_id = task.id if task else None
+        elif task_created:
+            task_name = _task_name_for_issue(
+                project=project,
+                summary=payload["summary"],
+                issue_key=issue_key,
+                current_task=None,
+            )
+            task = TimeTask(
+                project=project,
+                name=task_name,
+                description=payload["description"],
+                jira_issue_key=issue_key,
+                jira_project_key=project_key,
+                is_active=True,
+            )
+            task.full_clean()
+            task.save()
+            task_id = task.id
+            counts["created_tasks"] += 1
+        else:
+            task_name = _task_name_for_issue(
+                project=project,
+                summary=payload["summary"],
+                issue_key=issue_key,
+                current_task=task,
+            )
+            updates = {
+                "project": project,
+                "name": task_name,
+                "description": payload["description"],
+                "jira_project_key": project_key,
+                "is_active": True,
+            }
+            for field, value in updates.items():
+                if getattr(task, field) != value:
+                    setattr(task, field, value)
+                    task_changed = True
+            if task_changed:
+                task.full_clean()
+                task.save()
+                counts["updated_tasks"] += 1
+            task_id = task.id
+
+        if task_created and options.dry_run:
+            counts["created_tasks"] += 1
+        elif not task_created and options.dry_run:
+            counts["updated_tasks"] += 1
+
+        issue_mapping = JiraIssueMapping.objects.filter(
+            jira_issue_key=issue_key
+        ).first()
+        issue_mapping_created = issue_mapping is None
+        if options.dry_run:
+            if issue_mapping_created:
+                counts["created_issue_mappings"] += 1
+            else:
+                counts["updated_issue_mappings"] += 1
+        elif issue_mapping_created:
+            JiraIssueMapping.objects.create(
+                jira_issue_key=issue_key,
+                jira_issue_id=payload["jira_issue_id"],
+                task=task,
+                is_active=True,
+            )
+            counts["created_issue_mappings"] += 1
+        else:
+            changed = False
+            if issue_mapping.jira_issue_id != payload["jira_issue_id"]:
+                issue_mapping.jira_issue_id = payload["jira_issue_id"]
+                changed = True
+            if issue_mapping.task_id != task.id:
+                issue_mapping.task = task
+                changed = True
+            if not issue_mapping.is_active:
+                issue_mapping.is_active = True
+                changed = True
+            if changed:
+                issue_mapping.save()
+                counts["updated_issue_mappings"] += 1
+
+        action_parts = []
+        if created_project:
+            action_parts.append("create_project")
+        action_parts.append("create_task" if task_created else "update_task")
+        action_parts.append(
+            "create_issue_mapping" if issue_mapping_created else "update_issue_mapping"
+        )
+        rows.append(
+            {
+                "jira_issue_key": issue_key,
+                "jira_issue_id": payload["jira_issue_id"],
+                "jira_project_key": project_key,
+                "jira_project_name": payload["jira_project_name"],
+                "project_id": project_id,
+                "task_id": task_id,
+                "task_name": task.name if task else payload["summary"][:150],
+                "action": ",".join(action_parts),
+                "validation_messages": [],
+            }
+        )
+
+    return {
+        "source_type": TimeEntrySourceType.JIRA,
+        "employee_id": options.employee_id,
+        "jira_account_id": mapping.jira_account_id,
+        "dry_run": options.dry_run,
+        "row_count": len(rows),
+        "counts": counts,
+        "rows": rows,
+    }
 
 
 def _compact(value: str) -> str:
