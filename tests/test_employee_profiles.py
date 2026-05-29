@@ -117,6 +117,23 @@ class EmployeeProfileTestCase(APITestCase):
             UserProfile.objects.filter(email_address="new.employee@test.com").count(), 1
         )
 
+    def test_hr_can_create_employee_with_probation_status(self):
+        hr_user = User.objects.get(id=self.hr_user.id)
+        self.client.force_authenticate(user=hr_user)
+        data = {
+            "email": "probation.employee@test.com",
+            "first_name": "Probation",
+            "last_name": "Employee",
+            "department": "Engineering",
+            "employment_status": "probation",
+        }
+        res = self.client.post("/api/employees/", data, format="json")
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(res.data["employment_status"], "probation")
+
+        profile = UserProfile.objects.get(email_address="probation.employee@test.com")
+        self.assertEqual(profile.employment_status, "probation")
+
     def test_normal_user_cannot_create_employee(self):
         normal_user = User.objects.get(id=self.normal_user.id)
         self.client.force_authenticate(user=normal_user)

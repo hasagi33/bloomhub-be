@@ -1,13 +1,21 @@
+from django import forms
 from django.contrib import admin
 from django.utils.html import format_html
 
 from .models import (
     BenefitCatalog,
     BonusRecord,
+    Announcement,
+    AnnouncementComment,
+    AnnouncementReaction,
+    AnnouncementSettings,
+    CelebrationEvent,
     Certificate,
     ChangeLog,
     CompensationPolicy,
     CPFLevel,
+    DiscordAnnouncementChannel,
+    DiscordAnnouncementDelivery,
     Document,
     DocumentCategory,
     EmployeeDocument,
@@ -772,3 +780,154 @@ class TrainingBudgetAdmin(admin.ModelAdmin):
     @admin.display(description="% Used")
     def percentage_used_display(self, obj):
         return f"{obj.budget_percentage_used:.1f}%"
+
+
+# ──────────────────────────────────────────
+# Announcements & Celebrations Admin
+# ──────────────────────────────────────────
+
+
+@admin.register(Announcement)
+class AnnouncementAdmin(admin.ModelAdmin):
+    list_display = ("title", "type", "author", "published_at", "created_at")
+    list_filter = ("type", "published_at", "created_at")
+    search_fields = ("title", "body", "author__full_name", "author__user__username")
+    date_hierarchy = "published_at"
+    ordering = ["-published_at", "-created_at"]
+    readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(AnnouncementSettings)
+class AnnouncementSettingsAdmin(admin.ModelAdmin):
+    list_display = (
+        "auto_employee_intro_on_registration",
+        "auto_employee_intro_on_employee_create",
+        "updated_at",
+    )
+    readonly_fields = ("updated_at",)
+
+    def has_add_permission(self, request):
+        return not AnnouncementSettings.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+class DiscordAnnouncementChannelAdminForm(forms.ModelForm):
+    webhook_url = forms.URLField(required=False)
+
+    class Meta:
+        model = DiscordAnnouncementChannel
+        fields = ["announcement_type", "channel_name", "webhook_url", "enabled"]
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if not self.instance.pk and not cleaned_data.get("webhook_url"):
+            raise forms.ValidationError("Webhook URL is required.")
+        return cleaned_data
+
+    def save(self, commit=True):
+        webhook_url = self.cleaned_data.pop("webhook_url", "")
+        instance = super().save(commit=False)
+        if webhook_url:
+            instance.set_webhook_url(webhook_url)
+        if commit:
+            instance.save()
+            self.save_m2m()
+        return instance
+
+
+@admin.register(DiscordAnnouncementChannel)
+class DiscordAnnouncementChannelAdmin(admin.ModelAdmin):
+    form = DiscordAnnouncementChannelAdminForm
+    list_display = (
+        "channel_name",
+        "announcement_type",
+        "enabled",
+        "has_webhook_url",
+        "created_at",
+    )
+    list_filter = ("announcement_type", "enabled")
+    search_fields = ("channel_name",)
+    readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(DiscordAnnouncementDelivery)
+class DiscordAnnouncementDeliveryAdmin(admin.ModelAdmin):
+    list_display = (
+        "announcement",
+        "discord_channel",
+        "status",
+        "attempt_count",
+        "sent_at",
+        "last_attempt_at",
+    )
+    list_filter = ("status", "discord_channel__announcement_type")
+    search_fields = (
+        "announcement__title",
+        "discord_channel__channel_name",
+        "discord_message_id",
+        "last_error",
+    )
+    readonly_fields = (
+        "announcement",
+        "discord_channel",
+        "status",
+        "discord_message_id",
+        "attempt_count",
+        "last_attempt_at",
+        "sent_at",
+        "last_error",
+        "created_at",
+        "updated_at",
+    )
+
+
+@admin.register(AnnouncementReaction)
+class AnnouncementReactionAdmin(admin.ModelAdmin):
+    list_display = ("announcement", "user", "reaction_type", "created_at")
+    list_filter = ("reaction_type", "created_at")
+    search_fields = (
+        "announcement__title",
+        "user__full_name",
+        "user__user__username",
+        "reaction_type",
+    )
+
+
+@admin.register(AnnouncementComment)
+class AnnouncementCommentAdmin(admin.ModelAdmin):
+    list_display = ("announcement", "author", "created_at", "deleted_at")
+    list_filter = ("created_at", "deleted_at")
+    search_fields = (
+        "announcement__title",
+        "author__full_name",
+        "author__user__username",
+        "body",
+    )
+    readonly_fields = ("created_at", "updated_at")
+    ordering = ["-created_at"]
+
+
+@admin.register(CelebrationEvent)
+class CelebrationEventAdmin(admin.ModelAdmin):
+    list_display = (
+        "title",
+        "event_type",
+        "employee",
+        "event_date",
+        "recurs_annually",
+        "created_by",
+    )
+    list_filter = ("event_type", "recurs_annually", "event_date")
+    search_fields = (
+        "title",
+        "description",
+        "employee__full_name",
+        "employee__user__username",
+        "created_by__full_name",
+        "created_by__user__username",
+    )
+    date_hierarchy = "event_date"
+    ordering = ["event_date", "title"]
+    readonly_fields = ("created_at", "updated_at")

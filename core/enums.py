@@ -30,6 +30,7 @@ from django.db import models
 
 class EmploymentStatus(models.TextChoices):
     ACTIVE = "active", "Active"
+    PROBATION = "probation", "Probation"
     ON_LEAVE = "on_leave", "On Leave"
     INACTIVE = "inactive", "Inactive"
 

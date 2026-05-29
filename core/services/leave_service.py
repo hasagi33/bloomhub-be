@@ -94,6 +94,13 @@ def calculate_working_days(start_date: date, end_date: date) -> int:
     return count
 
 
+def calculate_calendar_days(start_date: date, end_date: date) -> int:
+    """Calculate inclusive calendar-day span between two dates."""
+    if not start_date or not end_date or start_date > end_date:
+        return 0
+    return (end_date - start_date).days + 1
+
+
 def validate_leave_request(
     employee: UserProfile,
     leave_type: str,
@@ -238,7 +245,9 @@ def approve_leave_request_hr(
     except LeaveBalance.DoesNotExist:
         return False, "Leave balance not found."
 
-    requested_days = leave_request.days
+    requested_days = calculate_calendar_days(
+        leave_request.start_date, leave_request.end_date
+    )
     if balance.remaining < requested_days:
         return (
             False,
@@ -325,7 +334,13 @@ def cancel_leave_request(leave_request: LeaveRequest) -> tuple[bool, str | None]
                 leave_type=leave_request.leave_type,
                 year=current_year,
             )
-            balance.used = max(0, balance.used - leave_request.days)
+            balance.used = max(
+                0,
+                balance.used
+                - calculate_calendar_days(
+                    leave_request.start_date, leave_request.end_date
+                ),
+            )
             balance.save()
         except LeaveBalance.DoesNotExist:
             pass

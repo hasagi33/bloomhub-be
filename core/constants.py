@@ -51,6 +51,8 @@ EMPLOYEE_PROFILE_FIELDS = [
     "tech_tags",
     "permissions_bitmap",
     "assigned_projects",
+    "intro_announcement",
+    "intro_announcement_published_at",
 ]
 
 EMPLOYEE_PROFILE_READ_ONLY_FIELDS = [
@@ -58,6 +60,8 @@ EMPLOYEE_PROFILE_READ_ONLY_FIELDS = [
     "username",
     "is_active",
     "permissions_bitmap",
+    "intro_announcement",
+    "intro_announcement_published_at",
 ]
 
 EMPLOYEE_PROFILE_FILTERSET_FIELDS = [

@@ -42,6 +42,509 @@ paths:
           description: No response body
         '403':
           description: No response body
+  /api/announcement-discord-channels/:
+    get:
+      operationId: announcement_discord_channels_list
+      parameters:
+      - in: query
+        name: announcement_type
+        schema:
+          type: string
+          enum:
+          - celebration
+          - general
+          - news
+          - urgent
+        description: |-
+          * `general` - General
+          * `news` - News
+          * `celebration` - Celebration
+          * `urgent` - Urgent
+      - in: query
+        name: enabled
+        schema:
+          type: boolean
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - Announcements
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DiscordAnnouncementChannel'
+          description: ''
+    post:
+      operationId: announcement_discord_channels_create
+      tags:
+      - Announcements
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DiscordAnnouncementChannelRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DiscordAnnouncementChannelRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DiscordAnnouncementChannelRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DiscordAnnouncementChannel'
+          description: ''
+  /api/announcement-discord-channels/{id}/:
+    get:
+      operationId: announcement_discord_channels_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Discord Announcement
+          Channel.
+        required: true
+      tags:
+      - Announcements
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DiscordAnnouncementChannel'
+          description: ''
+    put:
+      operationId: announcement_discord_channels_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Discord Announcement
+          Channel.
+        required: true
+      tags:
+      - Announcements
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DiscordAnnouncementChannelRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DiscordAnnouncementChannelRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DiscordAnnouncementChannelRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DiscordAnnouncementChannel'
+          description: ''
+    patch:
+      operationId: announcement_discord_channels_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Discord Announcement
+          Channel.
+        required: true
+      tags:
+      - Announcements
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedDiscordAnnouncementChannelRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedDiscordAnnouncementChannelRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedDiscordAnnouncementChannelRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DiscordAnnouncementChannel'
+          description: ''
+    delete:
+      operationId: announcement_discord_channels_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Discord Announcement
+          Channel.
+        required: true
+      tags:
+      - Announcements
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/announcements/:
+    get:
+      operationId: announcements_list
+      description: |-
+        CRUD API for rich-text announcements.
+
+        Scheduled announcements are hidden from regular readers until
+        ``scheduled_at`` is due. Announcement managers can see future rows.
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      - in: query
+        name: type
+        schema:
+          type: string
+          enum:
+          - celebration
+          - general
+          - news
+          - urgent
+        description: |-
+          * `general` - General
+          * `news` - News
+          * `celebration` - Celebration
+          * `urgent` - Urgent
+      tags:
+      - Announcements
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AnnouncementList'
+          description: ''
+    post:
+      operationId: announcements_create
+      description: |-
+        CRUD API for rich-text announcements.
+
+        Scheduled announcements are hidden from regular readers until
+        ``scheduled_at`` is due. Announcement managers can see future rows.
+      tags:
+      - Announcements
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnnouncementWriteRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AnnouncementWriteRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AnnouncementWriteRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnnouncementWrite'
+          description: ''
+  /api/announcements/{id}/:
+    get:
+      operationId: announcements_retrieve
+      description: |-
+        CRUD API for rich-text announcements.
+
+        Scheduled announcements are hidden from regular readers until
+        ``scheduled_at`` is due. Announcement managers can see future rows.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Announcement.
+        required: true
+      tags:
+      - Announcements
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnnouncementDetail'
+          description: ''
+    put:
+      operationId: announcements_update
+      description: |-
+        CRUD API for rich-text announcements.
+
+        Scheduled announcements are hidden from regular readers until
+        ``scheduled_at`` is due. Announcement managers can see future rows.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Announcement.
+        required: true
+      tags:
+      - Announcements
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnnouncementWriteRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AnnouncementWriteRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AnnouncementWriteRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnnouncementWrite'
+          description: ''
+    patch:
+      operationId: announcements_partial_update
+      description: |-
+        CRUD API for rich-text announcements.
+
+        Scheduled announcements are hidden from regular readers until
+        ``scheduled_at`` is due. Announcement managers can see future rows.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Announcement.
+        required: true
+      tags:
+      - Announcements
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedAnnouncementWriteRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedAnnouncementWriteRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedAnnouncementWriteRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnnouncementWrite'
+          description: ''
+    delete:
+      operationId: announcements_destroy
+      description: |-
+        CRUD API for rich-text announcements.
+
+        Scheduled announcements are hidden from regular readers until
+        ``scheduled_at`` is due. Announcement managers can see future rows.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Announcement.
+        required: true
+      tags:
+      - Announcements
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/announcements/{id}/comments/:
+    get:
+      operationId: announcements_comments_retrieve
+      description: |-
+        CRUD API for rich-text announcements.
+
+        Scheduled announcements are hidden from regular readers until
+        ``scheduled_at`` is due. Announcement managers can see future rows.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Announcement.
+        required: true
+      tags:
+      - Announcements
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnnouncementList'
+          description: ''
+    post:
+      operationId: announcements_comments_create
+      description: |-
+        CRUD API for rich-text announcements.
+
+        Scheduled announcements are hidden from regular readers until
+        ``scheduled_at`` is due. Announcement managers can see future rows.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Announcement.
+        required: true
+      tags:
+      - Announcements
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnnouncementList'
+          description: ''
+  /api/announcements/{id}/comments/{comment_id}/:
+    delete:
+      operationId: announcements_comments_destroy
+      description: |-
+        CRUD API for rich-text announcements.
+
+        Scheduled announcements are hidden from regular readers until
+        ``scheduled_at`` is due. Announcement managers can see future rows.
+      parameters:
+      - in: path
+        name: comment_id
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Announcement.
+        required: true
+      tags:
+      - Announcements
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/announcements/{id}/reactions/:
+    get:
+      operationId: announcements_reactions_retrieve
+      description: |-
+        CRUD API for rich-text announcements.
+
+        Scheduled announcements are hidden from regular readers until
+        ``scheduled_at`` is due. Announcement managers can see future rows.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Announcement.
+        required: true
+      tags:
+      - Announcements
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnnouncementList'
+          description: ''
+    post:
+      operationId: announcements_reactions_create
+      description: |-
+        CRUD API for rich-text announcements.
+
+        Scheduled announcements are hidden from regular readers until
+        ``scheduled_at`` is due. Announcement managers can see future rows.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Announcement.
+        required: true
+      tags:
+      - Announcements
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnnouncementList'
+          description: ''
   /api/assets/:
     get:
       operationId: assets_list
@@ -844,17 +1347,6 @@ paths:
           type: integer
       tags:
       - bonuses
-      security:
-      - jwtAuth: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/BonusRecord'
-          description: ''
     post:
       operationId: bonuses_create
       description: |-
@@ -1005,6 +1497,38 @@ paths:
       responses:
         '204':
           description: No response body
+  /api/celebrations/upcoming/:
+    get:
+      operationId: celebrations_upcoming_list
+      summary: List upcoming birthdays and work anniversaries
+      parameters:
+      - in: query
+        name: days
+        schema:
+          type: integer
+        description: Inclusive lookahead window in days. Defaults to 30; max 365.
+      - in: query
+        name: type
+        schema:
+          type: string
+          enum:
+          - all
+          - anniversary
+          - birthday
+        description: Filter event type. Defaults to all.
+      tags:
+      - Celebrations
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UpcomingCelebration'
+          description: ''
   /api/certificates/:
     get:
       operationId: certificates_list
@@ -3654,7 +4178,7 @@ paths:
         name: employment_status
         schema:
           type: string
-        description: Exact match on employment status (e.g. active, inactive).
+        description: Exact match on employment status (e.g. active, probation, inactive, on_leave).
       - in: query
         name: is_active
         schema:
@@ -4191,10 +4715,12 @@ paths:
           type: string
           enum:
           - active
+          - probation
           - inactive
           - on_leave
         description: |-
           * `active` - Active
+          * `probation` - Probation
           * `on_leave` - On Leave
           * `inactive` - Inactive
       - in: query
@@ -11039,6 +11565,203 @@ components:
         * `manager` - Manager
         * `hr` - HR
         * `admin` - Admin
+    AnnouncementDetail:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        title:
+          type: string
+          readOnly: true
+        type:
+          allOf:
+          - $ref: '#/components/schemas/TypeFe8Enum'
+          readOnly: true
+        author_id:
+          type: integer
+          readOnly: true
+          nullable: true
+        author_name:
+          type: string
+          readOnly: true
+        published_at:
+          type: string
+          format: date-time
+          readOnly: true
+        scheduled_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        schedule_status:
+          type: string
+          readOnly: true
+        reaction_counts:
+          type: object
+          additionalProperties:
+            type: integer
+          readOnly: true
+        my_reactions:
+          type: array
+          items:
+            type: string
+          readOnly: true
+        comments_count:
+          type: integer
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        body:
+          type: string
+          readOnly: true
+          description: Rich text HTML content
+      required:
+      - author_id
+      - author_name
+      - body
+      - comments_count
+      - created_at
+      - id
+      - my_reactions
+      - published_at
+      - reaction_counts
+      - schedule_status
+      - scheduled_at
+      - title
+      - type
+      - updated_at
+    AnnouncementList:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        title:
+          type: string
+          readOnly: true
+        type:
+          allOf:
+          - $ref: '#/components/schemas/TypeFe8Enum'
+          readOnly: true
+        author_id:
+          type: integer
+          readOnly: true
+          nullable: true
+        author_name:
+          type: string
+          readOnly: true
+        published_at:
+          type: string
+          format: date-time
+          readOnly: true
+        scheduled_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        schedule_status:
+          type: string
+          readOnly: true
+        reaction_counts:
+          type: object
+          additionalProperties:
+            type: integer
+          readOnly: true
+        my_reactions:
+          type: array
+          items:
+            type: string
+          readOnly: true
+        comments_count:
+          type: integer
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - author_id
+      - author_name
+      - comments_count
+      - created_at
+      - id
+      - my_reactions
+      - published_at
+      - reaction_counts
+      - schedule_status
+      - scheduled_at
+      - title
+      - type
+      - updated_at
+    AnnouncementTypeEnum:
+      enum:
+      - general
+      - news
+      - celebration
+      - urgent
+      type: string
+      description: |-
+        * `general` - General
+        * `news` - News
+        * `celebration` - Celebration
+        * `urgent` - Urgent
+    AnnouncementWrite:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 255
+        body:
+          type: string
+          description: Rich text HTML content
+        type:
+          oneOf:
+          - $ref: '#/components/schemas/TypeFe8Enum'
+          - $ref: '#/components/schemas/BlankEnum'
+        scheduled_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - body
+      - title
+    AnnouncementWriteRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+        body:
+          type: string
+          minLength: 1
+          description: Rich text HTML content
+        type:
+          oneOf:
+          - $ref: '#/components/schemas/TypeFe8Enum'
+          - $ref: '#/components/schemas/BlankEnum'
+        scheduled_at:
+          type: string
+          format: date-time
+          nullable: true
+        send_email_notifications:
+          type: boolean
+          writeOnly: true
+          default: false
+      required:
+      - body
+      - title
     Application:
       type: object
       description: Read serialiser for an Application row (list/retrieve).
@@ -12352,6 +13075,24 @@ components:
         * `training` - Training
         * `benefits` - Benefits
         * `other` - Other
+    CelebrationEmployee:
+      type: object
+      properties:
+        id:
+          type: integer
+        full_name:
+          type: string
+        department:
+          type: string
+          nullable: true
+        avatar_url:
+          type: string
+          nullable: true
+      required:
+      - avatar_url
+      - department
+      - full_name
+      - id
     CertificateCreateUpdate:
       type: object
       description: Writable serializer for certificate uploads.
@@ -12905,6 +13646,55 @@ components:
       - head_employee_id
       - id
       - name
+    DiscordAnnouncementChannel:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        announcement_type:
+          $ref: '#/components/schemas/AnnouncementTypeEnum'
+        channel_name:
+          type: string
+          maxLength: 255
+        has_webhook_url:
+          type: boolean
+          readOnly: true
+        enabled:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - announcement_type
+      - channel_name
+      - created_at
+      - has_webhook_url
+      - id
+      - updated_at
+    DiscordAnnouncementChannelRequest:
+      type: object
+      properties:
+        announcement_type:
+          $ref: '#/components/schemas/AnnouncementTypeEnum'
+        channel_name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        webhook_url:
+          type: string
+          format: uri
+          writeOnly: true
+        enabled:
+          type: boolean
+      required:
+      - announcement_type
+      - channel_name
     DocumentCreateRequest:
       type: object
       properties:
@@ -13429,6 +14219,15 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ProjectAssignment'
+        intro_announcement:
+          type: integer
+          readOnly: true
+          nullable: true
+        intro_announcement_published_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
       required:
       - compensation_status
       - current_bonus_pct
@@ -13437,6 +14236,8 @@ components:
       - current_total_monthly
       - email
       - id
+      - intro_announcement
+      - intro_announcement_published_at
       - is_active
       - manager_names
       - permissions_bitmap
@@ -13555,6 +14356,21 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ProjectAssignmentRequest'
+        publish_intro_announcement:
+          type: boolean
+          writeOnly: true
+          default: false
+        intro_announcement_title:
+          type: string
+          writeOnly: true
+        intro_announcement_body:
+          type: string
+          writeOnly: true
+        intro_announcement_scheduled_at:
+          type: string
+          format: date-time
+          writeOnly: true
+          nullable: true
       required:
       - email
     EmployeeTechLeadsData:
@@ -13576,11 +14392,13 @@ components:
     EmploymentStatusEnum:
       enum:
       - active
+      - probation
       - on_leave
       - inactive
       type: string
       description: |-
         * `active` - Active
+        * `probation` - Probation
         * `on_leave` - On Leave
         * `inactive` - Inactive
     FieldEnum:
@@ -15185,6 +16003,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/TemplateGeneratedDocument'
+    PatchedAnnouncementWriteRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+        body:
+          type: string
+          minLength: 1
+          description: Rich text HTML content
+        type:
+          oneOf:
+          - $ref: '#/components/schemas/TypeFe8Enum'
+          - $ref: '#/components/schemas/BlankEnum'
+        scheduled_at:
+          type: string
+          format: date-time
+          nullable: true
+        send_email_notifications:
+          type: boolean
+          writeOnly: true
+          default: false
     PatchedApplicationStatusUpdateRequest:
       type: object
       description: |-
@@ -15487,6 +16328,21 @@ components:
         notes:
           type: string
           description: Additional notes
+    PatchedDiscordAnnouncementChannelRequest:
+      type: object
+      properties:
+        announcement_type:
+          $ref: '#/components/schemas/AnnouncementTypeEnum'
+        channel_name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        webhook_url:
+          type: string
+          format: uri
+          writeOnly: true
+        enabled:
+          type: boolean
     PatchedDocumentCategoryDefaultUpdateRequest:
       type: object
       properties:
@@ -15612,6 +16468,21 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ProjectAssignmentRequest'
+        publish_intro_announcement:
+          type: boolean
+          writeOnly: true
+          default: false
+        intro_announcement_title:
+          type: string
+          writeOnly: true
+        intro_announcement_body:
+          type: string
+          writeOnly: true
+        intro_announcement_scheduled_at:
+          type: string
+          format: date-time
+          writeOnly: true
+          nullable: true
     PatchedJiraConnectionRequest:
       type: object
       properties:
@@ -19914,6 +20785,49 @@ components:
         * `webinar` - Webinar
         * `certification` - Certification
         * `other` - Other
+    TypeFe8Enum:
+      enum:
+      - general
+      - news
+      - celebration
+      - urgent
+      type: string
+      description: |-
+        * `general` - General
+        * `news` - News
+        * `celebration` - Celebration
+        * `urgent` - Urgent
+    UpcomingCelebration:
+      type: object
+      properties:
+        event_type:
+          $ref: '#/components/schemas/UpcomingCelebrationEventTypeEnum'
+        event_date:
+          type: string
+          format: date
+        days_until:
+          type: integer
+          minimum: 0
+        employee:
+          $ref: '#/components/schemas/CelebrationEmployee'
+        anniversary_years:
+          type: integer
+          minimum: 1
+          nullable: true
+      required:
+      - anniversary_years
+      - days_until
+      - employee
+      - event_date
+      - event_type
+    UpcomingCelebrationEventTypeEnum:
+      enum:
+      - birthday
+      - anniversary
+      type: string
+      description: |-
+        * `birthday` - birthday
+        * `anniversary` - anniversary
     UpdatePermissionsRequest:
       type: object
       properties:

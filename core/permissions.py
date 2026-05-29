@@ -580,6 +580,84 @@ def can_manage_cpf_level_changes(user) -> bool:
     )
 
 
+def can_view_announcements(user) -> bool:
+    if not getattr(user, "is_authenticated", False):
+        return False
+    if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+        return True
+    return _get_user_profile(user) is not None
+
+
+def can_view_birthdays(user) -> bool:
+    return _has_permission(user, "Announcements", ["view_birthdays"])
+
+
+def can_view_anniversaries(user) -> bool:
+    return _has_permission(user, "Announcements", ["view_anniversaries"])
+
+
+def can_manage_announcements(user) -> bool:
+    return _has_announcement_publisher_role(user)
+
+
+def can_schedule_announcements(user) -> bool:
+    return _has_announcement_publisher_role(user) and _has_permission(
+        user, "Announcements", ["schedule_announcements"]
+    )
+
+
+def can_add_announcement_reactions(user) -> bool:
+    return _has_permission(user, "Announcements", ["add_reactions"])
+
+
+def can_moderate_announcement_comments(user) -> bool:
+    return _has_permission(user, "Announcements", ["moderate_comments"])
+
+
+def _has_announcement_publisher_role(user) -> bool:
+    if not getattr(user, "is_authenticated", False):
+        return False
+    if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+        return True
+
+    profile = _get_user_profile(user)
+    if profile is None:
+        return False
+
+    role = getattr(profile, "role", None)
+    role_name = (getattr(role, "name", "") or "").strip().lower()
+    department = (
+        (
+            getattr(profile, "department", "")
+            or getattr(getattr(profile, "department_fk", None), "name", "")
+            or ""
+        )
+        .strip()
+        .lower()
+    )
+
+    exact_roles = {
+        "admin",
+        "super_admin",
+        "hr",
+        "hr-mgr",
+        "mgr",
+        "mgr+",
+        "manager",
+    }
+    executive_roles = {"ceo", "cto", "cfo", "cpo", "cro", "coo"}
+    role_keywords = ("lead", "manager", "head of", "chief")
+    hr_departments = {"hr", "people", "human resources"}
+
+    return (
+        role_name in exact_roles
+        or role_name in executive_roles
+        or any(keyword in role_name for keyword in role_keywords)
+        or department in hr_departments
+        or profile.direct_reports.exists()
+    )
+
+
 class IsHrOrAdmin(permissions.BasePermission):
     """Permission gate for HR or admin users (read + write).
 

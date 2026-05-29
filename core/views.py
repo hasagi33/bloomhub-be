@@ -60,6 +60,9 @@ from .enums import (
     TimeEntryStatus,
 )
 from .models import (
+    Announcement,
+    AnnouncementComment,
+    AnnouncementReaction,
     Application,
     Asset,
     AssetStatus,
@@ -75,6 +78,7 @@ from .models import (
     CPFLevel,
     CPFLevelChange,
     Department,
+    DiscordAnnouncementChannel,
     Document,
     DocumentTemplate,
     DocumentType,
@@ -141,12 +145,19 @@ from .permissions import (
     IsReviewViewer,
     IsTrainingBudgetEditor,
     _get_user_profile,
+    can_add_announcement_reactions,
     can_attach_review_documents,
     can_edit_review_note,
+    can_manage_announcements,
     can_manage_cpf_level_changes,
+    can_moderate_announcement_comments,
+    can_schedule_announcements,
+    can_view_anniversaries,
+    can_view_announcements,
     can_view_asset,
     can_view_asset_maintenance_logs,
     can_view_assignment,
+    can_view_birthdays,
     get_asset_capabilities,
     get_asset_permissions,
     get_asset_scope,
@@ -156,6 +167,13 @@ from .permissions import (
     is_compensation_admin,
 )
 from .serializers import (
+    AnnouncementCommentCreateSerializer,
+    AnnouncementCommentSerializer,
+    AnnouncementDetailSerializer,
+    AnnouncementListSerializer,
+    AnnouncementReactionSerializer,
+    AnnouncementReactionToggleSerializer,
+    AnnouncementWriteSerializer,
     APIRootResponseSerializer,
     ApplicationCreateSerializer,
     ApplicationSerializer,
@@ -173,6 +191,7 @@ from .serializers import (
     BenefitCatalogSerializer,
     BonusRecordSerializer,
     BulkIdsSerializer,
+    CelebrationQuerySerializer,
     CertificateCreateUpdateSerializer,
     CertificateDetailSerializer,
     CertificateListSerializer,
@@ -186,6 +205,7 @@ from .serializers import (
     CPFLevelChangeSerializer,
     CPFLevelChangeWriteSerializer,
     CPFProgressionSerializer,
+    DiscordAnnouncementChannelSerializer,
     DocumentCategoryDefaultUpdateSerializer,
     DocumentCreateSerializer,
     DocumentListSerializer,
@@ -284,6 +304,7 @@ from .serializers import (
     TrainingEntryCreateUpdateSerializer,
     TrainingEntryDetailSerializer,
     TrainingEntryListSerializer,
+    UpcomingCelebrationSerializer,
     UpdatePermissionsSerializer,
     UpdateRoleSerializer,
     UploadRolePermissionsResponseSerializer,
@@ -292,7 +313,12 @@ from .serializers import (
     UserTemplateSnippetSerializer,
     VacationCapabilitiesSerializer,
 )
+from .services.announcement_notification_service import (
+    announcement_is_published,
+    notify_announcement_published,
+)
 from .services.asset_qr import ensure_asset_qr_code
+from .services.celebrations import build_upcoming_profile_celebrations
 from .services.cpf_service import (
     build_cpf_progression,
     sync_employee_current_cpf_level,
@@ -888,7 +914,9 @@ _EMPLOYEE_LIST_PARAMETERS = [
         "employment_status",
         OpenApiTypes.STR,
         OpenApiParameter.QUERY,
-        description="Exact match on employment status (e.g. active, inactive).",
+        description=(
+            "Exact match on employment status (e.g. active, probation, on_leave, inactive)."
+        ),
     ),
     OpenApiParameter(
         "search",
@@ -1215,7 +1243,7 @@ class EmployeeProfileViewSet(viewsets.ModelViewSet):
             )
 
         serializer = EmployeeProfileSerializer(
-            instance, data=request.data, partial=True
+            instance, data=request.data, partial=True, context={"request": request}
         )
         if serializer.is_valid():
             serializer.save()
@@ -9276,6 +9304,285 @@ class UserTemplateSnippetViewSet(viewsets.ModelViewSet):
 
 
 # ──────────────────────────────────────────
+# Announcements
+# ──────────────────────────────────────────
+
+
+class IsAnnouncementAllowed(permissions.BasePermission):
+    """Employees can read; publishing is limited to announcement publisher roles."""
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False
+        can_access_announcements = (
+            can_view_announcements(user)
+            or can_manage_announcements(user)
+            or can_schedule_announcements(user)
+        )
+        if request.method in permissions.SAFE_METHODS:
+            return can_access_announcements
+        if getattr(view, "action", None) in (
+            "comments",
+            "delete_comment",
+            "reactions",
+        ):
+            return can_access_announcements
+        return can_manage_announcements(user)
+
+
+@extend_schema(tags=["Announcements"])
+class AnnouncementViewSet(viewsets.ModelViewSet):
+    """
+    CRUD API for rich-text announcements.
+
+    Scheduled announcements are hidden from regular readers until
+    ``scheduled_at`` is due. Announcement managers can see future rows.
+    """
+
+    permission_classes = [IsAuthenticated, IsAnnouncementAllowed]
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.SearchFilter,
+        filters.OrderingFilter,
+    ]
+    filterset_fields = ["type"]
+    search_fields = ["title", "body"]
+    ordering_fields = ["published_at", "scheduled_at", "created_at", "updated_at"]
+    ordering = ["-published_at", "-created_at"]
+
+    def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):
+            return Announcement.objects.none()
+
+        base = Announcement.objects.select_related("author__user")
+        user = self.request.user
+        if can_manage_announcements(user) or can_schedule_announcements(user):
+            return base
+        if can_view_announcements(user):
+            return base.filter(
+                Q(scheduled_at__isnull=True) | Q(scheduled_at__lte=timezone.now())
+            )
+        return Announcement.objects.none()
+
+    def get_serializer_class(self):
+        if self.action in ("create", "update", "partial_update"):
+            return AnnouncementWriteSerializer
+        if self.action == "retrieve":
+            return AnnouncementDetailSerializer
+        return AnnouncementListSerializer
+
+    def perform_create(self, serializer):
+        self._enforce_schedule_permission(serializer.validated_data.get("scheduled_at"))
+        send_email_notifications = serializer.validated_data.get(
+            "send_email_notifications", False
+        )
+        profile = getattr(self.request.user, "profile", None)
+        if profile is None:
+            raise PermissionDenied("Authenticated employee profile required.")
+        announcement = serializer.save(author=profile)
+        if announcement_is_published(announcement):
+            notify_announcement_published(
+                announcement, send_email=send_email_notifications
+            )
+
+    def perform_update(self, serializer):
+        was_published = announcement_is_published(serializer.instance)
+        send_email_notifications = serializer.validated_data.get(
+            "send_email_notifications", False
+        )
+        if "scheduled_at" in serializer.validated_data:
+            self._enforce_schedule_permission(
+                serializer.validated_data.get("scheduled_at")
+            )
+        announcement = serializer.save()
+        if not was_published and announcement_is_published(announcement):
+            notify_announcement_published(
+                announcement, send_email=send_email_notifications
+            )
+
+    def _enforce_schedule_permission(self, scheduled_at):
+        if (
+            scheduled_at
+            and scheduled_at > timezone.now()
+            and not can_schedule_announcements(self.request.user)
+        ):
+            raise PermissionDenied(
+                "Scheduling announcements requires schedule_announcements permission."
+            )
+
+    @action(detail=True, methods=["get", "post"], url_path="comments")
+    def comments(self, request, pk=None):
+        announcement = self.get_object()
+        if request.method == "GET":
+            comments = announcement.comments.select_related("author__user").filter(
+                deleted_at__isnull=True
+            )
+            serializer = AnnouncementCommentSerializer(
+                comments,
+                many=True,
+                context=self.get_serializer_context(),
+            )
+            return Response(serializer.data)
+
+        profile = getattr(request.user, "profile", None)
+        if profile is None:
+            raise PermissionDenied("Authenticated employee profile required.")
+        serializer = AnnouncementCommentCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        comment = serializer.save(announcement=announcement, author=profile)
+        return Response(
+            AnnouncementCommentSerializer(
+                comment,
+                context=self.get_serializer_context(),
+            ).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(
+        detail=True,
+        methods=["delete"],
+        url_path=r"comments/(?P<comment_id>[^/.]+)",
+    )
+    def delete_comment(self, request, pk=None, comment_id=None):
+        announcement = self.get_object()
+        try:
+            comment = announcement.comments.select_related("author").get(
+                pk=comment_id,
+                deleted_at__isnull=True,
+            )
+        except AnnouncementComment.DoesNotExist as exc:
+            raise NotFound("Comment not found.") from exc
+
+        profile = getattr(request.user, "profile", None)
+        can_delete = profile is not None and (
+            comment.author_id == profile.id
+            or announcement.author_id == profile.id
+            or can_moderate_announcement_comments(request.user)
+        )
+        if not can_delete:
+            raise PermissionDenied("You do not have permission to delete this comment.")
+
+        comment.deleted_at = timezone.now()
+        comment.save(update_fields=["deleted_at", "updated_at"])
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=["get", "post"], url_path="reactions")
+    def reactions(self, request, pk=None):
+        announcement = self.get_object()
+        if request.method == "GET":
+            reactions = announcement.reactions.select_related("user__user")
+            serializer = AnnouncementReactionSerializer(
+                reactions,
+                many=True,
+                context=self.get_serializer_context(),
+            )
+            return Response(serializer.data)
+
+        if not can_add_announcement_reactions(request.user):
+            raise PermissionDenied(
+                "Adding reactions requires add_reactions permission."
+            )
+
+        profile = getattr(request.user, "profile", None)
+        if profile is None:
+            raise PermissionDenied("Authenticated employee profile required.")
+        serializer = AnnouncementReactionToggleSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        reaction_type = serializer.validated_data["reaction_type"]
+
+        reaction = AnnouncementReaction.objects.filter(
+            announcement=announcement,
+            user=profile,
+            reaction_type=reaction_type,
+        ).first()
+        if reaction is not None:
+            reaction.delete()
+            return Response(
+                {"reaction_type": reaction_type, "active": False},
+                status=status.HTTP_200_OK,
+            )
+
+        reaction = AnnouncementReaction.objects.create(
+            announcement=announcement,
+            user=profile,
+            reaction_type=reaction_type,
+        )
+        data = AnnouncementReactionSerializer(
+            reaction,
+            context=self.get_serializer_context(),
+        ).data
+        data["active"] = True
+        return Response(data, status=status.HTTP_201_CREATED)
+
+
+@extend_schema(tags=["Announcements"])
+class DiscordAnnouncementChannelViewSet(viewsets.ModelViewSet):
+    queryset = DiscordAnnouncementChannel.objects.all()
+    serializer_class = DiscordAnnouncementChannelSerializer
+    permission_classes = [IsAuthenticated, permissions.IsAdminUser]
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.SearchFilter,
+        filters.OrderingFilter,
+    ]
+    filterset_fields = ["announcement_type", "enabled"]
+    search_fields = ["channel_name"]
+    ordering_fields = ["announcement_type", "channel_name", "created_at", "updated_at"]
+    ordering = ["announcement_type", "channel_name"]
+
+
+@extend_schema(tags=["Celebrations"])
+class UpcomingCelebrationsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        summary="List upcoming birthdays and work anniversaries",
+        parameters=[
+            OpenApiParameter(
+                name="days",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Inclusive lookahead window in days. Defaults to 30; max 365.",
+            ),
+            OpenApiParameter(
+                name="type",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                enum=["all", "birthday", "anniversary"],
+                description="Filter event type. Defaults to all.",
+            ),
+        ],
+        responses={200: UpcomingCelebrationSerializer(many=True)},
+    )
+    def get(self, request):
+        query = CelebrationQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+
+        requested_type = query.validated_data["type"]
+        allowed_types = set()
+        if can_view_birthdays(request.user):
+            allowed_types.add("birthday")
+        if can_view_anniversaries(request.user):
+            allowed_types.add("anniversary")
+
+        if not allowed_types:
+            raise PermissionDenied("Viewing celebrations requires permission.")
+        if requested_type != "all" and requested_type not in allowed_types:
+            raise PermissionDenied("Viewing this celebration type requires permission.")
+
+        event_types = (
+            allowed_types if requested_type == "all" else {cast(Any, requested_type)}
+        )
+        events = build_upcoming_profile_celebrations(
+            days=query.validated_data["days"],
+            event_types=event_types,
+        )
+        return Response(UpcomingCelebrationSerializer(events, many=True).data)
+
+
 # Notifications (in-app)
 # ──────────────────────────────────────────
 

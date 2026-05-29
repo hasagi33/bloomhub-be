@@ -732,6 +732,14 @@ class UserProfile(models.Model):
     # Stores a direct, permanent URL to the avatar (e.g. Google CDN, R2 public URL).
     # Preferred over `avatar` when set. Written by Google OAuth login.
     avatar_url = models.URLField(blank=True, null=True)
+    intro_announcement = models.ForeignKey(
+        "Announcement",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="introduced_profiles",
+    )
+    intro_announcement_published_at = models.DateTimeField(null=True, blank=True)
 
     permissions = models.CharField(
         max_length=255, default=""
@@ -3464,6 +3472,263 @@ class TemplateGeneratedDocument(models.Model):
 # ──────────────────────────────────────────
 # In-app notifications
 # ──────────────────────────────────────────
+
+
+class Announcement(models.Model):
+    """Company announcement with rich text content stored as HTML."""
+
+    class Type(models.TextChoices):
+        GENERAL = "general", "General"
+        NEWS = "news", "News"
+        CELEBRATION = "celebration", "Celebration"
+        URGENT = "urgent", "Urgent"
+
+    title = models.CharField(max_length=255)
+    body = models.TextField(help_text="Rich text HTML content")
+    author = models.ForeignKey(
+        "UserProfile",
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="authored_announcements",
+    )
+    published_at = models.DateTimeField(default=timezone.now, db_index=True)
+    scheduled_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    notifications_sent_at = models.DateTimeField(null=True, blank=True)
+    notifications_sent_count = models.PositiveIntegerField(default=0)
+    email_notifications_sent_at = models.DateTimeField(null=True, blank=True)
+    email_notifications_sent_count = models.PositiveIntegerField(default=0)
+    type = models.CharField(
+        max_length=32,
+        choices=Type.choices,
+        blank=True,
+        default="",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Announcement"
+        verbose_name_plural = "Announcements"
+        ordering = ["-published_at", "-created_at"]
+        indexes = [
+            models.Index(fields=["type", "published_at"]),
+            models.Index(fields=["author", "published_at"]),
+            models.Index(fields=["scheduled_at", "published_at"]),
+        ]
+
+    def __str__(self):
+        return self.title
+
+
+class AnnouncementSettings(models.Model):
+    """Admin-controlled announcement automation flags."""
+
+    auto_employee_intro_on_registration = models.BooleanField(default=True)
+    auto_employee_intro_on_employee_create = models.BooleanField(default=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Announcement Settings"
+        verbose_name_plural = "Announcement Settings"
+
+    def __str__(self):
+        return "Announcement Settings"
+
+    @classmethod
+    def load(cls):
+        settings_obj, _ = cls.objects.get_or_create(pk=1)
+        return settings_obj
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+
+class DiscordAnnouncementChannel(models.Model):
+    """Discord webhook mapping for one announcement type/channel."""
+
+    announcement_type = models.CharField(
+        max_length=32, choices=Announcement.Type.choices
+    )
+    channel_name = models.CharField(max_length=255)
+    webhook_url_encrypted = models.TextField(blank=True, default="")
+    enabled = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Discord Announcement Channel"
+        verbose_name_plural = "Discord Announcement Channels"
+        ordering = ["announcement_type", "channel_name"]
+        indexes = [
+            models.Index(fields=["announcement_type", "enabled"]),
+        ]
+
+    def set_webhook_url(self, webhook_url: str):
+        self.webhook_url_encrypted = encrypt_secret(webhook_url)
+
+    def get_webhook_url(self) -> str:
+        return decrypt_secret(self.webhook_url_encrypted)
+
+    @property
+    def has_webhook_url(self) -> bool:
+        return bool(self.webhook_url_encrypted)
+
+    def __str__(self):
+        return f"{self.get_announcement_type_display()} -> {self.channel_name}"
+
+
+class DiscordAnnouncementDelivery(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        SENT = "sent", "Sent"
+        FAILED = "failed", "Failed"
+
+    announcement = models.ForeignKey(
+        Announcement,
+        on_delete=models.CASCADE,
+        related_name="discord_deliveries",
+    )
+    discord_channel = models.ForeignKey(
+        DiscordAnnouncementChannel,
+        on_delete=models.CASCADE,
+        related_name="deliveries",
+    )
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.PENDING,
+    )
+    discord_message_id = models.CharField(max_length=128, blank=True, default="")
+    attempt_count = models.PositiveIntegerField(default=0)
+    last_attempt_at = models.DateTimeField(null=True, blank=True)
+    sent_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Discord Announcement Delivery"
+        verbose_name_plural = "Discord Announcement Deliveries"
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["announcement", "discord_channel"],
+                name="unique_discord_delivery_per_announcement_channel",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["status", "attempt_count"]),
+            models.Index(fields=["announcement", "status"]),
+        ]
+
+    def __str__(self):
+        return f"{self.announcement_id} -> {self.discord_channel_id} ({self.status})"
+
+
+class AnnouncementReaction(models.Model):
+    announcement = models.ForeignKey(
+        Announcement,
+        on_delete=models.CASCADE,
+        related_name="reactions",
+    )
+    user = models.ForeignKey(
+        "UserProfile",
+        on_delete=models.CASCADE,
+        related_name="announcement_reactions",
+    )
+    reaction_type = models.CharField(max_length=64)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Announcement Reaction"
+        verbose_name_plural = "Announcement Reactions"
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["announcement", "user", "reaction_type"],
+                name="unique_announcement_user_reaction_type",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["announcement", "reaction_type"]),
+            models.Index(fields=["user", "created_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.user} reacted {self.reaction_type} to {self.announcement}"
+
+
+class AnnouncementComment(models.Model):
+    announcement = models.ForeignKey(
+        Announcement,
+        on_delete=models.CASCADE,
+        related_name="comments",
+    )
+    author = models.ForeignKey(
+        "UserProfile",
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="announcement_comments",
+    )
+    body = models.TextField()
+    deleted_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Announcement Comment"
+        verbose_name_plural = "Announcement Comments"
+        ordering = ["created_at"]
+        indexes = [
+            models.Index(fields=["announcement", "created_at"]),
+            models.Index(fields=["author", "created_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.author} commented on {self.announcement}"
+
+
+class CelebrationEvent(models.Model):
+    class Type(models.TextChoices):
+        BIRTHDAY = "birthday", "Birthday"
+        ANNIVERSARY = "anniversary", "Anniversary"
+        CUSTOM = "custom", "Custom"
+
+    title = models.CharField(max_length=255)
+    event_type = models.CharField(max_length=32, choices=Type.choices)
+    employee = models.ForeignKey(
+        "UserProfile",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="celebration_events",
+    )
+    event_date = models.DateField(db_index=True)
+    recurs_annually = models.BooleanField(default=True)
+    description = models.TextField(blank=True, default="")
+    created_by = models.ForeignKey(
+        "UserProfile",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_celebration_events",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Celebration Event"
+        verbose_name_plural = "Celebration Events"
+        ordering = ["event_date", "title"]
+        indexes = [
+            models.Index(fields=["event_type", "event_date"]),
+            models.Index(fields=["employee", "event_type"]),
+        ]
+
+    def __str__(self):
+        return f"{self.title} ({self.event_date})"
 
 
 class Notification(models.Model):

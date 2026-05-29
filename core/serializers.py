@@ -3,6 +3,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 from django.contrib.auth.models import User
+from django.db import models
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime, parse_time
 from drf_spectacular.types import OpenApiTypes
@@ -19,6 +20,9 @@ from core.constants import (
 )
 from core.enums import CPFChangeSource, CPFProgressionEventType
 from core.models import (
+    Announcement,
+    AnnouncementComment,
+    AnnouncementReaction,
     Application,
     Asset,
     AssetCategory,
@@ -35,6 +39,7 @@ from core.models import (
     ConferenceCourseRegistration,
     CPFLevelChange,
     Department,
+    DiscordAnnouncementChannel,
     Document,
     DocumentSignatureAuditLog,
     DocumentSigner,
@@ -90,7 +95,19 @@ from core.models import (
     UserProfile,
     UserTemplateSnippet,
 )
-from core.permissions import can_view_return_checklist, get_asset_object_capabilities
+from core.permissions import (
+    can_manage_announcements,
+    can_schedule_announcements,
+    can_view_return_checklist,
+    get_asset_object_capabilities,
+)
+from core.services.employee_introduction_service import (
+    announcement_settings,
+    auto_publish_employee_intro_announcement,
+    default_employee_intro_body,
+    default_employee_intro_title,
+    publish_employee_intro_announcement,
+)
 from core.services.profile_change_history import (
     log_employee_profile_change,
     manager_payload_from_ids,
@@ -256,6 +273,9 @@ class RegisterSerializer(serializers.ModelSerializer):
         except Exception:
             # Keep registration functional; avatar can be generated later.
             pass
+
+        if announcement_settings().auto_employee_intro_on_registration:
+            auto_publish_employee_intro_announcement(profile=profile, actor=user)
 
         return user
 
@@ -1340,6 +1360,18 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
     assigned_projects = ProjectAssignmentSerializer(
         source="project_assignments", many=True, required=False
     )
+    publish_intro_announcement = serializers.BooleanField(
+        required=False, default=False, write_only=True
+    )
+    intro_announcement_title = serializers.CharField(
+        required=False, allow_blank=True, write_only=True
+    )
+    intro_announcement_body = serializers.CharField(
+        required=False, allow_blank=True, write_only=True
+    )
+    intro_announcement_scheduled_at = serializers.DateTimeField(
+        required=False, allow_null=True, write_only=True
+    )
 
     def get_manager_names(self, obj) -> str:
         return ", ".join([m.full_name or m.user.username for m in obj.managers.all()])
@@ -1372,8 +1404,19 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = UserProfile
-        fields = EMPLOYEE_PROFILE_FIELDS
+        fields = EMPLOYEE_PROFILE_FIELDS + [
+            "publish_intro_announcement",
+            "intro_announcement_title",
+            "intro_announcement_body",
+            "intro_announcement_scheduled_at",
+        ]
         read_only_fields = EMPLOYEE_PROFILE_READ_ONLY_FIELDS
+
+    def validate(self, attrs):
+        intro_data = self._pop_intro_announcement_data(attrs)
+        self._validate_intro_announcement_request(intro_data)
+        attrs["_intro_announcement_data"] = intro_data
+        return attrs
 
     def validate_email(self, value):
         user = getattr(self.instance, "user", None)
@@ -1385,6 +1428,7 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
         return value
 
     def create(self, validated_data):
+        intro_data = validated_data.pop("_intro_announcement_data", {})
         user_data = validated_data.pop("user", {})
         managers_data = validated_data.pop("managers", [])
         tech_tag_ids = validated_data.pop("tech_tags", None)
@@ -1421,9 +1465,17 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
                 amount=new_salary,
                 effective_date=instance.updated_at.date(),
             )
+        self._publish_intro_announcement_if_requested(
+            instance,
+            intro_data,
+            auto_publish=(
+                announcement_settings().auto_employee_intro_on_employee_create
+            ),
+        )
         return instance
 
     def update(self, instance, validated_data):
+        intro_data = validated_data.pop("_intro_announcement_data", {})
         user_data = validated_data.pop("user", {})
         managers_data = validated_data.pop("managers", None)
         tech_tag_ids = validated_data.pop("tech_tags", None)
@@ -1549,7 +1601,79 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
                 changed_by=changed_by,
             )
 
+        self._publish_intro_announcement_if_requested(instance, intro_data)
         return instance
+
+    def _pop_intro_announcement_data(self, attrs) -> dict:
+        return {
+            "publish": attrs.pop("publish_intro_announcement", False),
+            "title": attrs.pop("intro_announcement_title", None),
+            "body": attrs.pop("intro_announcement_body", None),
+            "scheduled_at": attrs.pop("intro_announcement_scheduled_at", None),
+        }
+
+    def _validate_intro_announcement_request(self, intro_data: dict) -> None:
+        if not intro_data["publish"]:
+            return
+
+        if self.instance and self.instance.intro_announcement_id:
+            raise serializers.ValidationError(
+                {
+                    "publish_intro_announcement": (
+                        "Introduction announcement already exists."
+                    )
+                }
+            )
+
+        request = self.context.get("request")
+        actor = request.user if request and request.user.is_authenticated else None
+        if actor is None:
+            raise serializers.ValidationError(
+                {"publish_intro_announcement": "Authenticated user required."}
+            )
+        if not can_manage_announcements(actor):
+            raise serializers.ValidationError(
+                {
+                    "publish_intro_announcement": (
+                        "Publishing employee introductions requires an HR, "
+                        "lead, manager, or admin role."
+                    )
+                }
+            )
+        scheduled_at = intro_data.get("scheduled_at")
+        if (
+            scheduled_at
+            and scheduled_at > timezone.now()
+            and not can_schedule_announcements(actor)
+        ):
+            raise serializers.ValidationError(
+                {
+                    "intro_announcement_scheduled_at": (
+                        "Scheduling employee introductions requires "
+                        "schedule_announcements permission."
+                    )
+                }
+            )
+
+    def _publish_intro_announcement_if_requested(
+        self, instance: UserProfile, intro_data: dict, *, auto_publish: bool = False
+    ) -> None:
+        if not intro_data.get("publish") and not auto_publish:
+            return
+        request = self.context.get("request")
+        actor = request.user if request and request.user.is_authenticated else None
+        if intro_data.get("publish"):
+            publish_employee_intro_announcement(
+                profile=instance,
+                actor=actor,
+                title=(
+                    intro_data.get("title") or default_employee_intro_title(instance)
+                ),
+                body=intro_data.get("body") or default_employee_intro_body(instance),
+                scheduled_at=intro_data.get("scheduled_at"),
+            )
+            return
+        auto_publish_employee_intro_announcement(profile=instance, actor=actor)
 
     def _resolve_technology_tags(self, tech_tag_ids: list[int]) -> list[TechnologyTag]:
         tag_name_by_id = TECHNOLOGY_TAG_NAME_BY_ID
@@ -4766,7 +4890,6 @@ class BenefitCatalogSerializer(serializers.ModelSerializer):
             validated_data.setdefault("created_by", request.user)
         return super().create(validated_data)
 
-
 # ──────────────────────────────────────────────────────────────────────────────
 # Feedback & Surveys
 # ──────────────────────────────────────────────────────────────────────────────
@@ -4870,3 +4993,278 @@ class SurveySerializer(serializers.ModelSerializer):
                     **question_data,
                 )
         return instance
+# ──────────────────────────────────────────
+# Announcements
+# ──────────────────────────────────────────
+
+
+class AnnouncementListSerializer(serializers.ModelSerializer):
+    author_id = serializers.IntegerField(
+        source="author.id", read_only=True, allow_null=True
+    )
+    author_name = serializers.SerializerMethodField()
+    reaction_counts = serializers.SerializerMethodField()
+    my_reactions = serializers.SerializerMethodField()
+    comments_count = serializers.SerializerMethodField()
+    schedule_status = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Announcement
+        fields = [
+            "id",
+            "title",
+            "type",
+            "author_id",
+            "author_name",
+            "published_at",
+            "scheduled_at",
+            "schedule_status",
+            "reaction_counts",
+            "my_reactions",
+            "comments_count",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
+
+    @extend_schema_field(serializers.CharField(allow_blank=True))
+    def get_author_name(self, obj) -> str:
+        if obj.author is None:
+            return ""
+        return (
+            obj.author.full_name
+            or obj.author.user.get_full_name()
+            or obj.author.user.username
+        )
+
+    def get_reaction_counts(self, obj) -> dict[str, int]:
+        return {
+            row["reaction_type"]: row["count"]
+            for row in obj.reactions.values("reaction_type").annotate(
+                count=models.Count("id")
+            )
+        }
+
+    def get_my_reactions(self, obj) -> list[str]:
+        request = self.context.get("request")
+        profile = getattr(getattr(request, "user", None), "profile", None)
+        if profile is None:
+            return []
+        return list(
+            obj.reactions.filter(user=profile)
+            .order_by("reaction_type")
+            .values_list("reaction_type", flat=True)
+        )
+
+    def get_comments_count(self, obj) -> int:
+        return obj.comments.filter(deleted_at__isnull=True).count()
+
+    @extend_schema_field(serializers.CharField())
+    def get_schedule_status(self, obj) -> str:
+        if obj.scheduled_at and obj.scheduled_at > timezone.now():
+            return "scheduled"
+        return "published"
+
+
+class AnnouncementDetailSerializer(AnnouncementListSerializer):
+    class Meta(AnnouncementListSerializer.Meta):
+        fields = AnnouncementListSerializer.Meta.fields + ["body"]
+        read_only_fields = fields
+
+
+class AnnouncementWriteSerializer(serializers.ModelSerializer):
+    send_email_notifications = serializers.BooleanField(
+        required=False, default=False, write_only=True
+    )
+
+    class Meta:
+        model = Announcement
+        fields = ["title", "body", "type", "scheduled_at", "send_email_notifications"]
+
+    def validate_title(self, value: str) -> str:
+        value = (value or "").strip()
+        if not value:
+            raise serializers.ValidationError("Title is required.")
+        return value
+
+    def validate_body(self, value: str) -> str:
+        value = (value or "").strip()
+        if not value:
+            raise serializers.ValidationError("Body is required.")
+        return value
+
+    def create(self, validated_data):
+        validated_data.pop("send_email_notifications", None)
+        scheduled_at = validated_data.get("scheduled_at")
+        if scheduled_at:
+            validated_data["published_at"] = scheduled_at
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        validated_data.pop("send_email_notifications", None)
+        scheduled_at_was_set = "scheduled_at" in validated_data
+        previous_scheduled_at = instance.scheduled_at
+        announcement = super().update(instance, validated_data)
+
+        if scheduled_at_was_set:
+            if announcement.scheduled_at:
+                announcement.published_at = announcement.scheduled_at
+            elif previous_scheduled_at and previous_scheduled_at > timezone.now():
+                announcement.published_at = timezone.now()
+            announcement.save(update_fields=["published_at", "updated_at"])
+        return announcement
+
+
+class AnnouncementCommentSerializer(serializers.ModelSerializer):
+    author_id = serializers.IntegerField(
+        source="author.id", read_only=True, allow_null=True
+    )
+    author_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AnnouncementComment
+        fields = [
+            "id",
+            "announcement",
+            "author_id",
+            "author_name",
+            "body",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
+
+    @extend_schema_field(serializers.CharField(allow_blank=True))
+    def get_author_name(self, obj) -> str:
+        if obj.author is None:
+            return ""
+        return (
+            obj.author.full_name
+            or obj.author.user.get_full_name()
+            or obj.author.user.username
+        )
+
+
+class AnnouncementCommentCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AnnouncementComment
+        fields = ["body"]
+
+    def validate_body(self, value: str) -> str:
+        value = (value or "").strip()
+        if not value:
+            raise serializers.ValidationError("Comment body is required.")
+        return value
+
+
+class AnnouncementReactionSerializer(serializers.ModelSerializer):
+    user_id = serializers.IntegerField(source="user.id", read_only=True)
+    user_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AnnouncementReaction
+        fields = [
+            "id",
+            "announcement",
+            "user_id",
+            "user_name",
+            "reaction_type",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+    @extend_schema_field(serializers.CharField(allow_blank=True))
+    def get_user_name(self, obj) -> str:
+        return (
+            obj.user.full_name
+            or obj.user.user.get_full_name()
+            or obj.user.user.username
+        )
+
+
+class AnnouncementReactionToggleSerializer(serializers.Serializer):
+    reaction_type = serializers.CharField(max_length=64)
+
+    def validate_reaction_type(self, value: str) -> str:
+        value = (value or "").strip().lower()
+        if not value:
+            raise serializers.ValidationError("Reaction type is required.")
+        return value
+
+
+class DiscordAnnouncementChannelSerializer(serializers.ModelSerializer):
+    webhook_url = serializers.URLField(
+        write_only=True, required=False, allow_blank=True
+    )
+    has_webhook_url = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = DiscordAnnouncementChannel
+        fields = [
+            "id",
+            "announcement_type",
+            "channel_name",
+            "webhook_url",
+            "has_webhook_url",
+            "enabled",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "has_webhook_url", "created_at", "updated_at"]
+
+    def validate_channel_name(self, value: str) -> str:
+        value = (value or "").strip()
+        if not value:
+            raise serializers.ValidationError("Channel name is required.")
+        return value
+
+    def validate_webhook_url(self, value: str) -> str:
+        return (value or "").strip()
+
+    def create(self, validated_data):
+        webhook_url = validated_data.pop("webhook_url", "")
+        if not webhook_url:
+            raise serializers.ValidationError(
+                {"webhook_url": "Webhook URL is required."}
+            )
+        channel = DiscordAnnouncementChannel(**validated_data)
+        channel.set_webhook_url(webhook_url)
+        channel.full_clean()
+        channel.save()
+        return channel
+
+    def update(self, instance, validated_data):
+        webhook_url = validated_data.pop("webhook_url", None)
+        for field, value in validated_data.items():
+            setattr(instance, field, value)
+        if webhook_url:
+            instance.set_webhook_url(webhook_url)
+        instance.full_clean()
+        instance.save()
+        return instance
+
+
+class CelebrationQuerySerializer(serializers.Serializer):
+    days = serializers.IntegerField(
+        required=False, min_value=1, max_value=365, default=30
+    )
+    type = serializers.ChoiceField(
+        required=False,
+        choices=["all", "birthday", "anniversary"],
+        default="all",
+    )
+
+
+class CelebrationEmployeeSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    full_name = serializers.CharField()
+    department = serializers.CharField(allow_null=True, allow_blank=True)
+    avatar_url = serializers.CharField(allow_null=True)
+
+
+class UpcomingCelebrationSerializer(serializers.Serializer):
+    event_type = serializers.ChoiceField(choices=["birthday", "anniversary"])
+    event_date = serializers.DateField()
+    days_until = serializers.IntegerField(min_value=0)
+    employee = CelebrationEmployeeSerializer()
+    anniversary_years = serializers.IntegerField(allow_null=True, min_value=1)

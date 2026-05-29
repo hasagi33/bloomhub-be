@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 
 from .org_chart import OrgChartRecentUpdatesView, OrgChartView
 from .views import (
+    AnnouncementViewSet,
     APIRootView,
     AssetCapabilitiesView,
     AssetDetailView,
@@ -27,6 +28,7 @@ from .views import (
     CPFLevelChangeViewSet,
     CPFLevelListView,
     DepartmentListView,
+    DiscordAnnouncementChannelViewSet,
     DocumentCategoryDefaultsView,
     DocumentTemplateViewSet,
     DocumentViewSet,
@@ -102,6 +104,7 @@ from .views import (
     TokenRefreshViewCustom,
     TrainingBudgetViewSet,
     TrainingEntryViewSet,
+    UpcomingCelebrationsView,
     UploadRolePermissionsView,
     UserProfileListView,
     UserProfileView,
@@ -160,6 +163,12 @@ router.register(
     basename="conference-course-registration",
 )
 router.register(r"notifications", NotificationViewSet, basename="notification")
+router.register(r"announcements", AnnouncementViewSet, basename="announcement")
+router.register(
+    r"announcement-discord-channels",
+    DiscordAnnouncementChannelViewSet,
+    basename="announcement-discord-channel",
+)
 router.register(r"job-listings", JobListingViewSet, basename="job-listing")
 router.register(r"job-applications", JobApplicationViewSet, basename="job-application")
 router.register(r"surveys", SurveyViewSet, basename="survey")
@@ -188,6 +197,11 @@ urlpatterns = [
     path("auth/session/", SessionView.as_view(), name="session"),
     path("auth/permissions/", PermissionsView.as_view(), name="permissions"),
     path("auth/profile/avatar/", AvatarUploadView.as_view(), name="avatar_upload"),
+    path(
+        "celebrations/upcoming/",
+        UpcomingCelebrationsView.as_view(),
+        name="upcoming_celebrations",
+    ),
     path(
         "admin/upload-role-permissions/",
         UploadRolePermissionsView.as_view(),

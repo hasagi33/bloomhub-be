@@ -1,4 +1,5 @@
 import io
+from types import SimpleNamespace
 
 import pytest
 from django.contrib.auth.models import User
@@ -123,3 +124,182 @@ def test_setup_super_admin_creates_user_and_role():
     profile = user.profile
     assert profile.role.name == "SUPER_ADMIN"
     assert "Assigned SUPER_ADMIN" in out.getvalue()
+
+
+def test_runserver_defaults_to_localhost():
+    from core.management.commands.runserver import Command
+
+    assert Command.default_addr == "localhost"
+    assert "localhost:8000" in Command.help
+
+
+def test_sync_media_to_storage_copies_and_deletes_local_files(monkeypatch, tmp_path):
+    from core.management.commands import sync_media_to_storage as cmd_mod
+
+    media_root = tmp_path / "media"
+    docs_dir = media_root / "documents"
+    docs_dir.mkdir(parents=True)
+    local_file = docs_dir / "contract.txt"
+    local_file.write_text("signed", encoding="utf-8")
+
+    class FakeStorage:
+        def __init__(self):
+            self.saved = []
+
+        def exists(self, key):
+            return False
+
+        def save(self, key, file_obj):
+            self.saved.append((key, file_obj.read()))
+            return f"remote/{key}"
+
+    storage = FakeStorage()
+    monkeypatch.setattr(cmd_mod.settings, "MEDIA_ROOT", media_root)
+    monkeypatch.setattr(cmd_mod, "default_storage", storage)
+
+    out = io.StringIO()
+    call_command(
+        "sync_media_to_storage",
+        prefix="documents",
+        delete_local=True,
+        stdout=out,
+    )
+
+    assert storage.saved == [("documents/contract.txt", b"signed")]
+    assert not local_file.exists()
+    assert "Synced 1 file(s), skipped 0, deleted 1 local file(s)." in out.getvalue()
+
+
+def test_sync_media_to_storage_dry_run_reports_existing_keys(monkeypatch, tmp_path):
+    from core.management.commands import sync_media_to_storage as cmd_mod
+
+    media_root = tmp_path / "media"
+    avatars_dir = media_root / "avatars"
+    avatars_dir.mkdir(parents=True)
+    (avatars_dir / "avatar.png").write_bytes(b"png")
+
+    class FakeStorage:
+        def exists(self, key):
+            return key == "avatars/avatar.png"
+
+    monkeypatch.setattr(cmd_mod.settings, "MEDIA_ROOT", media_root)
+    monkeypatch.setattr(cmd_mod, "default_storage", FakeStorage())
+
+    out = io.StringIO()
+    call_command("sync_media_to_storage", prefix="avatars", dry_run=True, stdout=out)
+
+    output = out.getvalue()
+    assert "skip-existing: avatars/avatar.png" in output
+    assert "Dry run complete." in output
+
+
+def test_sync_media_to_storage_overwrites_existing_keys(monkeypatch, tmp_path):
+    from core.management.commands import sync_media_to_storage as cmd_mod
+
+    media_root = tmp_path / "media"
+    media_root.mkdir()
+    (media_root / "existing.txt").write_text("new", encoding="utf-8")
+
+    class FakeStorage:
+        def __init__(self):
+            self.deleted = []
+            self.saved = []
+
+        def exists(self, key):
+            return True
+
+        def delete(self, key):
+            self.deleted.append(key)
+
+        def save(self, key, file_obj):
+            self.saved.append((key, file_obj.read()))
+            return key
+
+    storage = FakeStorage()
+    monkeypatch.setattr(cmd_mod.settings, "MEDIA_ROOT", media_root)
+    monkeypatch.setattr(cmd_mod, "default_storage", storage)
+
+    out = io.StringIO()
+    call_command("sync_media_to_storage", overwrite=True, stdout=out)
+
+    assert storage.deleted == ["existing.txt"]
+    assert storage.saved == [("existing.txt", b"new")]
+    assert "Copied: existing.txt -> existing.txt" in out.getvalue()
+
+
+def test_upload_avatars_to_r2_requires_scope():
+    with pytest.raises(ValueError, match="Use --all or --user-id"):
+        call_command("upload_avatars_to_r2")
+
+
+def test_upload_avatars_to_r2_uploads_matching_local_avatar(monkeypatch, tmp_path):
+    from core.management.commands import upload_avatars_to_r2 as cmd_mod
+
+    media_root = tmp_path / "media"
+    avatar_path = media_root / "avatars" / "user.png"
+    avatar_path.parent.mkdir(parents=True)
+    avatar_path.write_bytes(b"avatar-bytes")
+
+    class FakeStorage:
+        def __init__(self):
+            self.saved = []
+
+        def save(self, name, content):
+            self.saved.append((name, content.read()))
+            return f"remote/{name}"
+
+    storage = FakeStorage()
+    avatar = SimpleNamespace(name="avatars/user.png", storage=storage)
+    profile = SimpleNamespace(user_id=7, avatar=avatar)
+
+    class FakeQuerySet:
+        def __init__(self, profiles):
+            self.profiles = profiles
+            self.filtered_user_id = None
+
+        def all(self):
+            return self
+
+        def filter(self, **kwargs):
+            self.filtered_user_id = kwargs["user_id"]
+            return self
+
+        def iterator(self):
+            return iter(self.profiles)
+
+    profiles = FakeQuerySet([profile])
+    monkeypatch.setattr(cmd_mod.settings, "MEDIA_ROOT", media_root)
+    monkeypatch.setattr(cmd_mod, "UserProfile", SimpleNamespace(objects=profiles))
+
+    out = io.StringIO()
+    call_command("upload_avatars_to_r2", user_id=7, delete_local=True, stdout=out)
+
+    assert profiles.filtered_user_id == 7
+    assert storage.saved == [("avatars/user.png", b"avatar-bytes")]
+    assert not avatar_path.exists()
+    assert "Uploaded user_id=7 -> remote/avatars/user.png" in out.getvalue()
+    assert "Uploaded 1 avatar(s)." in out.getvalue()
+
+
+def test_upload_avatars_to_r2_skips_missing_avatar_file(monkeypatch, tmp_path):
+    from core.management.commands import upload_avatars_to_r2 as cmd_mod
+
+    avatar = SimpleNamespace(name="avatars/missing.png")
+    profile = SimpleNamespace(user_id=11, avatar=avatar)
+
+    class FakeQuerySet:
+        def all(self):
+            return self
+
+        def iterator(self):
+            return iter([profile])
+
+    monkeypatch.setattr(cmd_mod.settings, "MEDIA_ROOT", tmp_path)
+    monkeypatch.setattr(cmd_mod, "UserProfile", SimpleNamespace(objects=FakeQuerySet()))
+
+    out = io.StringIO()
+    call_command("upload_avatars_to_r2", all=True, stdout=out)
+
+    output = out.getvalue()
+    assert "Skipping user_id=11: local file missing:" in output
+    assert "Uploaded 0 avatar(s)." in output
