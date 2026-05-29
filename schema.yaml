@@ -1347,6 +1347,17 @@ paths:
           type: integer
       tags:
       - bonuses
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BonusRecord'
+          description: ''
     post:
       operationId: bonuses_create
       description: |-
@@ -4178,7 +4189,8 @@ paths:
         name: employment_status
         schema:
           type: string
-        description: Exact match on employment status (e.g. active, probation, inactive, on_leave).
+        description: Exact match on employment status (e.g. active, probation, on_leave,
+          inactive).
       - in: query
         name: is_active
         schema:
@@ -4715,9 +4727,9 @@ paths:
           type: string
           enum:
           - active
-          - probation
           - inactive
           - on_leave
+          - probation
         description: |-
           * `active` - Active
           * `probation` - Probation
@@ -16591,16 +16603,14 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -17076,9 +17086,8 @@ components:
           type: integer
         fiscal_year:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           description: Fiscal year for which budget is allocated
         allocated_budget:
           type: string
@@ -17164,16 +17173,14 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -17198,16 +17205,14 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -17240,16 +17245,14 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -17295,16 +17298,14 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -18510,9 +18511,8 @@ components:
           $ref: '#/components/schemas/QuestionTypeEnum'
         order:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
         options:
           description: List of option strings for choice questions; ignored otherwise.
       required:
@@ -18530,9 +18530,8 @@ components:
           $ref: '#/components/schemas/QuestionTypeEnum'
         order:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
         options:
           description: List of option strings for choice questions; ignored otherwise.
       required:
@@ -20430,9 +20429,8 @@ components:
           readOnly: true
         fiscal_year:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           description: Fiscal year for which budget is allocated
         allocated_budget:
           type: string
@@ -20488,9 +20486,8 @@ components:
           type: integer
         fiscal_year:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           description: Fiscal year for which budget is allocated
         allocated_budget:
           type: string

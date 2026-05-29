@@ -3,12 +3,12 @@ from django.contrib import admin
 from django.utils.html import format_html
 
 from .models import (
-    BenefitCatalog,
-    BonusRecord,
     Announcement,
     AnnouncementComment,
     AnnouncementReaction,
     AnnouncementSettings,
+    BenefitCatalog,
+    BonusRecord,
     CelebrationEvent,
     Certificate,
     ChangeLog,

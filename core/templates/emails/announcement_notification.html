@@ -1,0 +1,32 @@
+{% extends "emails/base.html" %}
+{% block subject %}New announcement{% endblock %}
+{% block content %}
+
+<div style="font-size: 15px; line-height: 1.65; color: #374151;">
+  <h1>{{ announcement.title }}</h1>
+  {{ announcement.body|safe }}
+</div>
+
+{% if announcement_url %}
+
+<br> <br>
+<p>
+  Read the full announcement in BloomHub:
+  <a href="{{ announcement_url }}">{{ announcement_url }}</a>
+</p>
+{% elif site_url %}
+<p>
+  Read the full announcement in BloomHub:
+  <a href="{{ site_url }}/announcements">{{ site_url }}/announcements</a>
+</p>
+{% else %}
+<p>Please log in to BloomHub to read the full announcement.</p>
+{% endif %}
+
+<table class="card">
+  {% if author_name %}
+  <tr><td class="label">Author</td><td class="value">{{ author_name }}</td></tr>
+  {% endif %}
+</table>
+
+{% endblock %}

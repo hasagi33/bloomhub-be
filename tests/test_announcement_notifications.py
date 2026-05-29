@@ -325,6 +325,41 @@ def test_announcement_email_notifications_do_not_send_when_flag_false(monkeypatc
 
 
 @pytest.mark.django_db
+@override_settings(FRONTEND_URL="https://bloomhub.test")
+def test_announcement_email_notification_renders_template(monkeypatch):
+    sent = []
+    monkeypatch.setattr(
+        "core.services.mail.announcement_notifications.send_mail_bulk",
+        lambda **kwargs: sent.append(kwargs) or True,
+    )
+    author = User.objects.create_user(username="author", password="x")
+    recipient = User.objects.create_user(
+        username="recipient", email="reader@test.com", password="x"
+    )
+    recipient.profile.email_address = "reader@test.com"
+    recipient.profile.save(update_fields=["email_address"])
+
+    announcement = Announcement.objects.create(
+        title="Template check",
+        body="<p>Rendered body</p>",
+        author=author.profile,
+        type=Announcement.Type.NEWS,
+    )
+
+    from core.services.mail.announcement_notifications import (
+        notify_announcement_published,
+    )
+
+    assert notify_announcement_published(announcement, [recipient.profile]) is True
+    assert sent
+    html = sent[0]["html"]
+    assert "Template check" in html
+    assert "Rendered body" in html
+    assert "https://bloomhub.test/announcements/" in html
+    assert "author" in html.lower()
+
+
+@pytest.mark.django_db
 def test_future_scheduled_announcement_does_not_notify_until_due():
     creator = User.objects.create_user(username="creator", password="x")
     reader = User.objects.create_user(username="reader", password="x")
