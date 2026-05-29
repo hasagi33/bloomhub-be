@@ -5644,6 +5644,10 @@ paths:
       summary: Per-employee yearly summary
       parameters:
       - in: query
+        name: department
+        schema:
+          type: string
+      - in: query
         name: employee
         schema:
           type: integer
@@ -5713,6 +5717,10 @@ paths:
         table from this view directly.
       summary: Monthly leave trend for a given year
       parameters:
+      - in: query
+        name: department
+        schema:
+          type: string
       - in: query
         name: employee
         schema:
@@ -5791,6 +5799,14 @@ paths:
         table from this view directly.
       summary: Yearly totals broken down by leave type
       parameters:
+      - in: query
+        name: department
+        schema:
+          type: string
+      - in: query
+        name: month
+        schema:
+          type: integer
       - in: query
         name: year
         schema:

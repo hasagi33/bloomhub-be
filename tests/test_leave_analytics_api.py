@@ -240,6 +240,85 @@ class LeaveAnalyticsAPITestCase(APITestCase):
             ).exists()
         )
 
+    def test_monthly_filtered_by_department(self):
+        self._grant_permissions(self.hr_user, ["view_dept_trends"])
+        self._auth_as(self.hr_user)
+
+        response = self.client.get(
+            "/api/leave-analytics/monthly/?year=2026&department=Engineering"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        payload = response.json()
+        feb = next(row for row in payload if row["month"] == 2)
+        self.assertEqual(feb["by_type"][LeaveType.VACATION], 3)
+        self.assertEqual(feb["by_type"][LeaveType.SICK], 0)
+
+    def test_monthly_filtered_by_month(self):
+        self._grant_permissions(self.hr_user, ["view_dept_trends"])
+        self._auth_as(self.hr_user)
+
+        response = self.client.get("/api/leave-analytics/monthly/?year=2026&month=2")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        payload = response.json()
+        feb = next(row for row in payload if row["month"] == 2)
+        jan = next(row for row in payload if row["month"] == 1)
+        self.assertEqual(feb["total"], 5)
+        self.assertEqual(jan["total"], 0)
+
+    def test_monthly_rejects_invalid_month(self):
+        self._grant_permissions(self.hr_user, ["view_dept_trends"])
+        self._auth_as(self.hr_user)
+        response = self.client.get("/api/leave-analytics/monthly/?year=2026&month=13")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_yearly_totals_filtered_by_department(self):
+        self._grant_permissions(self.hr_user, ["view_dept_trends"])
+        self._auth_as(self.hr_user)
+
+        response = self.client.get(
+            "/api/leave-analytics/yearly-totals/?year=2026&department=Engineering"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        payload = response.json()
+        self.assertEqual(payload["by_type"][LeaveType.VACATION], 3)
+        self.assertEqual(payload["by_type"][LeaveType.SICK], 0)
+        self.assertEqual(payload["total"], 3)
+
+    def test_yearly_totals_filtered_by_month(self):
+        self._grant_permissions(self.hr_user, ["view_dept_trends"])
+        self._auth_as(self.hr_user)
+
+        response = self.client.get(
+            "/api/leave-analytics/yearly-totals/?year=2026&month=1"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        payload = response.json()
+        self.assertEqual(payload["total"], 0)
+
+    def test_employees_filtered_by_department(self):
+        self._grant_permissions(self.hr_user, ["view_dept_trends"])
+        self._auth_as(self.hr_user)
+
+        response = self.client.get(
+            "/api/leave-analytics/employees/?year=2026&department=Engineering"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        by_id = {row["employee_id"]: row for row in response.json()}
+        self.assertIn(self.employee_profile.id, by_id)
+        self.assertNotIn(self.outsider_profile.id, by_id)
+
+    def test_departments_filtered_by_month(self):
+        self._grant_permissions(self.hr_user, ["view_dept_trends"])
+        self._auth_as(self.hr_user)
+
+        response = self.client.get(
+            "/api/leave-analytics/departments/?year=2026&month=1"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        payload = response.json()
+        for row in payload:
+            self.assertEqual(row["total"], 0)
+
     def test_refresh_rejects_partial_year_range(self):
         self._grant_permissions(self.hr_user, ["configure_leave_types"])
         self._auth_as(self.hr_user)

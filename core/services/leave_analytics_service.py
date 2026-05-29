@@ -270,6 +270,8 @@ def monthly_breakdown(
     year: int,
     leave_type: str | None = None,
     employee: UserProfile | None = None,
+    department: str | None = None,
+    month: int | None = None,
 ) -> list[LeaveMonthlyAggregate]:
     """Return all monthly buckets for a year, optionally narrowed."""
     qs = LeaveMonthlyAggregate.objects.filter(year=year)
@@ -277,18 +279,28 @@ def monthly_breakdown(
         qs = qs.filter(leave_type=leave_type)
     if employee is not None:
         qs = qs.filter(employee=employee)
+    if department is not None:
+        qs = qs.filter(employee__department=department)
+    if month is not None:
+        qs = qs.filter(month=month)
     return list(qs.order_by("month", "leave_type"))
 
 
-def yearly_totals_by_type(year: int) -> dict[str, int]:
-    """Return ``{leave_type: approved_days}`` for ``year``."""
+def yearly_totals_by_type(
+    year: int,
+    *,
+    department: str | None = None,
+    month: int | None = None,
+) -> dict[str, int]:
+    """Return ``{leave_type: approved_days}`` for ``year`` (optionally scoped)."""
     from django.db.models import Sum
 
-    rows = (
-        LeaveMonthlyAggregate.objects.filter(year=year)
-        .values("leave_type")
-        .annotate(total=Sum("approved_days"))
-    )
+    qs = LeaveMonthlyAggregate.objects.filter(year=year)
+    if department is not None:
+        qs = qs.filter(employee__department=department)
+    if month is not None:
+        qs = qs.filter(month=month)
+    rows = qs.values("leave_type").annotate(total=Sum("approved_days"))
     totals: dict[str, int] = {lt: 0 for lt in LeaveType.values}
     for row in rows:
         totals[row["leave_type"]] = row["total"] or 0
