@@ -305,3 +305,46 @@ def yearly_totals_by_type(
     for row in rows:
         totals[row["leave_type"]] = row["total"] or 0
     return totals
+
+
+def employee_history(
+    employee: UserProfile,
+    *,
+    year_from: int | None = None,
+    year_to: int | None = None,
+    leave_type: str | None = None,
+) -> dict[str, list]:
+    """Composite per-employee leave history.
+
+    Bundles monthly aggregates, balance snapshots, and leave requests for one
+    employee into a single payload. Year window is inclusive; ``None`` on
+    either bound means open-ended.
+    """
+    from core.models import LeaveRequest
+
+    aggregates_qs = LeaveMonthlyAggregate.objects.filter(employee=employee)
+    snapshots_qs = LeaveBalanceSnapshot.objects.filter(employee=employee)
+    requests_qs = LeaveRequest.objects.filter(employee=employee)
+
+    if year_from is not None:
+        aggregates_qs = aggregates_qs.filter(year__gte=year_from)
+        snapshots_qs = snapshots_qs.filter(year__gte=year_from)
+        requests_qs = requests_qs.filter(end_date__gte=date(year_from, 1, 1))
+    if year_to is not None:
+        aggregates_qs = aggregates_qs.filter(year__lte=year_to)
+        snapshots_qs = snapshots_qs.filter(year__lte=year_to)
+        requests_qs = requests_qs.filter(start_date__lte=date(year_to, 12, 31))
+    if leave_type is not None:
+        aggregates_qs = aggregates_qs.filter(leave_type=leave_type)
+        snapshots_qs = snapshots_qs.filter(leave_type=leave_type)
+        requests_qs = requests_qs.filter(leave_type=leave_type)
+
+    return {
+        "monthly_aggregates": list(
+            aggregates_qs.order_by("year", "month", "leave_type")
+        ),
+        "balance_snapshots": list(snapshots_qs.order_by("snapshot_date", "leave_type")),
+        "leave_requests": list(
+            requests_qs.select_related("employee__user").order_by("-start_date")
+        ),
+    }

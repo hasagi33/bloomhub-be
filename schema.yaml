@@ -5627,6 +5627,50 @@ paths:
                 items:
                   $ref: '#/components/schemas/LeaveAnalyticsDepartmentRow'
           description: ''
+  /api/leave-analytics/employee-history/:
+    get:
+      operationId: leave_analytics_employee_history_retrieve
+      description: |-
+        Read-only access to pre-materialized leave analytics.
+
+        Source rows are owned by `LeaveMonthlyAggregate` (per
+        employee/leave_type/year/month). Composite reports — monthly trend, yearly
+        totals, department breakdown, per-employee summary — are exposed as
+        `@action` endpoints that reduce the fact table on the database side.
+
+        Refresh is gated behind `CanRefreshLeaveAnalytics` and writes via the
+        `core.services.leave_analytics_service` module rather than mutating the
+        table from this view directly.
+      summary: Per-employee leave history
+      parameters:
+      - in: query
+        name: employee
+        schema:
+          type: integer
+        required: true
+      - in: query
+        name: leave_type
+        schema:
+          type: string
+      - in: query
+        name: year_from
+        schema:
+          type: integer
+      - in: query
+        name: year_to
+        schema:
+          type: integer
+      tags:
+      - Leave Analytics
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveAnalyticsEmployeeHistory'
+          description: ''
   /api/leave-analytics/employees/:
     get:
       operationId: leave_analytics_employees_list
@@ -14973,6 +15017,35 @@ components:
       - department
       - headcount
       - total
+    LeaveAnalyticsEmployeeHistory:
+      type: object
+      description: Shape of the `employee_history` action response.
+      properties:
+        employee_id:
+          type: integer
+        employee_name:
+          type: string
+        monthly_aggregates:
+          type: array
+          items:
+            $ref: '#/components/schemas/LeaveMonthlyAggregate'
+          readOnly: true
+        balance_snapshots:
+          type: array
+          items:
+            $ref: '#/components/schemas/LeaveBalanceSnapshot'
+          readOnly: true
+        leave_requests:
+          type: array
+          items:
+            $ref: '#/components/schemas/LeaveRequestList'
+          readOnly: true
+      required:
+      - balance_snapshots
+      - employee_id
+      - employee_name
+      - leave_requests
+      - monthly_aggregates
     LeaveAnalyticsEmployeeSummary:
       type: object
       description: One row of `employees` action output (per-employee yearly summary).
@@ -16619,14 +16692,16 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -17102,8 +17177,9 @@ components:
           type: integer
         fiscal_year:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           description: Fiscal year for which budget is allocated
         allocated_budget:
           type: string
@@ -17189,14 +17265,16 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -17221,14 +17299,16 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -17261,14 +17341,16 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -17314,14 +17396,16 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -18527,8 +18611,9 @@ components:
           $ref: '#/components/schemas/QuestionTypeEnum'
         order:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
         options:
           description: List of option strings for choice questions; ignored otherwise.
       required:
@@ -18546,8 +18631,9 @@ components:
           $ref: '#/components/schemas/QuestionTypeEnum'
         order:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
         options:
           description: List of option strings for choice questions; ignored otherwise.
       required:
@@ -20445,8 +20531,9 @@ components:
           readOnly: true
         fiscal_year:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           description: Fiscal year for which budget is allocated
         allocated_budget:
           type: string
@@ -20502,8 +20589,9 @@ components:
           type: integer
         fiscal_year:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           description: Fiscal year for which budget is allocated
         allocated_budget:
           type: string

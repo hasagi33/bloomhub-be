@@ -4761,6 +4761,16 @@ class LeaveAnalyticsRefreshResponseSerializer(serializers.Serializer):
     snapshots = serializers.DictField(child=serializers.IntegerField(), required=False)
 
 
+class LeaveAnalyticsEmployeeHistorySerializer(serializers.Serializer):
+    """Shape of the `employee_history` action response."""
+
+    employee_id = serializers.IntegerField()
+    employee_name = serializers.CharField()
+    monthly_aggregates = LeaveMonthlyAggregateSerializer(many=True, read_only=True)
+    balance_snapshots = LeaveBalanceSnapshotSerializer(many=True, read_only=True)
+    leave_requests = LeaveRequestListSerializer(many=True, read_only=True)
+
+
 class BonusRecordSerializer(serializers.ModelSerializer):
     employee_name = serializers.SerializerMethodField(read_only=True)
     bonus_type_display = serializers.CharField(

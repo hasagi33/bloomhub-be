@@ -234,6 +234,7 @@ from .serializers import (
     JobListingWriteSerializer,
     LeaveAdjustmentSerializer,
     LeaveAnalyticsDepartmentRowSerializer,
+    LeaveAnalyticsEmployeeHistorySerializer,
     LeaveAnalyticsEmployeeSummarySerializer,
     LeaveAnalyticsMonthRowSerializer,
     LeaveAnalyticsRefreshResponseSerializer,
@@ -10067,6 +10068,79 @@ class LeaveAnalyticsViewSet(
         payload.sort(key=lambda r: r["total"], reverse=True)
 
         serializer = LeaveAnalyticsEmployeeSummarySerializer(payload, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        tags=["Leave Analytics"],
+        summary="Per-employee leave history",
+        parameters=[
+            OpenApiParameter(
+                name="employee",
+                required=True,
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+            ),
+            OpenApiParameter(
+                name="year_from",
+                required=False,
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+            ),
+            OpenApiParameter(
+                name="year_to",
+                required=False,
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+            ),
+            OpenApiParameter(
+                name="leave_type",
+                required=False,
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+            ),
+        ],
+        responses={200: LeaveAnalyticsEmployeeHistorySerializer},
+    )
+    @action(detail=False, methods=["get"], url_path="employee-history")
+    def employee_history(self, request):
+        from core.services.leave_analytics_service import (
+            employee_history as build_employee_history,
+        )
+
+        employee_id = request.query_params.get("employee")
+        if employee_id is None or employee_id == "":
+            raise ValidationError({"employee": "employee is required"})
+        try:
+            employee_id = int(employee_id)
+        except (TypeError, ValueError) as exc:
+            raise ValidationError({"employee": "employee must be an integer"}) from exc
+
+        scoped_employees = self._scoped_employee_qs()
+        employee = scoped_employees.filter(id=employee_id).first()
+        if employee is None:
+            raise NotFound("Employee not found or not accessible.")
+
+        year_from = self._parse_year(request.query_params.get("year_from"))
+        year_to = self._parse_year(request.query_params.get("year_to"))
+        if year_from is not None and year_to is not None and year_from > year_to:
+            raise ValidationError("year_from cannot exceed year_to.")
+
+        leave_type = request.query_params.get("leave_type") or None
+
+        payload = build_employee_history(
+            employee,
+            year_from=year_from,
+            year_to=year_to,
+            leave_type=leave_type,
+        )
+        serializer = LeaveAnalyticsEmployeeHistorySerializer(
+            {
+                "employee_id": employee.id,
+                "employee_name": employee.user.get_full_name()
+                or employee.user.username,
+                **payload,
+            }
+        )
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     @extend_schema(

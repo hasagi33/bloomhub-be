@@ -8,6 +8,7 @@ from rest_framework.test import APITestCase
 from core.enums import LeaveRequestStatus, LeaveType
 from core.models import (
     LeaveBalance,
+    LeaveBalanceSnapshot,
     LeaveMonthlyAggregate,
     LeavePolicy,
     LeaveRequest,
@@ -15,6 +16,7 @@ from core.models import (
 )
 from core.services.leave_analytics_service import (
     materialize_leave_monthly_aggregates,
+    snapshot_leave_balances,
 )
 
 
@@ -318,6 +320,102 @@ class LeaveAnalyticsAPITestCase(APITestCase):
         payload = response.json()
         for row in payload:
             self.assertEqual(row["total"], 0)
+
+    def test_employee_history_requires_employee_param(self):
+        self._grant_permissions(self.hr_user, ["view_dept_trends"])
+        self._auth_as(self.hr_user)
+        response = self.client.get("/api/leave-analytics/employee-history/")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_employee_history_returns_composite_payload(self):
+        self._grant_permissions(self.hr_user, ["view_dept_trends"])
+        self._auth_as(self.hr_user)
+        snapshot_leave_balances(
+            employees=[self.employee_profile],
+            year=2026,
+            snapshot_date=date(2026, 3, 1),
+        )
+
+        response = self.client.get(
+            f"/api/leave-analytics/employee-history/?employee={self.employee_profile.id}"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        payload = response.json()
+        self.assertEqual(payload["employee_id"], self.employee_profile.id)
+        self.assertGreaterEqual(len(payload["monthly_aggregates"]), 1)
+        self.assertGreaterEqual(len(payload["balance_snapshots"]), 1)
+        self.assertGreaterEqual(len(payload["leave_requests"]), 1)
+        request_row = payload["leave_requests"][0]
+        self.assertIn("leave_type", request_row)
+        self.assertIn("start_date", request_row)
+        self.assertIn("status", request_row)
+        snapshot_row = payload["balance_snapshots"][0]
+        self.assertEqual(snapshot_row["employee_id"], self.employee_profile.id)
+        self.assertIn("remaining", snapshot_row)
+
+    def test_employee_history_year_window_filters(self):
+        self._grant_permissions(self.hr_user, ["view_dept_trends"])
+        self._auth_as(self.hr_user)
+
+        response = self.client.get(
+            "/api/leave-analytics/employee-history/"
+            f"?employee={self.employee_profile.id}&year_from=2099&year_to=2099"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        payload = response.json()
+        self.assertEqual(payload["monthly_aggregates"], [])
+        self.assertEqual(payload["leave_requests"], [])
+
+    def test_employee_history_rejects_invalid_year_range(self):
+        self._grant_permissions(self.hr_user, ["view_dept_trends"])
+        self._auth_as(self.hr_user)
+        response = self.client.get(
+            "/api/leave-analytics/employee-history/"
+            f"?employee={self.employee_profile.id}&year_from=2027&year_to=2026"
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_employee_history_scoped_to_own_data_for_employee_role(self):
+        self._grant_permissions(self.employee_user, ["view_own_history"])
+        self._auth_as(self.employee_user)
+
+        own = self.client.get(
+            f"/api/leave-analytics/employee-history/?employee={self.employee_profile.id}"
+        )
+        self.assertEqual(own.status_code, status.HTTP_200_OK)
+
+        other = self.client.get(
+            f"/api/leave-analytics/employee-history/?employee={self.outsider_profile.id}"
+        )
+        self.assertEqual(other.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_employee_history_filtered_by_leave_type(self):
+        self._grant_permissions(self.hr_user, ["view_dept_trends"])
+        self._auth_as(self.hr_user)
+        # Snapshot keeps coverage of balance trail when scoped by type.
+        snapshot_leave_balances(
+            employees=[self.employee_profile],
+            year=2026,
+            snapshot_date=date(2026, 3, 1),
+        )
+        # Sanity check: VACATION snapshot row exists.
+        self.assertTrue(
+            LeaveBalanceSnapshot.objects.filter(
+                employee=self.employee_profile,
+                leave_type=LeaveType.VACATION,
+            ).exists()
+        )
+
+        response = self.client.get(
+            "/api/leave-analytics/employee-history/"
+            f"?employee={self.employee_profile.id}&leave_type={LeaveType.SICK}"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        payload = response.json()
+        for bucket in payload["monthly_aggregates"]:
+            self.assertEqual(bucket["leave_type"], LeaveType.SICK)
+        for req in payload["leave_requests"]:
+            self.assertEqual(req["leave_type"], LeaveType.SICK)
 
     def test_refresh_rejects_partial_year_range(self):
         self._grant_permissions(self.hr_user, ["configure_leave_types"])
