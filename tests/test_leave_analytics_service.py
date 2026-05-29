@@ -24,9 +24,7 @@ class LeaveAnalyticsServiceTestCase(APITestCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        call_command(
-            "setup_public_tenant", "--domain", "testserver", verbosity=0
-        )
+        call_command("setup_public_tenant", "--domain", "testserver", verbosity=0)
 
     @staticmethod
     def _create_profile(username: str):
@@ -81,7 +79,7 @@ class LeaveAnalyticsServiceTestCase(APITestCase):
         *,
         leave_type=LeaveType.VACATION,
         start=date(2026, 3, 2),  # Monday
-        end=date(2026, 3, 6),    # Friday
+        end=date(2026, 3, 6),  # Friday
         status=LeaveRequestStatus.APPROVED,
     ):
         return LeaveRequest.objects.create(
@@ -118,18 +116,12 @@ class LeaveAnalyticsServiceTestCase(APITestCase):
     def test_materialize_splits_cross_month_request_into_two_rows(self):
         profile = self._create_profile("emp-monthly-2")
         # Mon Mar 30 → Fri Apr 3 2026 (5 working days: Mar 30/31 + Apr 1/2/3)
-        self._make_request(
-            profile, start=date(2026, 3, 30), end=date(2026, 4, 3)
-        )
+        self._make_request(profile, start=date(2026, 3, 30), end=date(2026, 4, 3))
 
         materialize_leave_monthly_aggregates()
 
-        march = LeaveMonthlyAggregate.objects.get(
-            year=2026, month=3, employee=profile
-        )
-        april = LeaveMonthlyAggregate.objects.get(
-            year=2026, month=4, employee=profile
-        )
+        march = LeaveMonthlyAggregate.objects.get(year=2026, month=3, employee=profile)
+        april = LeaveMonthlyAggregate.objects.get(year=2026, month=4, employee=profile)
         self.assertEqual(march.approved_days, 2)
         self.assertEqual(april.approved_days, 3)
         # Each bucket records that one source request contributed to it.
@@ -159,9 +151,7 @@ class LeaveAnalyticsServiceTestCase(APITestCase):
 
         materialize_leave_monthly_aggregates()
 
-        row = LeaveMonthlyAggregate.objects.get(
-            employee=profile, year=2026, month=5
-        )
+        row = LeaveMonthlyAggregate.objects.get(employee=profile, year=2026, month=5)
         self.assertEqual(row.approved_days, 0)
         self.assertEqual(row.pending_days, 3)
         self.assertEqual(row.rejected_days, 2)
@@ -187,21 +177,13 @@ class LeaveAnalyticsServiceTestCase(APITestCase):
 
     def test_year_range_scope_isolates_other_years(self):
         profile = self._create_profile("emp-monthly-5")
-        self._make_request(
-            profile, start=date(2024, 2, 5), end=date(2024, 2, 7)
-        )
-        self._make_request(
-            profile, start=date(2026, 2, 3), end=date(2026, 2, 5)
-        )
+        self._make_request(profile, start=date(2024, 2, 5), end=date(2024, 2, 7))
+        self._make_request(profile, start=date(2026, 2, 3), end=date(2026, 2, 5))
 
         materialize_leave_monthly_aggregates(year_range=(2026, 2026))
 
-        self.assertTrue(
-            LeaveMonthlyAggregate.objects.filter(year=2026).exists()
-        )
-        self.assertFalse(
-            LeaveMonthlyAggregate.objects.filter(year=2024).exists()
-        )
+        self.assertTrue(LeaveMonthlyAggregate.objects.filter(year=2026).exists())
+        self.assertFalse(LeaveMonthlyAggregate.objects.filter(year=2024).exists())
 
     def test_snapshot_leave_balances_writes_and_updates(self):
         profile = self._create_profile("emp-snapshot")
@@ -244,9 +226,7 @@ class LeaveAnalyticsServiceTestCase(APITestCase):
 
     def test_read_helpers_return_expected_shapes(self):
         profile = self._create_profile("emp-read")
-        self._make_request(
-            profile, start=date(2026, 2, 2), end=date(2026, 2, 6)
-        )
+        self._make_request(profile, start=date(2026, 2, 2), end=date(2026, 2, 6))
         self._make_request(
             profile,
             leave_type=LeaveType.SICK,
@@ -272,15 +252,16 @@ class LeaveAnalyticsServiceTestCase(APITestCase):
         profile = self._create_profile("emp-cmd")
         self._ensure_policy()
         self._ensure_balance(profile, used=3)
-        self._make_request(
-            profile, start=date(2026, 6, 1), end=date(2026, 6, 3)
-        )
+        self._make_request(profile, start=date(2026, 6, 1), end=date(2026, 6, 3))
 
         call_command(
             "refresh_leave_analytics",
-            "--year-from", "2026",
-            "--year-to", "2026",
-            "--snapshot-date", "2026-06-04",
+            "--year-from",
+            "2026",
+            "--year-to",
+            "2026",
+            "--snapshot-date",
+            "2026-06-04",
             verbosity=0,
         )
 

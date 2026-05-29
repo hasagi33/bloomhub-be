@@ -22,9 +22,9 @@ much work was done.
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from typing import Iterable
 
 from django.db import transaction
 from django.utils import timezone
@@ -124,7 +124,8 @@ def materialize_leave_monthly_aggregates(
 
     # Build the desired state in memory: bucket -> {status_field: days, requests_count}
     desired: dict[_BucketKey, dict[str, int]] = defaultdict(
-        lambda: {field: 0 for field in LEAVE_ANALYTICS_STATUS_BUCKET.values()} | {"requests_count": 0}
+        lambda: {field: 0 for field in LEAVE_ANALYTICS_STATUS_BUCKET.values()}
+        | {"requests_count": 0}
     )
     for lr in requests_qs:
         if lr.status not in LEAVE_ANALYTICS_STATUS_BUCKET:
@@ -153,9 +154,7 @@ def materialize_leave_monthly_aggregates(
         if employee is not None:
             scope_qs = scope_qs.filter(employee=employee)
         if year_range is not None:
-            scope_qs = scope_qs.filter(
-                year__gte=year_range[0], year__lte=year_range[1]
-            )
+            scope_qs = scope_qs.filter(year__gte=year_range[0], year__lte=year_range[1])
 
         existing_by_key: dict[_BucketKey, LeaveMonthlyAggregate] = {
             _BucketKey(
@@ -235,9 +234,7 @@ def snapshot_leave_balances(
 
     with transaction.atomic():
         for balance in balances_qs:
-            remaining = max(
-                0, (balance.allocated + balance.carryover) - balance.used
-            )
+            remaining = max(0, (balance.allocated + balance.carryover) - balance.used)
             snapshot, created = LeaveBalanceSnapshot.objects.update_or_create(
                 employee=balance.employee,
                 leave_type=balance.leave_type,

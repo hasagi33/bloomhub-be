@@ -104,9 +104,11 @@ from .models import (
     Project,
     ProjectAssignment,
     PromotionHistory,
+    Question,
     ReplacementLog,
     Role,
     ScheduledMaintenance,
+    Survey,
     TaskTemplate,
     TemplateField,
     TemplateGeneratedDocument,
@@ -125,8 +127,8 @@ from .models import (
 )
 from .permissions import (
     CanRefreshLeaveAnalytics,
-    IsCompensationAdminOrOwnReadOnly,
     CanReviewApplication,
+    IsCompensationAdminOrOwnReadOnly,
     IsCPFLevelChangeEditor,
     IsEmployeeOrHR,
     IsHRAdminForAdjustment,
@@ -246,6 +248,7 @@ from .serializers import (
     ProjectSerializer,
     PromotionHistorySerializer,
     PromotionHistoryWriteSerializer,
+    QuestionSerializer,
     RegisterSerializer,
     ReplacementLogSerializer,
     ReplacementLogUpdateSerializer,
@@ -256,6 +259,7 @@ from .serializers import (
     ScheduledMaintenanceSerializer,
     SignatureAuditLogSerializer,
     SignDocumentSerializer,
+    SurveySerializer,
     TemplateGeneratedDocumentSerializer,
     TemplateUseSerializer,
     TempoAccountMappingSerializer,
@@ -9745,6 +9749,8 @@ class LeaveBalanceSnapshotViewSet(
         if profile is None:
             return qs.none()
         return qs.filter(employee=profile)
+
+
 class BonusRecordViewSet(viewsets.ModelViewSet):
     """Bonus records (Compensation module).
 
@@ -9932,3 +9938,126 @@ class BenefitCatalogViewSet(viewsets.ModelViewSet):
         super().check_permissions(request)
         if not is_compensation_admin(request.user):
             raise PermissionDenied("HR-only.")
+
+
+# ──────────────────────────────────────────
+# Feedback & Surveys
+# ──────────────────────────────────────────
+
+
+class IsHROrStaffForSurveyWrite(permissions.BasePermission):
+    """Read for any authenticated user; write only for HR / staff / superuser."""
+
+    SAFE_METHODS = ("GET", "HEAD", "OPTIONS")
+
+    def has_permission(self, request, view):
+        if not request.user.is_authenticated:
+            return False
+        if request.method in self.SAFE_METHODS:
+            return True
+        if getattr(request.user, "is_staff", False) or getattr(
+            request.user, "is_superuser", False
+        ):
+            return True
+        try:
+            profile = request.user.profile
+        except (AttributeError, UserProfile.DoesNotExist):
+            return False
+        role = getattr(profile, "role", None)
+        return bool(role and role.name and "hr" in role.name.lower())
+
+
+@extend_schema(tags=["Feedback & Surveys"])
+class SurveyViewSet(viewsets.ModelViewSet):
+    """
+    CRUD for feedback surveys.
+
+    - GET  /api/surveys/                — list
+    - POST /api/surveys/                — create with nested questions
+    - GET  /api/surveys/{id}/           — retrieve with questions
+    - PATCH /api/surveys/{id}/          — update (questions replaced if provided)
+    - DELETE /api/surveys/{id}/         — delete (only if no responses)
+    - POST /api/surveys/{id}/close/     — mark closed (keeps responses, blocks new ones)
+    """
+
+    serializer_class = SurveySerializer
+    permission_classes = [IsHROrStaffForSurveyWrite]
+    queryset = (
+        Survey.objects.select_related("created_by__user")
+        .prefetch_related("questions")
+        .all()
+    )
+
+    def perform_create(self, serializer):
+        profile = None
+        try:
+            profile = self.request.user.profile
+        except (AttributeError, UserProfile.DoesNotExist):
+            profile = None
+        serializer.save(created_by=profile)
+
+    def destroy(self, request, *args, **kwargs):
+        survey = self.get_object()
+        if survey.responses.exists():
+            return Response(
+                {
+                    "detail": (
+                        "Cannot delete a survey that has responses. "
+                        "Close it instead."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return super().destroy(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Close a survey",
+        description=(
+            "Marks the survey as closed. Existing responses are preserved but "
+            "no new responses can be submitted."
+        ),
+        responses={200: SurveySerializer},
+    )
+    @action(detail=True, methods=["post"], url_path="close")
+    def close(self, request, pk=None):
+        from .enums import SurveyStatus
+
+        survey = self.get_object()
+        if survey.status == SurveyStatus.CLOSED:
+            return Response(
+                {"detail": "Survey is already closed."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        survey.status = SurveyStatus.CLOSED
+        survey.save(update_fields=["status"])
+        return Response(self.get_serializer(survey).data)
+
+    @extend_schema(
+        summary="Add a question to a survey",
+        description=(
+            "Appends a single question to the end of the survey. For bulk "
+            "edits, PATCH the survey itself with a full `questions` array."
+        ),
+        request=QuestionSerializer,
+        responses={201: QuestionSerializer},
+    )
+    @action(detail=True, methods=["post"], url_path="questions")
+    def add_question(self, request, pk=None):
+        survey = self.get_object()
+        serializer = QuestionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        next_order = (
+            (survey.questions.order_by("-order").first().order + 1)
+            if survey.questions.exists()
+            else 0
+        )
+        question = Question.objects.create(
+            survey=survey,
+            text=serializer.validated_data["text"],
+            type=serializer.validated_data["type"],
+            options=serializer.validated_data.get("options", []),
+            order=serializer.validated_data.get("order", next_order),
+        )
+        return Response(
+            QuestionSerializer(question).data, status=status.HTTP_201_CREATED
+        )

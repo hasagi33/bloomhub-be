@@ -677,9 +677,7 @@ LEAVE_ANALYTICS_OWN_ACTIONS = [
 
 def has_leave_analytics_view_permission(user) -> bool:
     """True when the user can read team/org-wide leave analytics."""
-    return _has_permission(
-        user, LEAVE_ANALYTICS_MODULE, LEAVE_ANALYTICS_VIEW_ACTIONS
-    )
+    return _has_permission(user, LEAVE_ANALYTICS_MODULE, LEAVE_ANALYTICS_VIEW_ACTIONS)
 
 
 def has_leave_analytics_refresh_permission(user) -> bool:
@@ -691,9 +689,7 @@ def has_leave_analytics_refresh_permission(user) -> bool:
 
 def has_own_leave_history_permission(user) -> bool:
     """True when the user can at least see their own leave history."""
-    return _has_permission(
-        user, LEAVE_ANALYTICS_MODULE, LEAVE_ANALYTICS_OWN_ACTIONS
-    )
+    return _has_permission(user, LEAVE_ANALYTICS_MODULE, LEAVE_ANALYTICS_OWN_ACTIONS)
 
 
 class IsLeaveAnalyticsViewer(permissions.BasePermission):
@@ -711,10 +707,9 @@ class IsLeaveAnalyticsViewer(permissions.BasePermission):
             return False
         if request.method not in permissions.SAFE_METHODS:
             return has_leave_analytics_refresh_permission(user)
-        return (
-            has_leave_analytics_view_permission(user)
-            or has_own_leave_history_permission(user)
-        )
+        return has_leave_analytics_view_permission(
+            user
+        ) or has_own_leave_history_permission(user)
 
 
 class CanRefreshLeaveAnalytics(permissions.BasePermission):
@@ -725,6 +720,8 @@ class CanRefreshLeaveAnalytics(permissions.BasePermission):
         if not user or not user.is_authenticated:
             return False
         return has_leave_analytics_refresh_permission(user)
+
+
 def is_compensation_admin(user) -> bool:
     """HR-like role gate reused for Compensation module writes + cross-employee reads.
 

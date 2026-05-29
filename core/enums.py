@@ -487,6 +487,12 @@ class SuggestionStatus(models.TextChoices):
     DECLINED = "declined", "Declined"
 
 
+class SurveyStatus(models.TextChoices):
+    DRAFT = "draft", "Draft"
+    ACTIVE = "active", "Active"
+    CLOSED = "closed", "Closed"
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # 12. API Error Codes
 # ──────────────────────────────────────────────────────────────────────────────

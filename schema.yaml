@@ -8979,6 +8979,273 @@ paths:
           description: No response body
         '404':
           description: No response body
+  /api/surveys/:
+    get:
+      operationId: surveys_list
+      description: |-
+        CRUD for feedback surveys.
+
+        - GET  /api/surveys/                — list
+        - POST /api/surveys/                — create with nested questions
+        - GET  /api/surveys/{id}/           — retrieve with questions
+        - PATCH /api/surveys/{id}/          — update (questions replaced if provided)
+        - DELETE /api/surveys/{id}/         — delete (only if no responses)
+        - POST /api/surveys/{id}/close/     — mark closed (keeps responses, blocks new ones)
+      tags:
+      - Feedback & Surveys
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Survey'
+          description: ''
+    post:
+      operationId: surveys_create
+      description: |-
+        CRUD for feedback surveys.
+
+        - GET  /api/surveys/                — list
+        - POST /api/surveys/                — create with nested questions
+        - GET  /api/surveys/{id}/           — retrieve with questions
+        - PATCH /api/surveys/{id}/          — update (questions replaced if provided)
+        - DELETE /api/surveys/{id}/         — delete (only if no responses)
+        - POST /api/surveys/{id}/close/     — mark closed (keeps responses, blocks new ones)
+      tags:
+      - Feedback & Surveys
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SurveyRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SurveyRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SurveyRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Survey'
+          description: ''
+  /api/surveys/{id}/:
+    get:
+      operationId: surveys_retrieve
+      description: |-
+        CRUD for feedback surveys.
+
+        - GET  /api/surveys/                — list
+        - POST /api/surveys/                — create with nested questions
+        - GET  /api/surveys/{id}/           — retrieve with questions
+        - PATCH /api/surveys/{id}/          — update (questions replaced if provided)
+        - DELETE /api/surveys/{id}/         — delete (only if no responses)
+        - POST /api/surveys/{id}/close/     — mark closed (keeps responses, blocks new ones)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Survey.
+        required: true
+      tags:
+      - Feedback & Surveys
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Survey'
+          description: ''
+    put:
+      operationId: surveys_update
+      description: |-
+        CRUD for feedback surveys.
+
+        - GET  /api/surveys/                — list
+        - POST /api/surveys/                — create with nested questions
+        - GET  /api/surveys/{id}/           — retrieve with questions
+        - PATCH /api/surveys/{id}/          — update (questions replaced if provided)
+        - DELETE /api/surveys/{id}/         — delete (only if no responses)
+        - POST /api/surveys/{id}/close/     — mark closed (keeps responses, blocks new ones)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Survey.
+        required: true
+      tags:
+      - Feedback & Surveys
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SurveyRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SurveyRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SurveyRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Survey'
+          description: ''
+    patch:
+      operationId: surveys_partial_update
+      description: |-
+        CRUD for feedback surveys.
+
+        - GET  /api/surveys/                — list
+        - POST /api/surveys/                — create with nested questions
+        - GET  /api/surveys/{id}/           — retrieve with questions
+        - PATCH /api/surveys/{id}/          — update (questions replaced if provided)
+        - DELETE /api/surveys/{id}/         — delete (only if no responses)
+        - POST /api/surveys/{id}/close/     — mark closed (keeps responses, blocks new ones)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Survey.
+        required: true
+      tags:
+      - Feedback & Surveys
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedSurveyRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedSurveyRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedSurveyRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Survey'
+          description: ''
+    delete:
+      operationId: surveys_destroy
+      description: |-
+        CRUD for feedback surveys.
+
+        - GET  /api/surveys/                — list
+        - POST /api/surveys/                — create with nested questions
+        - GET  /api/surveys/{id}/           — retrieve with questions
+        - PATCH /api/surveys/{id}/          — update (questions replaced if provided)
+        - DELETE /api/surveys/{id}/         — delete (only if no responses)
+        - POST /api/surveys/{id}/close/     — mark closed (keeps responses, blocks new ones)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Survey.
+        required: true
+      tags:
+      - Feedback & Surveys
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/surveys/{id}/close/:
+    post:
+      operationId: surveys_close_create
+      description: Marks the survey as closed. Existing responses are preserved but
+        no new responses can be submitted.
+      summary: Close a survey
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Survey.
+        required: true
+      tags:
+      - Feedback & Surveys
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SurveyRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SurveyRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SurveyRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Survey'
+          description: ''
+  /api/surveys/{id}/questions/:
+    post:
+      operationId: surveys_questions_create
+      description: Appends a single question to the end of the survey. For bulk edits,
+        PATCH the survey itself with a full `questions` array.
+      summary: Add a question to a survey
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Survey.
+        required: true
+      tags:
+      - Feedback & Surveys
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuestionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/QuestionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/QuestionRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Question'
+          description: ''
   /api/time-entries/:
     get:
       operationId: time_entries_list
@@ -9481,6 +9748,32 @@ paths:
               schema:
                 $ref: '#/components/schemas/TimeImportBatch'
           description: ''
+        '400':
+          description: No response body
+        '403':
+          description: No response body
+  /api/time-imports/jira/assigned-issues/:
+    post:
+      operationId: time_imports_jira_assigned_issues_create
+      tags:
+      - Time Tracking
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JiraAssignedIssueImportRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/JiraAssignedIssueImportRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/JiraAssignedIssueImportRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
         '400':
           description: No response body
         '403':
@@ -13364,6 +13657,19 @@ components:
           minLength: 1
       required:
       - id_token
+    JiraAssignedIssueImportRequest:
+      type: object
+      properties:
+        employee_id:
+          type: integer
+        max_results:
+          type: integer
+          maximum: 1000
+          minimum: 1
+        dry_run:
+          type: boolean
+      required:
+      - employee_id
     JiraConnection:
       type: object
       properties:
@@ -15414,14 +15720,16 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -15552,6 +15860,11 @@ components:
           maximum: 100
           minimum: 0
           description: Percent of full-time allocation, 0–100.
+        weekly_allocation_hours:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,2})?$
+          nullable: true
         start_date:
           type: string
           format: date
@@ -15756,6 +16069,31 @@ components:
           type: string
           description: Optional external vendor or service provider
           maxLength: 200
+    PatchedSurveyRequest:
+      type: object
+      description: Survey with nested questions for create/update and retrieval.
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          type: string
+        is_anonymous:
+          type: boolean
+        status:
+          allOf:
+          - $ref: '#/components/schemas/SurveyStatusEnum'
+          description: |-
+            Lifecycle state. Closed surveys keep responses but reject new ones.
+
+            * `draft` - Draft
+            * `active` - Active
+            * `closed` - Closed
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuestionRequest'
     PatchedTempoConnectionRequest:
       type: object
       properties:
@@ -15867,8 +16205,9 @@ components:
           type: integer
         fiscal_year:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           description: Fiscal year for which budget is allocated
         allocated_budget:
           type: string
@@ -15954,14 +16293,16 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -15986,14 +16327,16 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -16026,14 +16369,16 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -16079,14 +16424,16 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -16879,6 +17226,11 @@ components:
           maximum: 100
           minimum: 0
           description: Percent of full-time allocation, 0–100.
+        weekly_allocation_hours:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,2})?$
+          nullable: true
         active_projects_count:
           type: string
           readOnly: true
@@ -16927,6 +17279,11 @@ components:
           maximum: 100
           minimum: 0
           description: Percent of full-time allocation, 0–100.
+        weekly_allocation_hours:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,2})?$
+          nullable: true
         start_date:
           type: string
           format: date
@@ -17270,6 +17627,55 @@ components:
       required:
       - date
       - employee_id
+    Question:
+      type: object
+      description: A question within a survey. Used nested inside SurveySerializer.
+      properties:
+        id:
+          type: integer
+        text:
+          type: string
+        type:
+          $ref: '#/components/schemas/QuestionTypeEnum'
+        order:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+        options:
+          description: List of option strings for choice questions; ignored otherwise.
+      required:
+      - text
+    QuestionRequest:
+      type: object
+      description: A question within a survey. Used nested inside SurveySerializer.
+      properties:
+        id:
+          type: integer
+        text:
+          type: string
+          minLength: 1
+        type:
+          $ref: '#/components/schemas/QuestionTypeEnum'
+        order:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+        options:
+          description: List of option strings for choice questions; ignored otherwise.
+      required:
+      - text
+    QuestionTypeEnum:
+      enum:
+      - text
+      - choice
+      - scale
+      type: string
+      description: |-
+        * `text` - Text
+        * `choice` - Choice
+        * `scale` - Scale
     RegisterRequest:
       type: object
       properties:
@@ -18112,6 +18518,91 @@ components:
         * `completed` - Completed
         * `cancelled` - Cancelled
         * `archived` - Archived
+    Survey:
+      type: object
+      description: Survey with nested questions for create/update and retrieval.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        title:
+          type: string
+          maxLength: 200
+        description:
+          type: string
+        is_anonymous:
+          type: boolean
+        status:
+          allOf:
+          - $ref: '#/components/schemas/SurveyStatusEnum'
+          description: |-
+            Lifecycle state. Closed surveys keep responses but reject new ones.
+
+            * `draft` - Draft
+            * `active` - Active
+            * `closed` - Closed
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Question'
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        created_by:
+          type: integer
+          readOnly: true
+          nullable: true
+        created_by_name:
+          type: string
+          readOnly: true
+        response_count:
+          type: integer
+          readOnly: true
+      required:
+      - created_at
+      - created_by
+      - created_by_name
+      - id
+      - response_count
+      - title
+    SurveyRequest:
+      type: object
+      description: Survey with nested questions for create/update and retrieval.
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          type: string
+        is_anonymous:
+          type: boolean
+        status:
+          allOf:
+          - $ref: '#/components/schemas/SurveyStatusEnum'
+          description: |-
+            Lifecycle state. Closed surveys keep responses but reject new ones.
+
+            * `draft` - Draft
+            * `active` - Active
+            * `closed` - Closed
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuestionRequest'
+      required:
+      - title
+    SurveyStatusEnum:
+      enum:
+      - draft
+      - active
+      - closed
+      type: string
+      description: |-
+        * `draft` - Draft
+        * `active` - Active
+        * `closed` - Closed
     TaskTemplate:
       type: object
       properties:
@@ -18588,6 +19079,9 @@ components:
         duplicate_of:
           type: string
           readOnly: true
+        allocation_context:
+          type: string
+          readOnly: true
         submitted_at:
           type: string
           format: date-time
@@ -18632,6 +19126,7 @@ components:
           format: date-time
           readOnly: true
       required:
+      - allocation_context
       - approved_at
       - approved_by
       - audit_events
@@ -19064,8 +19559,9 @@ components:
           readOnly: true
         fiscal_year:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           description: Fiscal year for which budget is allocated
         allocated_budget:
           type: string
@@ -19121,8 +19617,9 @@ components:
           type: integer
         fiscal_year:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           description: Fiscal year for which budget is allocated
         allocated_budget:
           type: string

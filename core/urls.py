@@ -76,6 +76,7 @@ from .views import (
     ScheduledMaintenanceDetailView,
     ScheduledMaintenanceListView,
     SessionView,
+    SurveyViewSet,
     TempoImportCommitView,
     TempoImportPreviewView,
     TempoMappingsView,
@@ -161,6 +162,7 @@ router.register(
 router.register(r"notifications", NotificationViewSet, basename="notification")
 router.register(r"job-listings", JobListingViewSet, basename="job-listing")
 router.register(r"job-applications", JobApplicationViewSet, basename="job-application")
+router.register(r"surveys", SurveyViewSet, basename="survey")
 router.register(
     r"promotion-history", PromotionHistoryViewSet, basename="promotion-history"
 )

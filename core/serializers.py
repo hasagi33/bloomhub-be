@@ -65,10 +65,12 @@ from core.models import (
     Project,
     ProjectAssignment,
     PromotionHistory,
+    Question,
     ReplacementLog,
     Role,
     SalaryRecord,
     ScheduledMaintenance,
+    Survey,
     TaskTemplate,
     TechnologyTag,
     TemplateField,
@@ -4633,6 +4635,8 @@ class LeaveAnalyticsRefreshResponseSerializer(serializers.Serializer):
     updated_count = serializers.IntegerField()
     deleted_count = serializers.IntegerField(required=False, default=0)
     snapshots = serializers.DictField(child=serializers.IntegerField(), required=False)
+
+
 class BonusRecordSerializer(serializers.ModelSerializer):
     employee_name = serializers.SerializerMethodField(read_only=True)
     bonus_type_display = serializers.CharField(
@@ -4761,3 +4765,108 @@ class BenefitCatalogSerializer(serializers.ModelSerializer):
         if request and request.user.is_authenticated:
             validated_data.setdefault("created_by", request.user)
         return super().create(validated_data)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Feedback & Surveys
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class QuestionSerializer(serializers.ModelSerializer):
+    """A question within a survey. Used nested inside SurveySerializer."""
+
+    class Meta:
+        model = Question
+        fields = ["id", "text", "type", "order", "options"]
+        extra_kwargs = {
+            "id": {"read_only": False, "required": False},
+        }
+
+    def validate(self, attrs):
+        qtype = attrs.get("type") or (self.instance.type if self.instance else None)
+        options = attrs.get(
+            "options", [] if self.instance is None else self.instance.options
+        )
+        if qtype == "choice":
+            if not isinstance(options, list) or len(options) < 2:
+                raise serializers.ValidationError(
+                    {"options": "Choice questions require at least 2 options."}
+                )
+            if not all(isinstance(opt, str) and opt.strip() for opt in options):
+                raise serializers.ValidationError(
+                    {"options": "Each option must be a non-empty string."}
+                )
+        return attrs
+
+
+class SurveySerializer(serializers.ModelSerializer):
+    """Survey with nested questions for create/update and retrieval."""
+
+    questions = QuestionSerializer(many=True, required=False)
+    created_by_name = serializers.SerializerMethodField()
+    response_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Survey
+        fields = [
+            "id",
+            "title",
+            "description",
+            "is_anonymous",
+            "status",
+            "questions",
+            "created_at",
+            "created_by",
+            "created_by_name",
+            "response_count",
+        ]
+        read_only_fields = [
+            "id",
+            "created_at",
+            "created_by",
+            "created_by_name",
+            "response_count",
+        ]
+
+    def get_created_by_name(self, obj) -> str:
+        if not obj.created_by:
+            return ""
+        user = obj.created_by.user
+        full = f"{user.first_name} {user.last_name}".strip()
+        return full or user.username
+
+    def get_response_count(self, obj) -> int:
+        return obj.responses.count()
+
+    def create(self, validated_data):
+        questions_data = validated_data.pop("questions", [])
+        survey = Survey.objects.create(**validated_data)
+        for index, question_data in enumerate(questions_data):
+            question_data.pop("id", None)
+            order = question_data.pop("order", None)
+            Question.objects.create(
+                survey=survey,
+                order=order if order is not None else index,
+                **question_data,
+            )
+        return survey
+
+    def update(self, instance, validated_data):
+        questions_data = validated_data.pop("questions", None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        if questions_data is not None:
+            # Replace-all strategy keeps the UI simple — frontend always sends
+            # the complete current question list.
+            instance.questions.all().delete()
+            for index, question_data in enumerate(questions_data):
+                question_data.pop("id", None)
+                order = question_data.pop("order", None)
+                Question.objects.create(
+                    survey=instance,
+                    order=order if order is not None else index,
+                    **question_data,
+                )
+        return instance

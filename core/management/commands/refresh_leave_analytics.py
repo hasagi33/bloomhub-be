@@ -88,9 +88,7 @@ class Command(BaseCommand):
             try:
                 snapshot_date = date.fromisoformat(options["snapshot_date"])
             except ValueError as exc:
-                raise CommandError(
-                    "--snapshot-date must be YYYY-MM-DD"
-                ) from exc
+                raise CommandError("--snapshot-date must be YYYY-MM-DD") from exc
         snap_year = (snapshot_date or timezone.now().date()).year
 
         snap_stats = snapshot_leave_balances(

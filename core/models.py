@@ -51,6 +51,7 @@ from .enums import (
     ReviewStatus,
     ReviewType,
     SuggestionStatus,
+    SurveyStatus,
     TaskRole,
     TemplateCategory,
     TemplateFieldType,
@@ -3704,6 +3705,14 @@ class Survey(models.Model):
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True, default="")
     is_anonymous = models.BooleanField(default=False)
+    status = models.CharField(
+        max_length=16,
+        choices=SurveyStatus.choices,
+        default=SurveyStatus.DRAFT,
+        help_text=(
+            "Lifecycle state. Closed surveys keep responses but reject new ones."
+        ),
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     created_by = models.ForeignKey(
         "UserProfile",
@@ -3775,6 +3784,12 @@ class Response(models.Model):
     def __str__(self):
         who = self.respondent_id if self.respondent_id else "anonymous"
         return f"Response({self.survey_id}, {who})"
+
+    def save(self, *args, **kwargs):
+        # Hard guarantee: anonymous surveys never persist a respondent FK.
+        if self.survey_id and self.survey.is_anonymous:
+            self.respondent = None
+        super().save(*args, **kwargs)
 
 
 class Answer(models.Model):
