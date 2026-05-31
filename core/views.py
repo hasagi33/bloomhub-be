@@ -63,6 +63,7 @@ from .models import (
     Announcement,
     AnnouncementComment,
     AnnouncementReaction,
+    Answer,
     Application,
     Asset,
     AssetStatus,
@@ -128,6 +129,9 @@ from .models import (
     TrainingEntry,
     UserProfile,
     UserTemplateSnippet,
+)
+from .models import (
+    Response as SurveyResponse,
 )
 from .permissions import (
     CanRefreshLeaveAnalytics,
@@ -10453,6 +10457,38 @@ class SurveyViewSet(viewsets.ModelViewSet):
         .all()
     )
 
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if self.action == "list":
+            # `?mine=true` narrows the list to surveys created by the current
+            # user — used by the management table so each HR user sees only
+            # their own work. Without the flag, the list is unscoped, but
+            # surveys that explicitly forbid the current user are hidden so
+            # the Take-Survey picker never offers a blocked survey.
+            mine = self.request.query_params.get("mine") == "true"
+            try:
+                profile = self.request.user.profile
+            except (AttributeError, UserProfile.DoesNotExist):
+                profile = None
+            if mine:
+                if profile is None:
+                    return qs.none()
+                return qs.filter(created_by=profile)
+            is_admin = getattr(self.request.user, "is_staff", False) or getattr(
+                self.request.user, "is_superuser", False
+            )
+            if not is_admin and profile is not None:
+                qs = qs.exclude(forbidden_users=profile)
+        return qs
+
+    def get_permissions(self):
+        # `submit_response` is open to any authenticated user — that's the
+        # whole point of letting employees take surveys. HR gating still
+        # applies to everything else (create/update/delete/analytics/close).
+        if getattr(self, "action", None) == "submit_response":
+            return [permissions.IsAuthenticated()]
+        return super().get_permissions()
+
     def perform_create(self, serializer):
         profile = None
         try:
@@ -10460,6 +10496,32 @@ class SurveyViewSet(viewsets.ModelViewSet):
         except (AttributeError, UserProfile.DoesNotExist):
             profile = None
         serializer.save(created_by=profile)
+
+    def _is_locked(self, survey) -> bool:
+        return bool(survey.end_date and survey.end_date < timezone.localdate())
+
+    def _locked_response(self, survey):
+        return Response(
+            {
+                "detail": (
+                    f"This survey ended on {survey.end_date.isoformat()} "
+                    "and can no longer be modified."
+                )
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    def update(self, request, *args, **kwargs):
+        survey = self.get_object()
+        if self._is_locked(survey):
+            return self._locked_response(survey)
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        survey = self.get_object()
+        if self._is_locked(survey):
+            return self._locked_response(survey)
+        return super().partial_update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
         survey = self.get_object()
@@ -10525,4 +10587,294 @@ class SurveyViewSet(viewsets.ModelViewSet):
         )
         return Response(
             QuestionSerializer(question).data, status=status.HTTP_201_CREATED
+        )
+
+    def _user_is_hr_or_staff(self, request) -> bool:
+        if getattr(request.user, "is_staff", False) or getattr(
+            request.user, "is_superuser", False
+        ):
+            return True
+        try:
+            profile = request.user.profile
+        except (AttributeError, UserProfile.DoesNotExist):
+            return False
+        role = getattr(profile, "role", None)
+        return bool(role and role.name and "hr" in role.name.lower())
+
+    @extend_schema(
+        summary="Get aggregated survey analytics",
+        description=(
+            "Returns per-question aggregations for charting plus a daily "
+            "response trend. HR / staff / superuser only. "
+            "Filters (all optional): "
+            "?department=<str>&start_date=YYYY-MM-DD&end_date=YYYY-MM-DD. "
+            "Note: department filter has no effect on anonymous surveys "
+            "because respondents are not linked."
+        ),
+        parameters=[
+            OpenApiParameter("department", str, OpenApiParameter.QUERY),
+            OpenApiParameter("start_date", str, OpenApiParameter.QUERY),
+            OpenApiParameter("end_date", str, OpenApiParameter.QUERY),
+        ],
+        responses={200: dict},
+    )
+    @action(detail=True, methods=["get"], url_path="analytics")
+    def analytics(self, request, pk=None):
+        if not self._user_is_hr_or_staff(request):
+            return Response(
+                {"detail": "Survey analytics are HR-only."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        survey = self.get_object()
+        department = (request.query_params.get("department") or "").strip()
+        start_date = (request.query_params.get("start_date") or "").strip()
+        end_date = (request.query_params.get("end_date") or "").strip()
+
+        responses = SurveyResponse.objects.filter(survey=survey)
+        if start_date:
+            responses = responses.filter(submitted_at__date__gte=start_date)
+        if end_date:
+            responses = responses.filter(submitted_at__date__lte=end_date)
+        # Department filter only meaningful for non-anonymous surveys.
+        if department and not survey.is_anonymous:
+            responses = responses.filter(respondent__department__iexact=department)
+
+        response_ids = list(responses.values_list("id", flat=True))
+        total_responses = len(response_ids)
+
+        # Per-question aggregations
+        questions_payload = []
+        for question in survey.questions.order_by("order", "id"):
+            answers = Answer.objects.filter(
+                question=question, response_id__in=response_ids
+            )
+            response_count = answers.count()
+
+            entry: dict[str, Any] = {
+                "question_id": question.id,
+                "text": question.text,
+                "type": question.type,
+                "response_count": response_count,
+            }
+
+            if question.type == "choice":
+                # Counts per option label.
+                counts: dict[str, int] = defaultdict(int)
+                for value in answers.values_list("value", flat=True):
+                    counts[value] += 1
+                # Always include every defined option (zero-fill).
+                options = question.options if isinstance(question.options, list) else []
+                distribution = [
+                    {"value": opt, "count": counts.get(opt, 0)} for opt in options
+                ]
+                # Also surface any "other" answer values not in the defined options.
+                for value, cnt in counts.items():
+                    if value not in options:
+                        distribution.append({"value": value, "count": cnt})
+                entry["distribution"] = distribution
+
+            elif question.type == "scale":
+                numeric_values: list[int] = []
+                for raw in answers.values_list("value", flat=True):
+                    try:
+                        numeric_values.append(int(raw))
+                    except (TypeError, ValueError):
+                        continue
+                avg = (
+                    sum(numeric_values) / len(numeric_values) if numeric_values else 0.0
+                )
+                bucket_counts: dict[int, int] = defaultdict(int)
+                for v in numeric_values:
+                    bucket_counts[v] += 1
+                entry["average"] = round(avg, 2)
+                entry["distribution"] = [
+                    {"value": str(v), "count": bucket_counts[v]}
+                    for v in sorted(bucket_counts.keys())
+                ]
+
+            else:  # text
+                samples = list(
+                    answers.exclude(value="").values_list("value", flat=True)[:10]
+                )
+                entry["samples"] = samples
+
+            questions_payload.append(entry)
+
+        # Daily response trend.
+        trend_counts: dict[str, int] = defaultdict(int)
+        for submitted_at in responses.values_list("submitted_at", flat=True):
+            day = submitted_at.date().isoformat() if submitted_at else "unknown"
+            trend_counts[day] += 1
+        responses_over_time = [
+            {"date": day, "count": count} for day, count in sorted(trend_counts.items())
+        ]
+
+        return Response(
+            {
+                "survey_id": survey.id,
+                "survey_title": survey.title,
+                "is_anonymous": survey.is_anonymous,
+                "total_responses": total_responses,
+                "filters_applied": {
+                    "department": department or None,
+                    "start_date": start_date or None,
+                    "end_date": end_date or None,
+                },
+                "questions": questions_payload,
+                "responses_over_time": responses_over_time,
+            }
+        )
+
+    @extend_schema(
+        summary="Submit a response to a survey",
+        description=(
+            "Posts a full response with one answer per question. "
+            "Only `active` surveys accept submissions. "
+            "For non-anonymous surveys a given user can only submit once; "
+            "anonymous surveys allow unlimited submissions. "
+            'Payload shape: `{ "answers": [{ "question_id": int, "value": str }, ...] }`.'
+        ),
+        request={
+            "type": "object",
+            "properties": {
+                "answers": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "question_id": {"type": "integer"},
+                            "value": {"type": "string"},
+                        },
+                        "required": ["question_id"],
+                    },
+                }
+            },
+            "required": ["answers"],
+        },
+        responses={
+            201: {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "integer"},
+                    "survey": {"type": "integer"},
+                    "submitted_at": {"type": "string", "format": "date-time"},
+                },
+            },
+            400: dict,
+            403: dict,
+        },
+    )
+    @action(detail=True, methods=["post"], url_path="responses")
+    def submit_response(self, request, pk=None):
+        from .enums import SurveyStatus
+
+        survey = self.get_object()
+        if survey.status != SurveyStatus.ACTIVE:
+            return Response(
+                {"detail": "This survey is not accepting responses."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if survey.end_date and survey.end_date < timezone.localdate():
+            return Response(
+                {"detail": (f"This survey ended on {survey.end_date.isoformat()}.")},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            profile = request.user.profile
+        except (AttributeError, UserProfile.DoesNotExist):
+            profile = None
+
+        # Block users explicitly forbidden from this survey.
+        if (
+            profile is not None
+            and survey.forbidden_users.filter(pk=profile.pk).exists()
+        ):
+            return Response(
+                {"detail": "You are not allowed to take this survey."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        # Override behaviour: for non-anonymous surveys, a second submission by
+        # the same user replaces the previous one (cascade-deletes old answers).
+        # Anonymous surveys always accept new submissions because there's no
+        # respondent linkage to dedupe on.
+        if not survey.is_anonymous and profile is not None:
+            SurveyResponse.objects.filter(survey=survey, respondent=profile).delete()
+
+        answers_payload = request.data.get("answers")
+        if not isinstance(answers_payload, list) or not answers_payload:
+            return Response(
+                {"detail": "Provide a non-empty `answers` list."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Validate every question_id belongs to this survey.
+        survey_questions = list(survey.questions.all())
+        valid_question_ids = {q.id for q in survey_questions}
+        required_ids = {q.id for q in survey_questions if q.required}
+        clean: list[tuple[int, str]] = []
+        answered_ids: set[int] = set()
+        for item in answers_payload:
+            if not isinstance(item, dict):
+                return Response(
+                    {"detail": "Each answer must be an object."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            qid = item.get("question_id")
+            if qid not in valid_question_ids:
+                return Response(
+                    {"detail": (f"Question {qid} does not belong to this survey.")},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            value = str(item.get("value", ""))
+            if qid in required_ids and not value.strip():
+                return Response(
+                    {
+                        "detail": (
+                            f"Question {qid} is required and must have a "
+                            "non-empty answer."
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            answered_ids.add(int(qid))
+            clean.append((int(qid), value))
+
+        missing_required = required_ids - answered_ids
+        if missing_required:
+            return Response(
+                {
+                    "detail": (
+                        f"Missing required answers for question(s): "
+                        f"{sorted(missing_required)}"
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Persist response + answers in a transaction.
+        from django.db import transaction
+
+        with transaction.atomic():
+            # The Response.save() override automatically nulls respondent
+            # when the survey is anonymous — no extra logic needed here.
+            response = SurveyResponse(survey=survey, respondent=profile)
+            response.save()
+            Answer.objects.bulk_create(
+                [
+                    Answer(question_id=qid, response=response, value=value)
+                    for qid, value in clean
+                ]
+            )
+
+        return Response(
+            {
+                "id": response.id,
+                "survey": survey.id,
+                "submitted_at": response.submitted_at.isoformat(),
+            },
+            status=status.HTTP_201_CREATED,
         )

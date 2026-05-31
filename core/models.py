@@ -3978,6 +3978,17 @@ class Survey(models.Model):
             "Lifecycle state. Closed surveys keep responses but reject new ones."
         ),
     )
+    end_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Optional cutoff. Submissions are rejected after this date.",
+    )
+    forbidden_users = models.ManyToManyField(
+        "UserProfile",
+        blank=True,
+        related_name="forbidden_surveys",
+        help_text="Users explicitly blocked from seeing or submitting this survey.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     created_by = models.ForeignKey(
         "UserProfile",
@@ -4011,6 +4022,10 @@ class Question(models.Model):
         default=list,
         blank=True,
         help_text="List of option strings for choice questions; ignored otherwise.",
+    )
+    required = models.BooleanField(
+        default=True,
+        help_text="If true, respondents must provide a non-empty answer.",
     )
 
     class Meta:

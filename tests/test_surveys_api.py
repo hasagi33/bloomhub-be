@@ -40,7 +40,9 @@ class SurveyAPITests(APITestCase):
         self.regular_user = User.objects.create_user(
             username="regular", email="r@test.com", password="pass"
         )
-        UserProfile.objects.get_or_create(user=self.regular_user)
+        self.regular_profile, _ = UserProfile.objects.get_or_create(
+            user=self.regular_user
+        )
 
     # ── Create ──────────────────────────────────────────────────────────────
 
@@ -163,6 +165,58 @@ class SurveyAPITests(APITestCase):
         self.client.force_authenticate(user=self.hr_user)
         resp = self.client.delete(f"/api/surveys/{survey.id}/")
         self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
+
+    def test_list_hides_forbidden_surveys_from_blocked_users(self):
+        blocked = Survey.objects.create(title="Blocked", status="active")
+        blocked.forbidden_users.add(self.regular_profile)
+        Survey.objects.create(title="OpenToAll", status="active")
+        self.client.force_authenticate(user=self.regular_user)
+        resp = self.client.get("/api/surveys/")
+        titles = [s["title"] for s in resp.data]
+        self.assertIn("OpenToAll", titles)
+        self.assertNotIn("Blocked", titles)
+
+    def test_list_mine_filter_returns_only_own_surveys(self):
+        # hr_user creates two surveys; another HR user creates one.
+        Survey.objects.create(title="Mine 1", created_by=self.hr_profile)
+        Survey.objects.create(title="Mine 2", created_by=self.hr_profile)
+
+        other_hr = User.objects.create_user(
+            username="hr2", email="hr2@test.com", password="pass", is_staff=True
+        )
+        other_profile = UserProfile.objects.get(user=other_hr)
+        other_profile.role = self.hr_role
+        other_profile.save()
+        Survey.objects.create(title="Not Mine", created_by=other_profile)
+
+        self.client.force_authenticate(user=self.hr_user)
+        all_resp = self.client.get("/api/surveys/")
+        mine_resp = self.client.get("/api/surveys/?mine=true")
+        self.assertEqual(all_resp.status_code, 200)
+        self.assertEqual(mine_resp.status_code, 200)
+        self.assertGreaterEqual(len(all_resp.data), 3)
+        mine_titles = [s["title"] for s in mine_resp.data]
+        self.assertIn("Mine 1", mine_titles)
+        self.assertIn("Mine 2", mine_titles)
+        self.assertNotIn("Not Mine", mine_titles)
+
+    def test_cannot_edit_survey_past_end_date(self):
+        from datetime import date, timedelta
+
+        survey = Survey.objects.create(
+            title="Locked",
+            is_anonymous=False,
+            end_date=date.today() - timedelta(days=1),
+        )
+        self.client.force_authenticate(user=self.hr_user)
+        resp = self.client.patch(
+            f"/api/surveys/{survey.id}/",
+            {"title": "Renamed"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        survey.refresh_from_db()
+        self.assertEqual(survey.title, "Locked")
 
     def test_cannot_delete_survey_with_responses(self):
         survey = Survey.objects.create(title="Has data", is_anonymous=False)

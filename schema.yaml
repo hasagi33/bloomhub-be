@@ -9772,6 +9772,45 @@ paths:
       responses:
         '204':
           description: No response body
+  /api/surveys/{id}/analytics/:
+    get:
+      operationId: surveys_analytics_retrieve
+      description: 'Returns per-question aggregations for charting plus a daily response
+        trend. HR / staff / superuser only. Filters (all optional): ?department=<str>&start_date=YYYY-MM-DD&end_date=YYYY-MM-DD.
+        Note: department filter has no effect on anonymous surveys because respondents
+        are not linked.'
+      summary: Get aggregated survey analytics
+      parameters:
+      - in: query
+        name: department
+        schema:
+          type: string
+      - in: query
+        name: end_date
+        schema:
+          type: string
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Survey.
+        required: true
+      - in: query
+        name: start_date
+        schema:
+          type: string
+      tags:
+      - Feedback & Surveys
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
   /api/surveys/{id}/close/:
     post:
       operationId: surveys_close_create
@@ -9843,6 +9882,79 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Question'
+          description: ''
+  /api/surveys/{id}/responses/:
+    post:
+      operationId: surveys_responses_create
+      description: 'Posts a full response with one answer per question. Only `active`
+        surveys accept submissions. For non-anonymous surveys a given user can only
+        submit once; anonymous surveys allow unlimited submissions. Payload shape:
+        `{ "answers": [{ "question_id": int, "value": str }, ...] }`.'
+      summary: Submit a response to a survey
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Survey.
+        required: true
+      tags:
+      - Feedback & Surveys
+      requestBody:
+        content:
+          type:
+            schema:
+              type: object
+              additionalProperties: {}
+              description: Unspecified request body
+          properties:
+            schema:
+              answers:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    question_id:
+                      type: integer
+                    value:
+                      type: string
+                  required:
+                  - question_id
+          required:
+            schema:
+              type: object
+              additionalProperties: {}
+              description: Unspecified request body
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  survey:
+                    type: integer
+                  submitted_at:
+                    type: string
+                    format: date-time
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
           description: ''
   /api/time-entries/:
     get:
@@ -17062,10 +17174,19 @@ components:
             * `draft` - Draft
             * `active` - Active
             * `closed` - Closed
+        end_date:
+          type: string
+          format: date
+          nullable: true
+          description: Optional cutoff. Submissions are rejected after this date.
         questions:
           type: array
           items:
             $ref: '#/components/schemas/QuestionRequest'
+        forbidden_user_ids:
+          type: array
+          items:
+            type: integer
     PatchedTempoConnectionRequest:
       type: object
       properties:
@@ -18616,6 +18737,9 @@ components:
           format: int64
         options:
           description: List of option strings for choice questions; ignored otherwise.
+        required:
+          type: boolean
+          description: If true, respondents must provide a non-empty answer.
       required:
       - text
     QuestionRequest:
@@ -18636,6 +18760,9 @@ components:
           format: int64
         options:
           description: List of option strings for choice questions; ignored otherwise.
+        required:
+          type: boolean
+          description: If true, respondents must provide a non-empty answer.
       required:
       - text
     QuestionTypeEnum:
@@ -19513,10 +19640,19 @@ components:
             * `draft` - Draft
             * `active` - Active
             * `closed` - Closed
+        end_date:
+          type: string
+          format: date
+          nullable: true
+          description: Optional cutoff. Submissions are rejected after this date.
         questions:
           type: array
           items:
             $ref: '#/components/schemas/Question'
+        forbidden_user_ids:
+          type: array
+          items:
+            type: integer
         created_at:
           type: string
           format: date-time
@@ -19531,6 +19667,9 @@ components:
         response_count:
           type: integer
           readOnly: true
+        viewer_has_responded:
+          type: boolean
+          readOnly: true
       required:
       - created_at
       - created_by
@@ -19538,6 +19677,7 @@ components:
       - id
       - response_count
       - title
+      - viewer_has_responded
     SurveyRequest:
       type: object
       description: Survey with nested questions for create/update and retrieval.
@@ -19559,10 +19699,19 @@ components:
             * `draft` - Draft
             * `active` - Active
             * `closed` - Closed
+        end_date:
+          type: string
+          format: date
+          nullable: true
+          description: Optional cutoff. Submissions are rejected after this date.
         questions:
           type: array
           items:
             $ref: '#/components/schemas/QuestionRequest'
+        forbidden_user_ids:
+          type: array
+          items:
+            type: integer
       required:
       - title
     SurveyStatusEnum:
