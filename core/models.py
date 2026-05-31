@@ -4337,3 +4337,97 @@ class BenefitCatalog(models.Model):
         return (
             f"{self.name} ({self.benefit_type}) {self.monthly_amount} {self.currency}"
         )
+
+
+class AIChatSession(models.Model):
+    """A persisted assistant conversation for an authenticated BloomHub user."""
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="ai_chat_sessions",
+    )
+    title = models.CharField(max_length=160, blank=True, default="")
+    state = models.JSONField(default=dict, blank=True)
+    pending_confirmation = models.JSONField(default=dict, blank=True)
+    is_archived = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "AI Chat Session"
+        verbose_name_plural = "AI Chat Sessions"
+        ordering = ["-updated_at"]
+        indexes = [
+            models.Index(fields=["user", "is_archived", "-updated_at"]),
+        ]
+
+    def __str__(self):
+        return self.title or f"AI chat {self.pk}"
+
+
+class AIChatMessage(models.Model):
+    class Role(models.TextChoices):
+        USER = "user", "User"
+        ASSISTANT = "assistant", "Assistant"
+        SYSTEM = "system", "System"
+        TOOL = "tool", "Tool"
+
+    session = models.ForeignKey(
+        AIChatSession,
+        on_delete=models.CASCADE,
+        related_name="messages",
+    )
+    role = models.CharField(max_length=16, choices=Role.choices)
+    content = models.TextField()
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "AI Chat Message"
+        verbose_name_plural = "AI Chat Messages"
+        ordering = ["created_at", "id"]
+        indexes = [
+            models.Index(fields=["session", "created_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.session_id}:{self.role}"
+
+
+class AIToolCallLog(models.Model):
+    class Status(models.TextChoices):
+        SUCCESS = "success", "Success"
+        ERROR = "error", "Error"
+        BLOCKED = "blocked", "Blocked"
+        PENDING_CONFIRMATION = "pending_confirmation", "Pending confirmation"
+
+    session = models.ForeignKey(
+        AIChatSession,
+        on_delete=models.CASCADE,
+        related_name="tool_calls",
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="ai_tool_calls",
+    )
+    tool_name = models.CharField(max_length=120)
+    arguments = models.JSONField(default=dict, blank=True)
+    result_summary = models.TextField(blank=True, default="")
+    status = models.CharField(max_length=32, choices=Status.choices)
+    error = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "AI Tool Call Log"
+        verbose_name_plural = "AI Tool Call Logs"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["user", "-created_at"]),
+            models.Index(fields=["session", "-created_at"]),
+            models.Index(fields=["tool_name", "status"]),
+        ]
+
+    def __str__(self):
+        return f"{self.tool_name} [{self.status}]"

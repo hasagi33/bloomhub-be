@@ -107,11 +107,17 @@ def test_calculate_and_validate_leave_request_branches():
     LeaveBalance.objects.filter(employee=profile, leave_type=LeaveType.VACATION).update(
         allocated=1, used=1
     )
+    # Anchor the request to the next Monday so the working-day count is
+    # non-zero regardless of which weekday `today` lands on. Without this
+    # the test silently passes the balance check whenever
+    # `today + 6 days` lands on a weekend.
+    days_until_monday = (7 - today.weekday()) % 7 or 7
+    next_monday = today + timedelta(days=days_until_monday)
     ok, msg = leave_service.validate_leave_request(
         profile,
         LeaveType.VACATION,
-        today + timedelta(days=6),
-        today + timedelta(days=6),
+        next_monday,
+        next_monday,
     )
     assert ok is False and "insufficient leave balance" in msg.lower()
 
@@ -195,7 +201,9 @@ def test_leave_approval_rejection_and_balance_changes(monkeypatch):
     balance = LeaveBalance.objects.get(
         employee=emp_profile, leave_type=LeaveType.VACATION, year=timezone.now().year
     )
-    assert balance.used == 5
+    assert balance.used == 2 + leave_service.calculate_working_days(
+        request.start_date, request.end_date
+    )
     assert calls
 
     request2_start = _next_monday_at_least(14)

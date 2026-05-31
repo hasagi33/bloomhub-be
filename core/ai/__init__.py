@@ -1,0 +1,1 @@
+"""BloomHub AI assistant package."""

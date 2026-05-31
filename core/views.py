@@ -496,6 +496,9 @@ class RegisterView(APIView):
         if serializer.is_valid():
             user = serializer.save()
             assert user is not None
+            from django.contrib.auth.models import update_last_login
+
+            update_last_login(None, user)
             refresh = RefreshToken.for_user(cast(User, user))
             token_data = {
                 "refresh": str(refresh),
@@ -540,6 +543,9 @@ class LoginView(APIView):
                 user = None
 
             if user:
+                from django.contrib.auth.models import update_last_login
+
+                update_last_login(None, user)
                 refresh = RefreshToken.for_user(cast(User, user))
                 token_data = {
                     "refresh": str(refresh),
@@ -611,6 +617,9 @@ class GoogleExchangeView(APIView):
                     update_fields.append("avatar")
                 profile.save(update_fields=update_fields)
 
+            from django.contrib.auth.models import update_last_login
+
+            update_last_login(None, user)
             refresh = RefreshToken.for_user(cast(User, user))
             token_data = {
                 "refresh": str(refresh),
@@ -773,6 +782,12 @@ class TokenRefreshViewCustom(TokenRefreshView):
             # Add user data to response
             user = request.user
             response.data["user"] = UserSerializer(user).data
+            # Bump last_login on refresh too so the AI assistant's
+            # recent-auth gate stays accurate while the session is active.
+            if getattr(user, "is_authenticated", False):
+                from django.contrib.auth.models import update_last_login
+
+                update_last_login(None, user)
         return response
 
 

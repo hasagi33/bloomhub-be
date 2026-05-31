@@ -261,3 +261,39 @@ else:
         raise ImproperlyConfigured(
             "FRONTEND_URL or SITE_URL must be set when ENVIRONMENT=prod."
         )
+
+# AI assistant / OpenRouter
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
+OPENROUTER_MODEL = os.environ.get(
+    "OPENROUTER_MODEL", "deepseek/deepseek-v4-flash"
+).strip()
+OPENROUTER_BASE_URL = os.environ.get(
+    "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"
+).strip()
+AI_AGENT_MAX_TOOL_STEPS = int(os.environ.get("AI_AGENT_MAX_TOOL_STEPS", "8"))
+AI_AGENT_REQUIRE_CONFIRMATION = os.environ.get(
+    "AI_AGENT_REQUIRE_CONFIRMATION", "true"
+).lower() in ("1", "true", "yes")
+AI_AGENT_ENABLE_STREAMING = os.environ.get(
+    "AI_AGENT_ENABLE_STREAMING", "false"
+).lower() in ("1", "true", "yes")
+
+OPENROUTER_TEMPERATURE = float(os.environ.get("OPENROUTER_TEMPERATURE", "0.1"))
+OPENROUTER_MAX_TOKENS = int(os.environ.get("OPENROUTER_MAX_TOKENS", "2048"))
+OPENROUTER_REQUEST_TIMEOUT = float(os.environ.get("OPENROUTER_REQUEST_TIMEOUT", "60"))
+OPENROUTER_MAX_RETRIES = int(os.environ.get("OPENROUTER_MAX_RETRIES", "2"))
+
+AI_AGENT_MAX_ITERATIONS = int(os.environ.get("AI_AGENT_MAX_ITERATIONS", "4"))
+AI_AGENT_HISTORY_LIMIT = int(os.environ.get("AI_AGENT_HISTORY_LIMIT", "8"))
+AI_AGENT_HISTORY_CHAR_BUDGET = int(
+    os.environ.get("AI_AGENT_HISTORY_CHAR_BUDGET", "6000")
+)
+AI_AGENT_HISTORY_MSG_CHAR_CAP = int(
+    os.environ.get("AI_AGENT_HISTORY_MSG_CHAR_CAP", "800")
+)
+AI_AGENT_SENSITIVE_RECENT_AUTH_SECONDS = int(
+    os.environ.get("AI_AGENT_SENSITIVE_RECENT_AUTH_SECONDS", "3600")
+)
+AI_AGENT_PENDING_CONFIRMATION_TTL_SECONDS = int(
+    os.environ.get("AI_AGENT_PENDING_CONFIRMATION_TTL_SECONDS", "600")
+)

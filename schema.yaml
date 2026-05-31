@@ -42,6 +42,118 @@ paths:
           description: No response body
         '403':
           description: No response body
+  /api/ai/chat/:
+    post:
+      operationId: ai_chat_create
+      tags:
+      - AI
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AIChatRequestRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AIChatRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AIChatRequestRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/ai/chat/capabilities/:
+    get:
+      operationId: ai_chat_capabilities_retrieve
+      tags:
+      - AI
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/ai/chat/sessions/:
+    get:
+      operationId: ai_chat_sessions_list
+      tags:
+      - AI
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AIChatSession'
+          description: ''
+  /api/ai/chat/sessions/{id}/:
+    get:
+      operationId: ai_chat_sessions_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - AI
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AIChatSessionDetail'
+          description: ''
+    delete:
+      operationId: ai_chat_sessions_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - AI
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/ai/chat/tool-coverage/:
+    get:
+      operationId: ai_chat_tool_coverage_retrieve
+      description: |-
+        Per-module tool coverage report.
+
+        Lighter than `/capabilities/` (no full args schemas) — meant for
+        dashboards / admin views that just want "how many tools per module".
+      tags:
+      - AI
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
   /api/announcement-discord-channels/:
     get:
       operationId: announcement_discord_channels_list
@@ -11716,6 +11828,223 @@ paths:
           description: ''
 components:
   schemas:
+    AIChatMessage:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        role:
+          allOf:
+          - $ref: '#/components/schemas/RoleEnum'
+          readOnly: true
+        content:
+          type: string
+          readOnly: true
+        metadata:
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - content
+      - created_at
+      - id
+      - metadata
+      - role
+    AIChatRequestRequest:
+      type: object
+      properties:
+        message:
+          type: string
+          default: ''
+        session_id:
+          type: integer
+        tool_name:
+          allOf:
+          - $ref: '#/components/schemas/ToolNameEnum'
+          description: |-
+            Optional explicit tool name for deterministic client-driven calls.
+
+            * `add_review_action_point` - add_review_action_point
+            * `add_review_note` - add_review_note
+            * `adjust_leave_balance` - adjust_leave_balance
+            * `apply_to_job_listing` - apply_to_job_listing
+            * `approve_leave_request` - approve_leave_request
+            * `approve_time_entry` - approve_time_entry
+            * `assign_asset_to_employee` - assign_asset_to_employee
+            * `assign_manager` - assign_manager
+            * `cancel_leave_request` - cancel_leave_request
+            * `cancel_pending_action` - cancel_pending_action
+            * `check_permission` - check_permission
+            * `classify_confirmation_response` - classify_confirmation_response
+            * `close_review` - close_review
+            * `confirm_pending_action` - confirm_pending_action
+            * `create_asset` - create_asset
+            * `create_bonus_record` - create_bonus_record
+            * `create_job_listing` - create_job_listing
+            * `create_leave_request` - create_leave_request
+            * `create_onboarding_instance` - create_onboarding_instance
+            * `create_role` - create_role
+            * `create_time_entry` - create_time_entry
+            * `create_training_entry` - create_training_entry
+            * `delete_document` - delete_document
+            * `delete_role` - delete_role
+            * `explain_workflow` - explain_workflow
+            * `get_bonus_totals` - get_bonus_totals
+            * `get_checklist_instance` - get_checklist_instance
+            * `get_compensation_overview` - get_compensation_overview
+            * `get_current_user_context` - get_current_user_context
+            * `get_employee_managers` - get_employee_managers
+            * `get_employee_profile` - get_employee_profile
+            * `get_leave_summary` - get_leave_summary
+            * `get_payroll_snapshot` - get_payroll_snapshot
+            * `get_review` - get_review
+            * `get_team_leave_calendar` - get_team_leave_calendar
+            * `get_training_budget` - get_training_budget
+            * `list_applications` - list_applications
+            * `list_asset_assignments` - list_asset_assignments
+            * `list_asset_replacements` - list_asset_replacements
+            * `list_assets` - list_assets
+            * `list_available_actions` - list_available_actions
+            * `list_benefits` - list_benefits
+            * `list_bonuses` - list_bonuses
+            * `list_certificates` - list_certificates
+            * `list_checklist_instances` - list_checklist_instances
+            * `list_checklist_tasks` - list_checklist_tasks
+            * `list_checklist_templates` - list_checklist_templates
+            * `list_compensation_policies` - list_compensation_policies
+            * `list_conference_registrations` - list_conference_registrations
+            * `list_cpf_level_changes` - list_cpf_level_changes
+            * `list_document_templates` - list_document_templates
+            * `list_documents` - list_documents
+            * `list_employee_documents` - list_employee_documents
+            * `list_equipment_assignments` - list_equipment_assignments
+            * `list_job_listings` - list_job_listings
+            * `list_leave_balances` - list_leave_balances
+            * `list_leave_policies` - list_leave_policies
+            * `list_leave_requests` - list_leave_requests
+            * `list_notifications` - list_notifications
+            * `list_peer_sessions` - list_peer_sessions
+            * `list_pending_time_approvals` - list_pending_time_approvals
+            * `list_permissions` - list_permissions
+            * `list_project_assignments` - list_project_assignments
+            * `list_promotion_history` - list_promotion_history
+            * `list_reference_data` - list_reference_data
+            * `list_review_action_points` - list_review_action_points
+            * `list_review_notes` - list_review_notes
+            * `list_reviews` - list_reviews
+            * `list_salary_history` - list_salary_history
+            * `list_time_entries` - list_time_entries
+            * `list_time_tasks` - list_time_tasks
+            * `list_top_paid_employees` - list_top_paid_employees
+            * `list_training_budgets` - list_training_budgets
+            * `list_training_entries` - list_training_entries
+            * `list_workflows` - list_workflows
+            * `log_peer_session` - log_peer_session
+            * `mark_all_notifications_read` - mark_all_notifications_read
+            * `read_document_content` - read_document_content
+            * `record_cpf_level_change` - record_cpf_level_change
+            * `record_promotion` - record_promotion
+            * `register_for_conference` - register_for_conference
+            * `reject_time_entry` - reject_time_entry
+            * `return_asset` - return_asset
+            * `schedule_review` - schedule_review
+            * `search_employees` - search_employees
+            * `set_compensation_policy` - set_compensation_policy
+            * `submit_time_week` - submit_time_week
+            * `update_action_point_status` - update_action_point_status
+            * `update_application_status` - update_application_status
+            * `update_asset_status` - update_asset_status
+            * `update_checklist_task_status` - update_checklist_task_status
+            * `update_employee_profile` - update_employee_profile
+            * `update_role` - update_role
+            * `withdraw_application` - withdraw_application
+        arguments:
+          type: object
+          additionalProperties: {}
+        confirm:
+          type: boolean
+          default: false
+    AIChatSession:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        title:
+          type: string
+          readOnly: true
+        state:
+          readOnly: true
+        pending_confirmation:
+          readOnly: true
+        is_archived:
+          type: boolean
+          readOnly: true
+        message_count:
+          type: integer
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - id
+      - is_archived
+      - message_count
+      - pending_confirmation
+      - state
+      - title
+      - updated_at
+    AIChatSessionDetail:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        title:
+          type: string
+          readOnly: true
+        state:
+          readOnly: true
+        pending_confirmation:
+          readOnly: true
+        is_archived:
+          type: boolean
+          readOnly: true
+        message_count:
+          type: integer
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/AIChatMessage'
+          readOnly: true
+      required:
+      - created_at
+      - id
+      - is_archived
+      - message_count
+      - messages
+      - pending_confirmation
+      - state
+      - title
+      - updated_at
     APIRootResponse:
       type: object
       description: Response shape for GET /api/.
@@ -16804,16 +17133,14 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -17298,9 +17625,8 @@ components:
           type: integer
         fiscal_year:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           description: Fiscal year for which budget is allocated
         allocated_budget:
           type: string
@@ -17386,16 +17712,14 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -17420,16 +17744,14 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -17462,16 +17784,14 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -17517,16 +17837,14 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -18732,9 +19050,8 @@ components:
           $ref: '#/components/schemas/QuestionTypeEnum'
         order:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
         options:
           description: List of option strings for choice questions; ignored otherwise.
         required:
@@ -18755,9 +19072,8 @@ components:
           $ref: '#/components/schemas/QuestionTypeEnum'
         order:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
         options:
           description: List of option strings for choice questions; ignored otherwise.
         required:
@@ -19199,6 +19515,18 @@ components:
         * `annual` - Annual Review
         * `probation` - Probation Review
         * `custom` - Custom Review
+    RoleEnum:
+      enum:
+      - user
+      - assistant
+      - system
+      - tool
+      type: string
+      description: |-
+        * `user` - User
+        * `assistant` - Assistant
+        * `system` - System
+        * `tool` - Tool
     RoleListResponse:
       type: object
       properties:
@@ -20666,6 +20994,198 @@ components:
       - access
       - refresh
       - user
+    ToolNameEnum:
+      enum:
+      - add_review_action_point
+      - add_review_note
+      - adjust_leave_balance
+      - apply_to_job_listing
+      - approve_leave_request
+      - approve_time_entry
+      - assign_asset_to_employee
+      - assign_manager
+      - cancel_leave_request
+      - cancel_pending_action
+      - check_permission
+      - classify_confirmation_response
+      - close_review
+      - confirm_pending_action
+      - create_asset
+      - create_bonus_record
+      - create_job_listing
+      - create_leave_request
+      - create_onboarding_instance
+      - create_role
+      - create_time_entry
+      - create_training_entry
+      - delete_document
+      - delete_role
+      - explain_workflow
+      - get_bonus_totals
+      - get_checklist_instance
+      - get_compensation_overview
+      - get_current_user_context
+      - get_employee_managers
+      - get_employee_profile
+      - get_leave_summary
+      - get_payroll_snapshot
+      - get_review
+      - get_team_leave_calendar
+      - get_training_budget
+      - list_applications
+      - list_asset_assignments
+      - list_asset_replacements
+      - list_assets
+      - list_available_actions
+      - list_benefits
+      - list_bonuses
+      - list_certificates
+      - list_checklist_instances
+      - list_checklist_tasks
+      - list_checklist_templates
+      - list_compensation_policies
+      - list_conference_registrations
+      - list_cpf_level_changes
+      - list_document_templates
+      - list_documents
+      - list_employee_documents
+      - list_equipment_assignments
+      - list_job_listings
+      - list_leave_balances
+      - list_leave_policies
+      - list_leave_requests
+      - list_notifications
+      - list_peer_sessions
+      - list_pending_time_approvals
+      - list_permissions
+      - list_project_assignments
+      - list_promotion_history
+      - list_reference_data
+      - list_review_action_points
+      - list_review_notes
+      - list_reviews
+      - list_salary_history
+      - list_time_entries
+      - list_time_tasks
+      - list_top_paid_employees
+      - list_training_budgets
+      - list_training_entries
+      - list_workflows
+      - log_peer_session
+      - mark_all_notifications_read
+      - read_document_content
+      - record_cpf_level_change
+      - record_promotion
+      - register_for_conference
+      - reject_time_entry
+      - return_asset
+      - schedule_review
+      - search_employees
+      - set_compensation_policy
+      - submit_time_week
+      - update_action_point_status
+      - update_application_status
+      - update_asset_status
+      - update_checklist_task_status
+      - update_employee_profile
+      - update_role
+      - withdraw_application
+      type: string
+      description: |-
+        * `add_review_action_point` - add_review_action_point
+        * `add_review_note` - add_review_note
+        * `adjust_leave_balance` - adjust_leave_balance
+        * `apply_to_job_listing` - apply_to_job_listing
+        * `approve_leave_request` - approve_leave_request
+        * `approve_time_entry` - approve_time_entry
+        * `assign_asset_to_employee` - assign_asset_to_employee
+        * `assign_manager` - assign_manager
+        * `cancel_leave_request` - cancel_leave_request
+        * `cancel_pending_action` - cancel_pending_action
+        * `check_permission` - check_permission
+        * `classify_confirmation_response` - classify_confirmation_response
+        * `close_review` - close_review
+        * `confirm_pending_action` - confirm_pending_action
+        * `create_asset` - create_asset
+        * `create_bonus_record` - create_bonus_record
+        * `create_job_listing` - create_job_listing
+        * `create_leave_request` - create_leave_request
+        * `create_onboarding_instance` - create_onboarding_instance
+        * `create_role` - create_role
+        * `create_time_entry` - create_time_entry
+        * `create_training_entry` - create_training_entry
+        * `delete_document` - delete_document
+        * `delete_role` - delete_role
+        * `explain_workflow` - explain_workflow
+        * `get_bonus_totals` - get_bonus_totals
+        * `get_checklist_instance` - get_checklist_instance
+        * `get_compensation_overview` - get_compensation_overview
+        * `get_current_user_context` - get_current_user_context
+        * `get_employee_managers` - get_employee_managers
+        * `get_employee_profile` - get_employee_profile
+        * `get_leave_summary` - get_leave_summary
+        * `get_payroll_snapshot` - get_payroll_snapshot
+        * `get_review` - get_review
+        * `get_team_leave_calendar` - get_team_leave_calendar
+        * `get_training_budget` - get_training_budget
+        * `list_applications` - list_applications
+        * `list_asset_assignments` - list_asset_assignments
+        * `list_asset_replacements` - list_asset_replacements
+        * `list_assets` - list_assets
+        * `list_available_actions` - list_available_actions
+        * `list_benefits` - list_benefits
+        * `list_bonuses` - list_bonuses
+        * `list_certificates` - list_certificates
+        * `list_checklist_instances` - list_checklist_instances
+        * `list_checklist_tasks` - list_checklist_tasks
+        * `list_checklist_templates` - list_checklist_templates
+        * `list_compensation_policies` - list_compensation_policies
+        * `list_conference_registrations` - list_conference_registrations
+        * `list_cpf_level_changes` - list_cpf_level_changes
+        * `list_document_templates` - list_document_templates
+        * `list_documents` - list_documents
+        * `list_employee_documents` - list_employee_documents
+        * `list_equipment_assignments` - list_equipment_assignments
+        * `list_job_listings` - list_job_listings
+        * `list_leave_balances` - list_leave_balances
+        * `list_leave_policies` - list_leave_policies
+        * `list_leave_requests` - list_leave_requests
+        * `list_notifications` - list_notifications
+        * `list_peer_sessions` - list_peer_sessions
+        * `list_pending_time_approvals` - list_pending_time_approvals
+        * `list_permissions` - list_permissions
+        * `list_project_assignments` - list_project_assignments
+        * `list_promotion_history` - list_promotion_history
+        * `list_reference_data` - list_reference_data
+        * `list_review_action_points` - list_review_action_points
+        * `list_review_notes` - list_review_notes
+        * `list_reviews` - list_reviews
+        * `list_salary_history` - list_salary_history
+        * `list_time_entries` - list_time_entries
+        * `list_time_tasks` - list_time_tasks
+        * `list_top_paid_employees` - list_top_paid_employees
+        * `list_training_budgets` - list_training_budgets
+        * `list_training_entries` - list_training_entries
+        * `list_workflows` - list_workflows
+        * `log_peer_session` - log_peer_session
+        * `mark_all_notifications_read` - mark_all_notifications_read
+        * `read_document_content` - read_document_content
+        * `record_cpf_level_change` - record_cpf_level_change
+        * `record_promotion` - record_promotion
+        * `register_for_conference` - register_for_conference
+        * `reject_time_entry` - reject_time_entry
+        * `return_asset` - return_asset
+        * `schedule_review` - schedule_review
+        * `search_employees` - search_employees
+        * `set_compensation_policy` - set_compensation_policy
+        * `submit_time_week` - submit_time_week
+        * `update_action_point_status` - update_action_point_status
+        * `update_application_status` - update_application_status
+        * `update_asset_status` - update_asset_status
+        * `update_checklist_task_status` - update_checklist_task_status
+        * `update_employee_profile` - update_employee_profile
+        * `update_role` - update_role
+        * `withdraw_application` - withdraw_application
     TrainingBudget:
       type: object
       description: Serializer for training budget.
@@ -20680,9 +21200,8 @@ components:
           readOnly: true
         fiscal_year:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           description: Fiscal year for which budget is allocated
         allocated_budget:
           type: string
@@ -20738,9 +21257,8 @@ components:
           type: integer
         fiscal_year:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           description: Fiscal year for which budget is allocated
         allocated_budget:
           type: string

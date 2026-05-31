@@ -273,6 +273,9 @@ def test_training_budget_service_edge_cases(monkeypatch):
         "core.services.training_budget_service.create_notification",
         lambda **kwargs: notifications.append(kwargs) or True,
     )
+    # A budget row must exist for the current fiscal year before
+    # recalculate_budget can fire any threshold notification — without it
+    # the service short-circuits and returns None.
     TrainingBudget.objects.create(
         employee=emp,
         fiscal_year=current_year,

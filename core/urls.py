@@ -1,6 +1,13 @@
 from django.urls import path
 from rest_framework.routers import DefaultRouter
 
+from .ai.api import (
+    AIChatCapabilitiesView,
+    AIChatSessionDetailView,
+    AIChatSessionListView,
+    AIChatToolCoverageView,
+    AIChatView,
+)
 from .org_chart import OrgChartRecentUpdatesView, OrgChartView
 from .views import (
     AnnouncementViewSet,
@@ -197,6 +204,27 @@ urlpatterns = [
     path("auth/session/", SessionView.as_view(), name="session"),
     path("auth/permissions/", PermissionsView.as_view(), name="permissions"),
     path("auth/profile/avatar/", AvatarUploadView.as_view(), name="avatar_upload"),
+    path("ai/chat/", AIChatView.as_view(), name="ai_chat"),
+    path(
+        "ai/chat/capabilities/",
+        AIChatCapabilitiesView.as_view(),
+        name="ai_chat_capabilities",
+    ),
+    path(
+        "ai/chat/tool-coverage/",
+        AIChatToolCoverageView.as_view(),
+        name="ai_chat_tool_coverage",
+    ),
+    path(
+        "ai/chat/sessions/",
+        AIChatSessionListView.as_view(),
+        name="ai_chat_sessions",
+    ),
+    path(
+        "ai/chat/sessions/<int:pk>/",
+        AIChatSessionDetailView.as_view(),
+        name="ai_chat_session_detail",
+    ),
     path(
         "celebrations/upcoming/",
         UpcomingCelebrationsView.as_view(),
