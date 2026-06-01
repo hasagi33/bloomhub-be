@@ -70,6 +70,7 @@ from core.models import (
     Project,
     ProjectAssignment,
     PromotionHistory,
+    PulseCheck,
     Question,
     ReplacementLog,
     Role,
@@ -5311,3 +5312,22 @@ class UpcomingCelebrationSerializer(serializers.Serializer):
     days_until = serializers.IntegerField(min_value=0)
     employee = CelebrationEmployeeSerializer()
     anniversary_years = serializers.IntegerField(allow_null=True, min_value=1)
+
+
+# ──────────────────────────────────────────
+# Pulse Check (BHB-452)
+# ──────────────────────────────────────────
+
+
+class PulseCheckSerializer(serializers.ModelSerializer):
+    """Single-tap sentiment submission."""
+
+    class Meta:
+        model = PulseCheck
+        fields = ["id", "employee", "category", "value", "created_at"]
+        read_only_fields = ["id", "employee", "created_at"]
+
+    def validate_value(self, value):
+        if not (1 <= value <= 5):
+            raise serializers.ValidationError("Value must be between 1 and 5.")
+        return value

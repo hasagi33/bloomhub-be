@@ -75,6 +75,7 @@ from .views import (
     ProjectListView,
     ProjectReactivateView,
     PromotionHistoryViewSet,
+    PulseCheckViewSet,
     RegisterView,
     ReplacementLogDetailView,
     ReplacementLogListView,
@@ -179,6 +180,7 @@ router.register(
 router.register(r"job-listings", JobListingViewSet, basename="job-listing")
 router.register(r"job-applications", JobApplicationViewSet, basename="job-application")
 router.register(r"surveys", SurveyViewSet, basename="survey")
+router.register(r"pulse-checks", PulseCheckViewSet, basename="pulse-check")
 router.register(
     r"promotion-history", PromotionHistoryViewSet, basename="promotion-history"
 )

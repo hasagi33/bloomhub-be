@@ -177,9 +177,11 @@ class SurveyAnalyticsAPITests(APITestCase):
         )
 
         self.client.force_authenticate(user=self.hr_user)
-        today = date.today().isoformat()
+        # Use yesterday as start to avoid TZ races between Python date.today()
+        # and Django's timezone.localdate() in the view.
+        start = (date.today() - timedelta(days=1)).isoformat()
         recent_only = self.client.get(
-            f"/api/surveys/{self.survey.id}/analytics/?start_date={today}"
+            f"/api/surveys/{self.survey.id}/analytics/?start_date={start}"
         )
         self.assertEqual(recent_only.data["total_responses"], 1)
 

@@ -9261,6 +9261,111 @@ paths:
       responses:
         '204':
           description: No response body
+  /api/pulse-checks/:
+    get:
+      operationId: pulse_checks_list
+      description: |-
+        One-tap sentiment feedback (1–5).
+
+        - POST /api/pulse-checks/            — submit a pulse (any authenticated user)
+        - GET  /api/pulse-checks/            — list (HR / staff only)
+        - GET  /api/pulse-checks/summary/    — aggregated avg + daily breakdown
+            ?days=7 (default) | ?days=30
+      tags:
+      - Feedback & Surveys
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PulseCheck'
+          description: ''
+    post:
+      operationId: pulse_checks_create
+      description: |-
+        One-tap sentiment feedback (1–5).
+
+        - POST /api/pulse-checks/            — submit a pulse (any authenticated user)
+        - GET  /api/pulse-checks/            — list (HR / staff only)
+        - GET  /api/pulse-checks/summary/    — aggregated avg + daily breakdown
+            ?days=7 (default) | ?days=30
+      tags:
+      - Feedback & Surveys
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PulseCheckRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PulseCheckRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PulseCheckRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PulseCheck'
+          description: ''
+  /api/pulse-checks/summary/:
+    get:
+      operationId: pulse_checks_summary_retrieve
+      description: Returns average sentiment and per-day counts over the last N days
+        (default 7). HR / staff only.
+      summary: Pulse check summary
+      parameters:
+      - in: query
+        name: days
+        schema:
+          type: integer
+      tags:
+      - Feedback & Surveys
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  days:
+                    type: integer
+                  count:
+                    type: integer
+                  average:
+                    type: number
+                  by_day:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        date:
+                          type: string
+                          format: date
+                        count:
+                          type: integer
+                        average:
+                          type: number
+                  distribution:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        value:
+                          type: integer
+                        count:
+                          type: integer
+          description: ''
   /api/replacement-logs/:
     get:
       operationId: replacement_logs_list
@@ -9959,6 +10064,54 @@ paths:
               schema:
                 $ref: '#/components/schemas/Survey'
           description: ''
+  /api/surveys/{id}/individual-responses/:
+    get:
+      operationId: surveys_individual_responses_retrieve
+      description: 'Posts a full response with one answer per question. Only `active`
+        surveys accept submissions. For non-anonymous surveys a given user can only
+        submit once; anonymous surveys allow unlimited submissions. Payload shape:
+        `{ "answers": [{ "question_id": int, "value": str }, ...] }`.'
+      summary: Submit a response to a survey
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Survey.
+        required: true
+      tags:
+      - Feedback & Surveys
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  survey:
+                    type: integer
+                  submitted_at:
+                    type: string
+                    format: date-time
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
   /api/surveys/{id}/questions/:
     post:
       operationId: surveys_questions_create
@@ -9998,11 +10151,15 @@ paths:
   /api/surveys/{id}/responses/:
     post:
       operationId: surveys_responses_create
-      description: 'Posts a full response with one answer per question. Only `active`
-        surveys accept submissions. For non-anonymous surveys a given user can only
-        submit once; anonymous surveys allow unlimited submissions. Payload shape:
-        `{ "answers": [{ "question_id": int, "value": str }, ...] }`.'
-      summary: Submit a response to a survey
+      description: |-
+        CRUD for feedback surveys.
+
+        - GET  /api/surveys/                — list
+        - POST /api/surveys/                — create with nested questions
+        - GET  /api/surveys/{id}/           — retrieve with questions
+        - PATCH /api/surveys/{id}/          — update (questions replaced if provided)
+        - DELETE /api/surveys/{id}/         — delete (only if no responses)
+        - POST /api/surveys/{id}/close/     — mark closed (keeps responses, blocks new ones)
       parameters:
       - in: path
         name: id
@@ -10014,59 +10171,24 @@ paths:
       - Feedback & Surveys
       requestBody:
         content:
-          type:
+          application/json:
             schema:
-              type: object
-              additionalProperties: {}
-              description: Unspecified request body
-          properties:
+              $ref: '#/components/schemas/SurveyRequest'
+          application/x-www-form-urlencoded:
             schema:
-              answers:
-                type: array
-                items:
-                  type: object
-                  properties:
-                    question_id:
-                      type: integer
-                    value:
-                      type: string
-                  required:
-                  - question_id
-          required:
+              $ref: '#/components/schemas/SurveyRequest'
+          multipart/form-data:
             schema:
-              type: object
-              additionalProperties: {}
-              description: Unspecified request body
+              $ref: '#/components/schemas/SurveyRequest'
+        required: true
       security:
       - jwtAuth: []
       responses:
-        '201':
+        '200':
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  id:
-                    type: integer
-                  survey:
-                    type: integer
-                  submitted_at:
-                    type: string
-                    format: date-time
-          description: ''
-        '400':
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: {}
-          description: ''
-        '403':
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: {}
+                $ref: '#/components/schemas/Survey'
           description: ''
   /api/time-entries/:
     get:
@@ -17133,14 +17255,16 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -17625,8 +17749,9 @@ components:
           type: integer
         fiscal_year:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           description: Fiscal year for which budget is allocated
         allocated_budget:
           type: string
@@ -17712,14 +17837,16 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -17744,14 +17871,16 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -17784,14 +17913,16 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -17837,14 +17968,16 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -19038,6 +19171,75 @@ components:
       required:
       - date
       - employee_id
+    PulseCheck:
+      type: object
+      description: Single-tap sentiment submission.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        employee:
+          type: integer
+          readOnly: true
+          nullable: true
+          description: Null if submitted anonymously.
+        category:
+          allOf:
+          - $ref: '#/components/schemas/PulseCheckCategoryEnum'
+          description: |-
+            Which dimension the rating applies to.
+
+            * `overall` - Overall Satisfaction
+            * `workload` - Workload Balance
+            * `management` - Management Support
+            * `culture` - Team Culture
+        value:
+          type: integer
+          maximum: 5
+          minimum: 1
+          description: Sentiment from 1 (worst) to 5 (best).
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - employee
+      - id
+      - value
+    PulseCheckCategoryEnum:
+      enum:
+      - overall
+      - workload
+      - management
+      - culture
+      type: string
+      description: |-
+        * `overall` - Overall Satisfaction
+        * `workload` - Workload Balance
+        * `management` - Management Support
+        * `culture` - Team Culture
+    PulseCheckRequest:
+      type: object
+      description: Single-tap sentiment submission.
+      properties:
+        category:
+          allOf:
+          - $ref: '#/components/schemas/PulseCheckCategoryEnum'
+          description: |-
+            Which dimension the rating applies to.
+
+            * `overall` - Overall Satisfaction
+            * `workload` - Workload Balance
+            * `management` - Management Support
+            * `culture` - Team Culture
+        value:
+          type: integer
+          maximum: 5
+          minimum: 1
+          description: Sentiment from 1 (worst) to 5 (best).
+      required:
+      - value
     Question:
       type: object
       description: A question within a survey. Used nested inside SurveySerializer.
@@ -19050,8 +19252,9 @@ components:
           $ref: '#/components/schemas/QuestionTypeEnum'
         order:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
         options:
           description: List of option strings for choice questions; ignored otherwise.
         required:
@@ -19072,8 +19275,9 @@ components:
           $ref: '#/components/schemas/QuestionTypeEnum'
         order:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
         options:
           description: List of option strings for choice questions; ignored otherwise.
         required:
@@ -21200,8 +21404,9 @@ components:
           readOnly: true
         fiscal_year:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           description: Fiscal year for which budget is allocated
         allocated_budget:
           type: string
@@ -21257,8 +21462,9 @@ components:
           type: integer
         fiscal_year:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           description: Fiscal year for which budget is allocated
         allocated_budget:
           type: string

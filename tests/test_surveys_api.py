@@ -206,7 +206,7 @@ class SurveyAPITests(APITestCase):
         survey = Survey.objects.create(
             title="Locked",
             is_anonymous=False,
-            end_date=date.today() - timedelta(days=1),
+            end_date=date.today() - timedelta(days=2),
         )
         self.client.force_authenticate(user=self.hr_user)
         resp = self.client.patch(

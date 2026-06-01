@@ -168,7 +168,7 @@ class SurveyResponseSubmissionTests(APITestCase):
     def test_rejects_submission_past_end_date(self):
         from datetime import date, timedelta
 
-        self.survey.end_date = date.today() - timedelta(days=1)
+        self.survey.end_date = date.today() - timedelta(days=2)
         self.survey.save()
         self.client.force_authenticate(user=self.user)
         resp = self._submit()

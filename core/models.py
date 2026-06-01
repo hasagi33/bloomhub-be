@@ -4137,6 +4137,59 @@ class Suggestion(models.Model):
         return f"Suggestion({self.category or 'general'}, {self.status})"
 
 
+class PulseCheck(models.Model):
+    """A one-tap sentiment submission (1–5) for a single dimension."""
+
+    CATEGORY_OVERALL = "overall"
+    CATEGORY_WORKLOAD = "workload"
+    CATEGORY_MANAGEMENT = "management"
+    CATEGORY_CULTURE = "culture"
+    CATEGORY_CHOICES = [
+        (CATEGORY_OVERALL, "Overall Satisfaction"),
+        (CATEGORY_WORKLOAD, "Workload Balance"),
+        (CATEGORY_MANAGEMENT, "Management Support"),
+        (CATEGORY_CULTURE, "Team Culture"),
+    ]
+
+    employee = models.ForeignKey(
+        "UserProfile",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="pulse_checks",
+        help_text="Null if submitted anonymously.",
+    )
+    category = models.CharField(
+        max_length=20,
+        choices=CATEGORY_CHOICES,
+        default=CATEGORY_OVERALL,
+        help_text="Which dimension the rating applies to.",
+    )
+    value = models.PositiveSmallIntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(5)],
+        help_text="Sentiment from 1 (worst) to 5 (best).",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Pulse Check"
+        verbose_name_plural = "Pulse Checks"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["-created_at"]),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(value__gte=1, value__lte=5),
+                name="pulse_check_value_between_1_and_5",
+            ),
+        ]
+
+    def __str__(self):
+        who = self.employee_id if self.employee_id else "anonymous"
+        return f"Pulse({self.value}, {who}, {self.created_at:%Y-%m-%d})"
+
+
 class CPFLevelChange(models.Model):
     """A single CPF (Career Progression Framework) level change for an employee.
 

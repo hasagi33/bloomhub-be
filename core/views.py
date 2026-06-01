@@ -109,6 +109,7 @@ from .models import (
     Project,
     ProjectAssignment,
     PromotionHistory,
+    PulseCheck,
     Question,
     ReplacementLog,
     Role,
@@ -273,6 +274,7 @@ from .serializers import (
     ProjectSerializer,
     PromotionHistorySerializer,
     PromotionHistoryWriteSerializer,
+    PulseCheckSerializer,
     QuestionSerializer,
     RegisterSerializer,
     ReplacementLogSerializer,
@@ -10477,9 +10479,8 @@ class SurveyViewSet(viewsets.ModelViewSet):
         if self.action == "list":
             # `?mine=true` narrows the list to surveys created by the current
             # user — used by the management table so each HR user sees only
-            # their own work. Without the flag, the list is unscoped, but
-            # surveys that explicitly forbid the current user are hidden so
-            # the Take-Survey picker never offers a blocked survey.
+            # their own work (including ones they forbade themselves for
+            # testing).
             mine = self.request.query_params.get("mine") == "true"
             try:
                 profile = self.request.user.profile
@@ -10489,10 +10490,10 @@ class SurveyViewSet(viewsets.ModelViewSet):
                 if profile is None:
                     return qs.none()
                 return qs.filter(created_by=profile)
-            is_admin = getattr(self.request.user, "is_staff", False) or getattr(
-                self.request.user, "is_superuser", False
-            )
-            if not is_admin and profile is not None:
+            # For the "available" list, hide surveys the current user is
+            # forbidden from — applies to everyone, including HR/superusers,
+            # because being forbidden is a per-user policy not a permission.
+            if profile is not None:
                 qs = qs.exclude(forbidden_users=profile)
         return qs
 
@@ -10780,6 +10781,78 @@ class SurveyViewSet(viewsets.ModelViewSet):
             403: dict,
         },
     )
+    @extend_schema(
+        summary="List individual responses for a survey (HR-only)",
+        description=(
+            "Returns every response for the given survey with the respondent's "
+            "name (or 'Anonymous' for anonymous surveys) and each question's "
+            "answer. HR / staff / superuser only."
+        ),
+        responses={200: list, 403: dict},
+    )
+    @action(detail=True, methods=["get"], url_path="individual-responses")
+    def individual_responses(self, request, pk=None):
+        if not self._user_is_hr_or_staff(request):
+            return Response(
+                {"detail": "Individual responses are HR-only."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        survey = self.get_object()
+        questions = list(survey.questions.order_by("order", "id"))
+
+        responses_qs = (
+            SurveyResponse.objects.filter(survey=survey)
+            .select_related("respondent__user")
+            .order_by("-submitted_at")
+        )
+
+        # Pre-fetch all answers in one query.
+        from collections import defaultdict as _dd
+
+        answers_by_response: dict[int, list[Answer]] = _dd(list)
+        for ans in Answer.objects.filter(response__in=responses_qs):
+            answers_by_response[ans.response_id].append(ans)
+
+        payload = []
+        for r in responses_qs:
+            if survey.is_anonymous or r.respondent is None:
+                respondent_name = "Anonymous"
+                respondent_id = None
+            else:
+                u = r.respondent.user
+                full = f"{u.first_name} {u.last_name}".strip()
+                respondent_name = full or u.username
+                respondent_id = r.respondent_id
+
+            value_by_qid = {a.question_id: a.value for a in answers_by_response[r.id]}
+            payload.append(
+                {
+                    "response_id": r.id,
+                    "respondent_id": respondent_id,
+                    "respondent_name": respondent_name,
+                    "submitted_at": r.submitted_at.isoformat(),
+                    "answers": [
+                        {
+                            "question_id": q.id,
+                            "question_text": q.text,
+                            "question_type": q.type,
+                            "value": value_by_qid.get(q.id, ""),
+                        }
+                        for q in questions
+                    ],
+                }
+            )
+
+        return Response(
+            {
+                "survey_id": survey.id,
+                "survey_title": survey.title,
+                "is_anonymous": survey.is_anonymous,
+                "responses": payload,
+            }
+        )
+
     @action(detail=True, methods=["post"], url_path="responses")
     def submit_response(self, request, pk=None):
         from .enums import SurveyStatus
@@ -10892,4 +10965,166 @@ class SurveyViewSet(viewsets.ModelViewSet):
                 "submitted_at": response.submitted_at.isoformat(),
             },
             status=status.HTTP_201_CREATED,
+        )
+
+
+# ──────────────────────────────────────────
+# Pulse Check (BHB-452)
+# ──────────────────────────────────────────
+
+
+@extend_schema(tags=["Feedback & Surveys"])
+class PulseCheckViewSet(
+    mixins.CreateModelMixin,
+    mixins.ListModelMixin,
+    viewsets.GenericViewSet,
+):
+    """
+    One-tap sentiment feedback (1–5).
+
+    - POST /api/pulse-checks/            — submit a pulse (any authenticated user)
+    - GET  /api/pulse-checks/            — list (HR / staff only)
+    - GET  /api/pulse-checks/summary/    — aggregated avg + daily breakdown
+        ?days=7 (default) | ?days=30
+    """
+
+    serializer_class = PulseCheckSerializer
+    queryset = PulseCheck.objects.all()
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _is_hr_or_staff(self, request) -> bool:
+        if getattr(request.user, "is_staff", False) or getattr(
+            request.user, "is_superuser", False
+        ):
+            return True
+        try:
+            profile = request.user.profile
+        except (AttributeError, UserProfile.DoesNotExist):
+            return False
+        role = getattr(profile, "role", None)
+        return bool(role and role.name and "hr" in role.name.lower())
+
+    def list(self, request, *args, **kwargs):
+        # Raw pulse data is HR-only — exposes per-user sentiment.
+        if not self._is_hr_or_staff(request):
+            return Response(
+                {"detail": "Pulse check data is HR-only."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return super().list(request, *args, **kwargs)
+
+    def perform_create(self, serializer):
+        try:
+            profile = self.request.user.profile
+        except (AttributeError, UserProfile.DoesNotExist):
+            profile = None
+        serializer.save(employee=profile)
+
+    @extend_schema(
+        summary="Pulse check summary",
+        description=(
+            "Returns average sentiment and per-day counts over the last N days "
+            "(default 7). HR / staff only."
+        ),
+        parameters=[
+            OpenApiParameter("days", int, OpenApiParameter.QUERY),
+        ],
+        responses={
+            200: {
+                "type": "object",
+                "properties": {
+                    "days": {"type": "integer"},
+                    "count": {"type": "integer"},
+                    "average": {"type": "number"},
+                    "by_day": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "date": {"type": "string", "format": "date"},
+                                "count": {"type": "integer"},
+                                "average": {"type": "number"},
+                            },
+                        },
+                    },
+                    "distribution": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "value": {"type": "integer"},
+                                "count": {"type": "integer"},
+                            },
+                        },
+                    },
+                },
+            }
+        },
+    )
+    @action(detail=False, methods=["get"], url_path="summary")
+    def summary(self, request):
+        if not self._is_hr_or_staff(request):
+            return Response(
+                {"detail": "Pulse check summary is HR-only."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        try:
+            days = int(request.query_params.get("days", "7"))
+        except ValueError:
+            days = 7
+        days = max(1, min(days, 365))
+
+        cutoff = timezone.now() - timedelta(days=days)
+        qs = PulseCheck.objects.filter(created_at__gte=cutoff)
+
+        rows = list(qs.values_list("value", "created_at", "category"))
+        values = [r[0] for r in rows]
+        count = len(values)
+        average = round(sum(values) / count, 2) if count else 0.0
+
+        # Per-day aggregation (all categories combined).
+        by_day_map: dict[str, list[int]] = defaultdict(list)
+        for value, created_at, _ in rows:
+            by_day_map[created_at.date().isoformat()].append(value)
+        by_day = [
+            {
+                "date": day,
+                "count": len(vals),
+                "average": round(sum(vals) / len(vals), 2),
+            }
+            for day, vals in sorted(by_day_map.items())
+        ]
+
+        # Distribution across the 1–5 scale, zero-filled.
+        dist_counts: dict[int, int] = {n: 0 for n in range(1, 6)}
+        for v in values:
+            dist_counts[v] = dist_counts.get(v, 0) + 1
+        distribution = [{"value": n, "count": dist_counts[n]} for n in range(1, 6)]
+
+        # Per-category averages (overall, workload, management, culture).
+        by_cat_map: dict[str, list[int]] = defaultdict(list)
+        for value, _, category in rows:
+            by_cat_map[category].append(value)
+        by_category = [
+            {
+                "category": cat,
+                "count": len(by_cat_map.get(cat, [])),
+                "average": (
+                    round(sum(by_cat_map[cat]) / len(by_cat_map[cat]), 2)
+                    if by_cat_map.get(cat)
+                    else 0.0
+                ),
+            }
+            for cat, _ in PulseCheck.CATEGORY_CHOICES
+        ]
+
+        return Response(
+            {
+                "days": days,
+                "count": count,
+                "average": average,
+                "by_day": by_day,
+                "distribution": distribution,
+                "by_category": by_category,
+            }
         )
