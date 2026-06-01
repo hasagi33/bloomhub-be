@@ -2,7 +2,7 @@
 
 from decimal import Decimal
 
-from core.enums import LeaveRequestStatus
+from core.enums import LeaveRequestStatus, LeaveType
 
 REGISTER_FIELDS = [
     "username",
@@ -179,3 +179,20 @@ LEAVE_BALANCE_SNAPSHOT_ORDERING_FIELDS = [
     "leave_type",
     "remaining",
 ]
+
+# Team availability (BHB-485) ─────────────────────────────────────────────────
+# Max range allowed in a single `availability` request. Capped to keep the
+# day-level payload bounded — caller paginates by adjusting `start_date`.
+AVAILABILITY_MAX_WINDOW_DAYS = 35
+# A day is flagged `is_critical` when the share of scoped headcount that is on
+# leave reaches this ratio. 0.3 = 30% of the team out simultaneously.
+AVAILABILITY_CRITICAL_RATIO = 0.3
+# Leave types excluded by default from "unavailable" counts. WFH is not an
+# out-of-office state; callers can override by passing `leave_type` explicitly.
+AVAILABILITY_DEFAULT_EXCLUDED_TYPES = (LeaveType.WFH,)
+# Statuses that count toward availability when no `status` filter is supplied.
+AVAILABILITY_DEFAULT_STATUSES = (
+    LeaveRequestStatus.APPROVED,
+    LeaveRequestStatus.LEAD_APPROVED,
+    LeaveRequestStatus.PENDING,
+)

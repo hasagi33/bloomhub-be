@@ -5669,6 +5669,62 @@ paths:
               schema:
                 $ref: '#/components/schemas/LeaveMonthlyAggregate'
           description: ''
+  /api/leave-analytics/availability/:
+    get:
+      operationId: leave_analytics_availability_retrieve
+      description: |-
+        Read-only access to pre-materialized leave analytics.
+
+        Source rows are owned by `LeaveMonthlyAggregate` (per
+        employee/leave_type/year/month). Composite reports — monthly trend, yearly
+        totals, department breakdown, per-employee summary — are exposed as
+        `@action` endpoints that reduce the fact table on the database side.
+
+        Refresh is gated behind `CanRefreshLeaveAnalytics` and writes via the
+        `core.services.leave_analytics_service` module rather than mutating the
+        table from this view directly.
+      summary: Day-level team availability window
+      parameters:
+      - in: query
+        name: end_date
+        schema:
+          type: string
+          format: date
+        description: Inclusive end date. Window may not exceed 35 days from start_date.
+        required: true
+      - in: query
+        name: leave_type
+        schema:
+          type: string
+        description: Repeatable or CSV. Overrides the default exclusion of WFH.
+      - in: query
+        name: project
+        schema:
+          type: integer
+        description: Scope to employees on this project's active ProjectAssignment
+          rows.
+      - in: query
+        name: start_date
+        schema:
+          type: string
+          format: date
+        required: true
+      - in: query
+        name: status
+        schema:
+          type: string
+        description: Repeatable or CSV. Defaults to pending + lead_approved + approved.
+      tags:
+      - Leave Analytics
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveAvailabilityResponse'
+          description: ''
   /api/leave-analytics/departments/:
     get:
       operationId: leave_analytics_departments_list
@@ -15708,6 +15764,128 @@ components:
       - pending_total
       - total
       - year
+    LeaveAvailabilityDayCount:
+      type: object
+      description: Per-working-day rollup used by the heatmap header strip.
+      properties:
+        date:
+          type: string
+          format: date
+        on_leave_count:
+          type: integer
+        by_type:
+          type: object
+          additionalProperties:
+            type: integer
+        is_critical:
+          type: boolean
+      required:
+      - by_type
+      - date
+      - is_critical
+      - on_leave_count
+    LeaveAvailabilityEmployee:
+      type: object
+      description: Per-employee availability row, with intersecting leave entries.
+      properties:
+        employee_id:
+          type: integer
+        employee_name:
+          type: string
+        role:
+          type: string
+          nullable: true
+        department:
+          type: string
+          nullable: true
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/LeaveAvailabilityEntry'
+      required:
+      - department
+      - employee_id
+      - employee_name
+      - entries
+      - role
+    LeaveAvailabilityEntry:
+      type: object
+      description: One leave window contributing to an employee's availability row.
+      properties:
+        leave_type:
+          type: string
+        status:
+          type: string
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        window_start:
+          type: string
+          format: date
+          description: Start of the request clamped to the requested window.
+        window_end:
+          type: string
+          format: date
+          description: End of the request clamped to the requested window.
+      required:
+      - end_date
+      - leave_type
+      - start_date
+      - status
+      - window_end
+      - window_start
+    LeaveAvailabilityRange:
+      type: object
+      description: Metadata describing the requested availability window.
+      properties:
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        working_days_count:
+          type: integer
+        headcount:
+          type: integer
+        project_id:
+          type: integer
+          nullable: true
+        project_name:
+          type: string
+          nullable: true
+        critical_ratio:
+          type: number
+          format: double
+      required:
+      - critical_ratio
+      - end_date
+      - headcount
+      - project_id
+      - project_name
+      - start_date
+      - working_days_count
+    LeaveAvailabilityResponse:
+      type: object
+      description: Shape of the `availability` action response.
+      properties:
+        range:
+          $ref: '#/components/schemas/LeaveAvailabilityRange'
+        employees:
+          type: array
+          items:
+            $ref: '#/components/schemas/LeaveAvailabilityEmployee'
+        daily:
+          type: array
+          items:
+            $ref: '#/components/schemas/LeaveAvailabilityDayCount'
+      required:
+      - daily
+      - employees
+      - range
     LeaveBalance:
       type: object
       description: Serializer for LeaveBalance model.

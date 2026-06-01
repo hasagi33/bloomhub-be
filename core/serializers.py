@@ -4772,6 +4772,60 @@ class LeaveAnalyticsEmployeeHistorySerializer(serializers.Serializer):
     leave_requests = LeaveRequestListSerializer(many=True, read_only=True)
 
 
+class LeaveAvailabilityEntrySerializer(serializers.Serializer):
+    """One leave window contributing to an employee's availability row."""
+
+    leave_type = serializers.CharField()
+    status = serializers.CharField()
+    start_date = serializers.DateField()
+    end_date = serializers.DateField()
+    window_start = serializers.DateField(
+        help_text="Start of the request clamped to the requested window."
+    )
+    window_end = serializers.DateField(
+        help_text="End of the request clamped to the requested window."
+    )
+
+
+class LeaveAvailabilityEmployeeSerializer(serializers.Serializer):
+    """Per-employee availability row, with intersecting leave entries."""
+
+    employee_id = serializers.IntegerField()
+    employee_name = serializers.CharField()
+    role = serializers.CharField(allow_blank=True, allow_null=True)
+    department = serializers.CharField(allow_blank=True, allow_null=True)
+    entries = LeaveAvailabilityEntrySerializer(many=True)
+
+
+class LeaveAvailabilityDayCountSerializer(serializers.Serializer):
+    """Per-working-day rollup used by the heatmap header strip."""
+
+    date = serializers.DateField()
+    on_leave_count = serializers.IntegerField()
+    by_type = serializers.DictField(child=serializers.IntegerField())
+    is_critical = serializers.BooleanField()
+
+
+class LeaveAvailabilityRangeSerializer(serializers.Serializer):
+    """Metadata describing the requested availability window."""
+
+    start_date = serializers.DateField()
+    end_date = serializers.DateField()
+    working_days_count = serializers.IntegerField()
+    headcount = serializers.IntegerField()
+    project_id = serializers.IntegerField(allow_null=True)
+    project_name = serializers.CharField(allow_null=True, allow_blank=True)
+    critical_ratio = serializers.FloatField()
+
+
+class LeaveAvailabilityResponseSerializer(serializers.Serializer):
+    """Shape of the `availability` action response."""
+
+    range = LeaveAvailabilityRangeSerializer()
+    employees = LeaveAvailabilityEmployeeSerializer(many=True)
+    daily = LeaveAvailabilityDayCountSerializer(many=True)
+
+
 class BonusRecordSerializer(serializers.ModelSerializer):
     employee_name = serializers.SerializerMethodField(read_only=True)
     bonus_type_display = serializers.CharField(

@@ -2,7 +2,7 @@ import csv
 import hashlib
 import io
 from collections import defaultdict
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any, cast
 from urllib.parse import unquote, urlparse
@@ -41,6 +41,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView
 
 from .constants import (
+    AVAILABILITY_MAX_WINDOW_DAYS,
     CPF_LEVEL_CHANGE_FILTERSET_FIELDS,
     CPF_LEVEL_CHANGE_ORDERING_FIELDS,
     CPF_LEVEL_CHANGE_SEARCH_FIELDS,
@@ -244,6 +245,7 @@ from .serializers import (
     LeaveAnalyticsMonthRowSerializer,
     LeaveAnalyticsRefreshResponseSerializer,
     LeaveAnalyticsYearTotalsSerializer,
+    LeaveAvailabilityResponseSerializer,
     LeaveBalanceSerializer,
     LeaveBalanceSnapshotSerializer,
     LeaveMonthlyAggregateSerializer,
@@ -10162,6 +10164,151 @@ class LeaveAnalyticsViewSet(
                 **payload,
             }
         )
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @staticmethod
+    def _parse_iso_date(raw, *, field: str):
+        if raw is None or raw == "":
+            raise ValidationError({field: f"{field} is required"})
+        try:
+            return date.fromisoformat(raw)
+        except (TypeError, ValueError) as exc:
+            raise ValidationError(
+                {field: f"{field} must be an ISO-8601 date (YYYY-MM-DD)"}
+            ) from exc
+
+    @staticmethod
+    def _parse_multi_param(request, field: str) -> list[str] | None:
+        """Read either repeated `field=` query params or a CSV-joined value."""
+        raw_list = request.query_params.getlist(field)
+        if not raw_list:
+            return None
+        values: list[str] = []
+        for raw in raw_list:
+            for piece in raw.split(","):
+                piece = piece.strip()
+                if piece:
+                    values.append(piece)
+        return values or None
+
+    @extend_schema(
+        tags=["Leave Analytics"],
+        summary="Day-level team availability window",
+        parameters=[
+            OpenApiParameter(
+                name="start_date",
+                required=True,
+                type=OpenApiTypes.DATE,
+                location=OpenApiParameter.QUERY,
+            ),
+            OpenApiParameter(
+                name="end_date",
+                required=True,
+                type=OpenApiTypes.DATE,
+                location=OpenApiParameter.QUERY,
+                description=(
+                    f"Inclusive end date. Window may not exceed "
+                    f"{AVAILABILITY_MAX_WINDOW_DAYS} days from start_date."
+                ),
+            ),
+            OpenApiParameter(
+                name="project",
+                required=False,
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description=(
+                    "Scope to employees on this project's active "
+                    "ProjectAssignment rows."
+                ),
+            ),
+            OpenApiParameter(
+                name="leave_type",
+                required=False,
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description=(
+                    "Repeatable or CSV. Overrides the default exclusion of WFH."
+                ),
+            ),
+            OpenApiParameter(
+                name="status",
+                required=False,
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description=(
+                    "Repeatable or CSV. Defaults to pending + lead_approved + "
+                    "approved."
+                ),
+            ),
+        ],
+        responses={200: LeaveAvailabilityResponseSerializer},
+    )
+    @action(detail=False, methods=["get"], url_path="availability")
+    def availability(self, request):
+        from core.services.leave_analytics_service import team_availability
+
+        start_date = self._parse_iso_date(
+            request.query_params.get("start_date"), field="start_date"
+        )
+        end_date = self._parse_iso_date(
+            request.query_params.get("end_date"), field="end_date"
+        )
+        if end_date < start_date:
+            raise ValidationError("end_date cannot precede start_date.")
+        window_days = (end_date - start_date).days + 1
+        if window_days > AVAILABILITY_MAX_WINDOW_DAYS:
+            raise ValidationError(
+                {
+                    "end_date": (
+                        f"Window of {window_days} days exceeds the maximum "
+                        f"{AVAILABILITY_MAX_WINDOW_DAYS} days."
+                    )
+                }
+            )
+
+        project_obj = None
+        project_raw = request.query_params.get("project")
+        if project_raw not in (None, ""):
+            try:
+                project_id = int(project_raw)
+            except (TypeError, ValueError) as exc:
+                raise ValidationError(
+                    {"project": "project must be an integer ID"}
+                ) from exc
+            project_obj = Project.objects.filter(id=project_id).first()
+            if project_obj is None:
+                raise NotFound("Project not found.")
+
+        leave_types = self._parse_multi_param(request, "leave_type")
+        statuses = self._parse_multi_param(request, "status")
+
+        if has_leave_analytics_view_permission(request.user):
+            fallback_employees = None
+        else:
+            profile = _get_user_profile(request.user)
+            if profile is None:
+                raise PermissionDenied("Profile required for availability view.")
+            fallback_employees = [profile]
+            if project_obj is not None:
+                assigned = ProjectAssignment.objects.filter(
+                    project=project_obj,
+                    user_profile=profile,
+                    status=ProjectAssignmentStatus.ACTIVE,
+                ).exists()
+                if not assigned:
+                    raise PermissionDenied("You are not assigned to this project.")
+                # Scope reduced to caller only; bypass project lookup in service.
+                project_obj = None
+
+        payload = team_availability(
+            start_date=start_date,
+            end_date=end_date,
+            project=project_obj,
+            employees=fallback_employees,
+            leave_types=leave_types,
+            statuses=statuses,
+        )
+        serializer = LeaveAvailabilityResponseSerializer(payload)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     @extend_schema(

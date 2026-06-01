@@ -29,13 +29,20 @@ from datetime import date, datetime, timedelta
 from django.db import transaction
 from django.utils import timezone
 
-from core.constants import LEAVE_ANALYTICS_STATUS_BUCKET
-from core.enums import LeaveType
+from core.constants import (
+    AVAILABILITY_CRITICAL_RATIO,
+    AVAILABILITY_DEFAULT_EXCLUDED_TYPES,
+    AVAILABILITY_DEFAULT_STATUSES,
+    LEAVE_ANALYTICS_STATUS_BUCKET,
+)
+from core.enums import LeaveType, ProjectAssignmentStatus
 from core.models import (
     LeaveBalance,
     LeaveBalanceSnapshot,
     LeaveMonthlyAggregate,
     LeaveRequest,
+    Project,
+    ProjectAssignment,
     UserProfile,
 )
 
@@ -347,4 +354,194 @@ def employee_history(
         "leave_requests": list(
             requests_qs.select_related("employee__user").order_by("-start_date")
         ),
+    }
+
+
+# ──────────────────────────────────────────
+# Team availability (BHB-485)
+# ──────────────────────────────────────────
+
+
+def _scoped_employees_for_project(project: Project) -> list[UserProfile]:
+    """UserProfiles assigned to ``project`` with an active assignment."""
+    assignment_qs = ProjectAssignment.objects.filter(
+        project=project,
+        status=ProjectAssignmentStatus.ACTIVE,
+    ).select_related("user_profile__user")
+    seen: set[int] = set()
+    employees: list[UserProfile] = []
+    for assignment in assignment_qs:
+        profile = assignment.user_profile
+        if profile.id in seen:
+            continue
+        seen.add(profile.id)
+        employees.append(profile)
+    return employees
+
+
+def _resolve_availability_employees(
+    *,
+    project: Project | None,
+    fallback: Iterable[UserProfile] | None,
+) -> list[UserProfile]:
+    """Compute the employee scope for an availability request."""
+    if project is not None:
+        return _scoped_employees_for_project(project)
+    if fallback is not None:
+        return list(fallback)
+    return list(UserProfile.objects.select_related("user").all())
+
+
+def _trim_request_to_window(
+    leave_request: LeaveRequest,
+    *,
+    window_start: date,
+    window_end: date,
+) -> tuple[date, date] | None:
+    """Intersect the request's date span with the visible window."""
+    start = max(leave_request.start_date, window_start)
+    end = min(leave_request.end_date, window_end)
+    if start > end:
+        return None
+    return start, end
+
+
+def team_availability(
+    *,
+    start_date: date,
+    end_date: date,
+    project: Project | None = None,
+    employees: Iterable[UserProfile] | None = None,
+    leave_types: Iterable[str] | None = None,
+    statuses: Iterable[str] | None = None,
+) -> dict:
+    """
+    Build a day-level team availability payload for ``[start_date, end_date]``.
+
+    Parameters
+    ----------
+    project:
+        When set, scopes employees to active ``ProjectAssignment`` rows for
+        that project. Otherwise ``employees`` (if given) or every UserProfile
+        is used.
+    employees:
+        Explicit scope override (used by the view to enforce own-data fallback
+        when the caller lacks org-wide view permission).
+    leave_types:
+        Optional whitelist of LeaveType values. When ``None``, every type
+        EXCEPT those in ``AVAILABILITY_DEFAULT_EXCLUDED_TYPES`` (WFH) is
+        counted as out-of-office.
+    statuses:
+        Optional whitelist of LeaveRequestStatus values. Defaults to
+        ``AVAILABILITY_DEFAULT_STATUSES``.
+
+    Returns
+    -------
+    dict with keys:
+      ``range`` — window metadata + counts
+      ``employees`` — per-employee rows with intersecting leave entries
+      ``daily`` — per-working-day counts, by-type breakdown, ``is_critical``
+    """
+    if start_date > end_date:
+        raise ValueError("start_date must be <= end_date")
+
+    scoped_employees = _resolve_availability_employees(
+        project=project, fallback=employees
+    )
+    employee_ids = [emp.id for emp in scoped_employees]
+    headcount = len(employee_ids)
+
+    if leave_types is None:
+        effective_types = [
+            lt
+            for lt in LeaveType.values
+            if lt not in AVAILABILITY_DEFAULT_EXCLUDED_TYPES
+        ]
+    else:
+        effective_types = list(leave_types)
+    if statuses is None:
+        effective_statuses = list(AVAILABILITY_DEFAULT_STATUSES)
+    else:
+        effective_statuses = list(statuses)
+
+    requests_qs = LeaveRequest.objects.filter(
+        employee_id__in=employee_ids,
+        start_date__lte=end_date,
+        end_date__gte=start_date,
+        leave_type__in=effective_types,
+        status__in=effective_statuses,
+    ).select_related("employee__user")
+
+    entries_by_employee: dict[int, list[dict]] = defaultdict(list)
+    # date -> {leave_type: count}, also overall on-leave employee set per day
+    daily_buckets: dict[date, dict[str, int]] = defaultdict(
+        lambda: {lt: 0 for lt in effective_types}
+    )
+    daily_on_leave_employees: dict[date, set[int]] = defaultdict(set)
+
+    for lr in requests_qs:
+        clamped = _trim_request_to_window(
+            lr, window_start=start_date, window_end=end_date
+        )
+        if clamped is None:
+            continue
+        clamped_start, clamped_end = clamped
+        entries_by_employee[lr.employee_id].append(
+            {
+                "leave_type": lr.leave_type,
+                "status": lr.status,
+                "start_date": lr.start_date,
+                "end_date": lr.end_date,
+                "window_start": clamped_start,
+                "window_end": clamped_end,
+            }
+        )
+        for day in _iter_working_days(clamped_start, clamped_end):
+            daily_buckets[day][lr.leave_type] += 1
+            daily_on_leave_employees[day].add(lr.employee_id)
+
+    daily_payload: list[dict] = []
+    working_days_count = 0
+    for day in _iter_working_days(start_date, end_date):
+        working_days_count += 1
+        by_type = daily_buckets.get(day) or {lt: 0 for lt in effective_types}
+        on_leave_count = len(daily_on_leave_employees.get(day, set()))
+        ratio = on_leave_count / headcount if headcount else 0.0
+        daily_payload.append(
+            {
+                "date": day,
+                "on_leave_count": on_leave_count,
+                "by_type": by_type,
+                "is_critical": ratio >= AVAILABILITY_CRITICAL_RATIO
+                and on_leave_count > 0,
+            }
+        )
+
+    employees_payload = []
+    for emp in scoped_employees:
+        employees_payload.append(
+            {
+                "employee_id": emp.id,
+                "employee_name": emp.user.get_full_name() or emp.user.username,
+                "role": getattr(emp.role, "name", None),
+                "department": emp.department,
+                "entries": sorted(
+                    entries_by_employee.get(emp.id, []),
+                    key=lambda e: (e["window_start"], e["leave_type"]),
+                ),
+            }
+        )
+
+    return {
+        "range": {
+            "start_date": start_date,
+            "end_date": end_date,
+            "working_days_count": working_days_count,
+            "headcount": headcount,
+            "project_id": project.id if project is not None else None,
+            "project_name": project.name if project is not None else None,
+            "critical_ratio": AVAILABILITY_CRITICAL_RATIO,
+        },
+        "employees": employees_payload,
+        "daily": daily_payload,
     }
