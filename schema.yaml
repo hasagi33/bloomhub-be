@@ -9910,6 +9910,135 @@ paths:
           description: No response body
         '404':
           description: No response body
+  /api/suggestions/:
+    get:
+      operationId: suggestions_list
+      description: |-
+        Suggestion box.
+
+        - POST /api/suggestions/         — submit a suggestion (any authenticated user)
+        - GET  /api/suggestions/         — list (HR / staff only)
+        - PATCH /api/suggestions/{id}/   — update status (HR / staff only)
+      tags:
+      - Feedback & Surveys
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Suggestion'
+          description: ''
+    post:
+      operationId: suggestions_create
+      description: |-
+        Suggestion box.
+
+        - POST /api/suggestions/         — submit a suggestion (any authenticated user)
+        - GET  /api/suggestions/         — list (HR / staff only)
+        - PATCH /api/suggestions/{id}/   — update status (HR / staff only)
+      tags:
+      - Feedback & Surveys
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SuggestionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SuggestionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SuggestionRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Suggestion'
+          description: ''
+  /api/suggestions/{id}/:
+    put:
+      operationId: suggestions_update
+      description: |-
+        Suggestion box.
+
+        - POST /api/suggestions/         — submit a suggestion (any authenticated user)
+        - GET  /api/suggestions/         — list (HR / staff only)
+        - PATCH /api/suggestions/{id}/   — update status (HR / staff only)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Suggestion.
+        required: true
+      tags:
+      - Feedback & Surveys
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SuggestionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SuggestionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SuggestionRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Suggestion'
+          description: ''
+    patch:
+      operationId: suggestions_partial_update
+      description: |-
+        Suggestion box.
+
+        - POST /api/suggestions/         — submit a suggestion (any authenticated user)
+        - GET  /api/suggestions/         — list (HR / staff only)
+        - PATCH /api/suggestions/{id}/   — update status (HR / staff only)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Suggestion.
+        required: true
+      tags:
+      - Feedback & Surveys
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedSuggestionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedSuggestionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedSuggestionRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Suggestion'
+          description: ''
   /api/surveys/:
     get:
       operationId: surveys_list
@@ -10263,6 +10392,43 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Question'
+          description: ''
+  /api/surveys/{id}/recall/:
+    post:
+      operationId: surveys_recall_create
+      description: Forces the survey back to `draft` state. If `end_date` is in the
+        past, it is cleared so HR can edit/extend the survey before sending it out
+        again. Bypasses the standard end-date lock.
+      summary: Recall an active or locked survey back to draft
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Survey.
+        required: true
+      tags:
+      - Feedback & Surveys
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SurveyRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SurveyRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SurveyRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Survey'
           description: ''
   /api/surveys/{id}/responses/:
     post:
@@ -16850,14 +17016,16 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -17144,6 +17312,22 @@ components:
           type: string
           description: Optional external vendor or service provider
           maxLength: 200
+    PatchedSuggestionRequest:
+      type: object
+      description: Suggestion submission and listing. HR can update status.
+      properties:
+        is_anonymous:
+          type: boolean
+          writeOnly: true
+          default: false
+        category:
+          type: string
+          maxLength: 64
+        text:
+          type: string
+          minLength: 1
+        status:
+          type: string
     PatchedSurveyRequest:
       type: object
       description: Survey with nested questions for create/update and retrieval.
@@ -17283,8 +17467,9 @@ components:
           type: integer
         fiscal_year:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           description: Fiscal year for which budget is allocated
         allocated_budget:
           type: string
@@ -17361,14 +17546,16 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -17393,14 +17580,16 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -17433,14 +17622,16 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -17486,14 +17677,16 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -18670,8 +18863,9 @@ components:
           type: string
         order:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
         options:
           description: List of option strings for choice questions; ignored otherwise.
         required:
@@ -18692,8 +18886,9 @@ components:
           type: string
         order:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
         options:
           description: List of option strings for choice questions; ignored otherwise.
         required:
@@ -19178,6 +19373,56 @@ components:
       required:
       - email
       - name
+    Suggestion:
+      type: object
+      description: Suggestion submission and listing. HR can update status.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        employee:
+          type: integer
+          readOnly: true
+          nullable: true
+          description: Null if submitted anonymously.
+        employee_name:
+          type: string
+          readOnly: true
+        category:
+          type: string
+          maxLength: 64
+        text:
+          type: string
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - employee
+      - employee_name
+      - id
+      - text
+    SuggestionRequest:
+      type: object
+      description: Suggestion submission and listing. HR can update status.
+      properties:
+        is_anonymous:
+          type: boolean
+          writeOnly: true
+          default: false
+        category:
+          type: string
+          maxLength: 64
+        text:
+          type: string
+          minLength: 1
+        status:
+          type: string
+      required:
+      - text
     Survey:
       type: object
       description: Survey with nested questions for create/update and retrieval.
@@ -20396,8 +20641,9 @@ components:
           readOnly: true
         fiscal_year:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           description: Fiscal year for which budget is allocated
         allocated_budget:
           type: string
@@ -20453,8 +20699,9 @@ components:
           type: integer
         fiscal_year:
           type: integer
-          maximum: 2147483647
+          maximum: 9223372036854775807
           minimum: 0
+          format: int64
           description: Fiscal year for which budget is allocated
         allocated_budget:
           type: string

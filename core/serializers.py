@@ -76,6 +76,7 @@ from core.models import (
     Role,
     SalaryRecord,
     ScheduledMaintenance,
+    Suggestion,
     Survey,
     TaskTemplate,
     TechnologyTag,
@@ -5077,17 +5078,31 @@ class SurveySerializer(serializers.ModelSerializer):
             instance.forbidden_users.set(forbidden)
 
         if questions_data is not None:
-            # Replace-all strategy keeps the UI simple — frontend always sends
-            # the complete current question list.
-            instance.questions.all().delete()
+            # Preserve question IDs that match incoming entries so that any
+            # already-submitted Answer rows keep their question FK intact.
+            # Answers cascade-delete with questions, so a wholesale replace
+            # would wipe response data — see BHB-454.
+            existing_by_id = {q.id: q for q in instance.questions.all()}
+            kept_ids: set[int] = set()
             for index, question_data in enumerate(questions_data):
-                question_data.pop("id", None)
+                qid = question_data.pop("id", None)
                 order = question_data.pop("order", None)
-                Question.objects.create(
-                    survey=instance,
-                    order=order if order is not None else index,
-                    **question_data,
-                )
+                resolved_order = order if order is not None else index
+                if qid and qid in existing_by_id:
+                    q = existing_by_id[qid]
+                    for attr, value in question_data.items():
+                        setattr(q, attr, value)
+                    q.order = resolved_order
+                    q.save()
+                    kept_ids.add(qid)
+                else:
+                    new_q = Question.objects.create(
+                        survey=instance,
+                        order=resolved_order,
+                        **question_data,
+                    )
+                    kept_ids.add(new_q.id)
+            Question.objects.filter(survey=instance).exclude(id__in=kept_ids).delete()
         return instance
 
 
@@ -5414,4 +5429,44 @@ class PulseCheckSerializer(serializers.ModelSerializer):
     def validate_value(self, value):
         if not (1 <= value <= 5):
             raise serializers.ValidationError("Value must be between 1 and 5.")
+        return value
+
+
+# ──────────────────────────────────────────
+# Suggestion Box (BHB-454)
+# ──────────────────────────────────────────
+
+
+class SuggestionSerializer(serializers.ModelSerializer):
+    """Suggestion submission and listing. HR can update status."""
+
+    employee_name = serializers.SerializerMethodField()
+    is_anonymous = serializers.BooleanField(
+        write_only=True, required=False, default=False
+    )
+
+    class Meta:
+        model = Suggestion
+        fields = [
+            "id",
+            "employee",
+            "employee_name",
+            "is_anonymous",
+            "category",
+            "text",
+            "status",
+            "created_at",
+        ]
+        read_only_fields = ["id", "employee", "employee_name", "created_at"]
+
+    def get_employee_name(self, obj) -> str:
+        if not obj.employee:
+            return "Anonymous"
+        u = obj.employee.user
+        full = f"{u.first_name} {u.last_name}".strip()
+        return full or u.username
+
+    def validate_text(self, value):
+        if not value.strip():
+            raise serializers.ValidationError("Suggestion text cannot be empty.")
         return value
