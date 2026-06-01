@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
+
+from django.conf import settings
 
 from core.ai.errors import LLMUnavailableError
 from core.ai.tooling import ToolRegistry, execute_tool
+from core.ai.usage import extract_token_usage
 from core.models import AIChatSession
 
 logger = logging.getLogger(__name__)
@@ -50,15 +54,33 @@ SHARED_DOCTRINE = (
     "(e.g. 'Which leave type — vacation, sick, personal? And what's the "
     "reason?'). When the user replies, call the same tool again with the "
     "new fields merged in.\n"
+    "- Stay on the current task. Treat the orchestrator's planner hint as the "
+    "single source of truth for what this turn is about. Do not drift into "
+    "adjacent capabilities, summarize unrelated data, or invent follow-up "
+    "actions unless the current task clearly requires them.\n"
+    "- When a tool can answer the question, use the tool. Do not answer from "
+    "memory or widen the task scope because you recognize a similar request.\n"
+    "- Never surface raw tool JSON to the user unless the user explicitly "
+    "asks for JSON. Summarize tool payloads into concise prose or a markdown "
+    "table. If the user explicitly requests JSON, return the tool result as "
+    "JSON instead of prose.\n"
+    "- For any request that depends on the current moment or relative time "
+    "(`now`, `today`, `tomorrow`, `yesterday`, `in 5 minutes`, `5 minutes "
+    "from now`, scheduling, deadlines, expirations), call "
+    "`get_current_datetime` first. Use `get_current_date` or "
+    "`get_current_time` if you only need one part. Do not guess the current "
+    "date/time.\n"
     "- Keep responses short, factual, and grounded in tool results. Never "
     "fabricate names, IDs, salaries, dates, or counts.\n"
     "- If you include a pipe table, do not include markdown alignment rows "
     "like `|---|---|` or `|:-:|:---|`; the frontend renders tables itself.\n"
     "\n"
     "Permission-aware help (CRITICAL):\n"
-    "- BEFORE telling a user they cannot do something, call "
-    "`check_permission(tool_name=...)` or `list_available_actions(module=...)` "
-    "to verify their actual permissions. Do not guess.\n"
+    "- Use `check_permission(tool_name=...)` or "
+    "`list_available_actions(module=...)` when the user is asking about "
+    "capability, access, or workflow, or after a tool call is blocked. Do "
+    "not spend a direct action request on a permission lookup if you can "
+    "call the action tool itself.\n"
     "- When a user asks 'How do I X?', 'Can I X?', 'Explain X', or sounds "
     "confused about a workflow, call `explain_workflow(topic=...)` (topics: "
     "create_employee, request_leave, approve_leave, submit_timesheet, "
@@ -121,7 +143,12 @@ MODULE_PROMPTS = {
     ),
     "assets": (
         "You are the Assets subagent. Domain: equipment, assignments, returns. "
-        "Tools: list_assets. Asset RBAC is enforced server-side.\n\n" + SHARED_DOCTRINE
+        "Tools: list_assets, create_asset, update_asset_status. Asset RBAC is "
+        "enforced server-side.\n\n"
+        "When the user clearly wants to create/register/add an asset, call "
+        "`create_asset` with any fields you can infer. If required fields are "
+        "missing, still call it once so the backend can ask for the missing "
+        "details via slot filling.\n\n" + SHARED_DOCTRINE
     ),
     "documents": (
         "You are the Documents subagent. Domain: document metadata, visibility, "
@@ -149,7 +176,17 @@ MODULE_PROMPTS = {
     "time_tracking": (
         "You are the Time Tracking subagent. Domain: time tasks, entries, weekly "
         "submission. Tools: list_time_entries, list_time_tasks, create_time_entry, "
-        "submit_time_week. Always confirm mutating calls.\n\n" + SHARED_DOCTRINE
+        "submit_time_week, list_reference_data, get_current_date, "
+        "get_current_datetime.\n\n"
+        "Create-entry workflow: when the user wants to log or create a manual "
+        "time entry, do not answer with a generic context tool or list tool. "
+        "Resolve the project name with `list_reference_data` if needed, use "
+        "`get_current_date` or `get_current_datetime` for phrases like "
+        "'today', 'this date', or 'now', and compute `hours` from ranges like "
+        "'9am til 3pm'. Then call `create_time_entry` once with the best "
+        "arguments you have. If a required field is still missing, let the "
+        "backend slot-fill it instead of stalling.\n\n"
+        "Always confirm mutating calls.\n\n" + SHARED_DOCTRINE
     ),
     "onboarding": (
         "You are the Onboarding subagent. Domain: checklist templates and "
@@ -222,6 +259,29 @@ MODULE_PROMPTS = {
         "- If user asks 'apply for X', call list_job_listings to find the id, "
         "then apply_to_job_listing.\n\n" + SHARED_DOCTRINE
     ),
+    "announcements": (
+        "You are the Announcements subagent. Domain: announcements, schedules, "
+        "comments, reactions, and Discord announcement channels. Tools: "
+        "list_announcements, get_announcement, create_announcement, "
+        "update_announcement, delete_announcement, list_announcement_comments, "
+        "add_announcement_comment, delete_announcement_comment, "
+        "toggle_announcement_reaction, list_discord_announcement_channels, "
+        "create_discord_announcement_channel, "
+        "update_discord_announcement_channel, "
+        "delete_discord_announcement_channel.\n\n"
+        "For direct create/schedule/update/delete requests, call the matching "
+        "announcement tool immediately with the best arguments you have. Do "
+        "not stop after `check_permission` or paste tool metadata back to the "
+        "user. Mutating announcement tools already stage human confirmation in "
+        "the backend, so your job is to trigger the tool and then explain the "
+        "confirmation step in plain language if needed. For any relative "
+        "schedule phrasing like 'in 5 minutes', 'tomorrow morning', or "
+        "'next Friday', call `get_current_datetime` before choosing "
+        "`scheduled_at`.\n\n"
+        "If the user is asking whether they can do something, or how the "
+        "announcement workflow works, then use the permission and workflow "
+        "helpers.\n\n" + SHARED_DOCTRINE
+    ),
     "notifications": (
         "You are the Notifications subagent. Tools: list_notifications, "
         "mark_all_notifications_read.\n\n" + SHARED_DOCTRINE
@@ -244,6 +304,16 @@ KEYWORD_MODULES = (
     ("vacations", ("leave", "vacation", "pto", "sick", "balance", "calendar")),
     ("assets", ("asset", "equipment", "laptop", "qr", "maintenance", "return")),
     ("documents", ("document", "signature", "template", "policy", "contract")),
+    (
+        "announcements",
+        (
+            "announcement",
+            "announcements",
+            "publish",
+            "post",
+            "broadcast",
+        ),
+    ),
     ("time_tracking", ("time", "timesheet", "worklog", "jira", "tempo", "hours")),
     ("onboarding", ("onboarding", "offboarding", "checklist", "task")),
     ("reviews", ("review", "performance", "feedback", "action point")),
@@ -365,7 +435,8 @@ def invoke_subagent(
     prompt: str,
     history: list[dict[str, str]] | None = None,
     planner_hint: str | None = None,
-) -> str:
+    module: str | None = None,
+) -> tuple[str, dict[str, int]]:
     """Run the ReAct subagent with prior conversation context.
 
     History is a list of {role, content} dicts (chronological). Roles map:
@@ -377,6 +448,7 @@ def invoke_subagent(
     system message right before the final user turn so the subagent acts
     on it as instruction rather than echoing it as user content.
     """
+    started_at = time.perf_counter()
     messages: list[tuple[str, str]] = []
     for entry in history or []:
         role = entry.get("role")
@@ -404,26 +476,55 @@ def invoke_subagent(
         messages.append(
             (
                 "system",
-                "Planner hint (from the orchestrator — act on this, do not "
-                "repeat it back to the user as text):\n" + planner_hint,
+                "Current task from the orchestrator. This is the highest-priority "
+                "instruction for this turn. Do not drift from it or replace it "
+                "with a different topic:\n" + planner_hint,
             )
         )
     messages.append(("user", prompt))
 
+    recursion_limit = int(getattr(settings, "AI_AGENT_MAX_TOOL_STEPS", 6))
     response = agent.invoke(
         {"messages": messages},
-        config={"recursion_limit": 24},
+        config={"recursion_limit": recursion_limit},
     )
+    usage = extract_token_usage(response)
     out_messages = response.get("messages", []) if isinstance(response, dict) else []
     if not out_messages:
-        return ""
+        elapsed_ms = (time.perf_counter() - started_at) * 1000
+        logger.warning(
+            "[AI] subagent.complete module=%s prompt_chars=%s history_chars=%s planner_hint_chars=%s response_chars=%s prompt_tokens=%s completion_tokens=%s total_tokens=%s elapsed_ms=%.1f",
+            module,
+            len(prompt or ""),
+            sum(len(entry.get("content") or "") for entry in history or []),
+            len(planner_hint or ""),
+            0,
+            usage.get("prompt_tokens"),
+            usage.get("completion_tokens"),
+            usage.get("total_tokens"),
+            elapsed_ms,
+        )
+        return "", usage
     # Walk from the end and return the last non-empty AI text. Tool calls
     # often produce messages with empty content but populated tool_calls;
     # skip those so we return human-facing text.
     for message in reversed(out_messages):
         content = getattr(message, "content", None)
         if isinstance(content, str) and content.strip():
-            return content
+            elapsed_ms = (time.perf_counter() - started_at) * 1000
+            logger.warning(
+                "[AI] subagent.complete module=%s prompt_chars=%s history_chars=%s planner_hint_chars=%s response_chars=%s prompt_tokens=%s completion_tokens=%s total_tokens=%s elapsed_ms=%.1f",
+                module,
+                len(prompt or ""),
+                sum(len(entry.get("content") or "") for entry in history or []),
+                len(planner_hint or ""),
+                len(content),
+                usage.get("prompt_tokens"),
+                usage.get("completion_tokens"),
+                usage.get("total_tokens"),
+                elapsed_ms,
+            )
+            return content, usage
         if isinstance(content, list):
             # LangChain message content can be a list of content blocks
             parts = [
@@ -433,5 +534,31 @@ def invoke_subagent(
             ]
             joined = "\n".join(p for p in parts if p).strip()
             if joined:
-                return joined
-    return ""
+                elapsed_ms = (time.perf_counter() - started_at) * 1000
+                logger.warning(
+                    "[AI] subagent.complete module=%s prompt_chars=%s history_chars=%s planner_hint_chars=%s response_chars=%s prompt_tokens=%s completion_tokens=%s total_tokens=%s elapsed_ms=%.1f",
+                    module,
+                    len(prompt or ""),
+                    sum(len(entry.get("content") or "") for entry in history or []),
+                    len(planner_hint or ""),
+                    len(joined),
+                    usage.get("prompt_tokens"),
+                    usage.get("completion_tokens"),
+                    usage.get("total_tokens"),
+                    elapsed_ms,
+                )
+                return joined, usage
+    elapsed_ms = (time.perf_counter() - started_at) * 1000
+    logger.warning(
+        "[AI] subagent.complete module=%s prompt_chars=%s history_chars=%s planner_hint_chars=%s response_chars=%s prompt_tokens=%s completion_tokens=%s total_tokens=%s elapsed_ms=%.1f",
+        module,
+        len(prompt or ""),
+        sum(len(entry.get("content") or "") for entry in history or []),
+        len(planner_hint or ""),
+        0,
+        usage.get("prompt_tokens"),
+        usage.get("completion_tokens"),
+        usage.get("total_tokens"),
+        elapsed_ms,
+    )
+    return "", usage

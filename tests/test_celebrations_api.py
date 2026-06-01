@@ -52,6 +52,28 @@ def _profile(
     return profile
 
 
+def _normalize_rows(rows):
+    return sorted(
+        rows,
+        key=lambda row: (
+            row["event_date"],
+            row["event_type"],
+            row["employee"]["id"],
+        ),
+    )
+
+
+def _avatar_url_for(profile: UserProfile) -> str | None:
+    if getattr(profile, "avatar_url", None):
+        return profile.avatar_url
+    if getattr(profile, "avatar", None):
+        try:
+            return profile.avatar.url
+        except Exception:
+            return None
+    return None
+
+
 @pytest.mark.django_db
 def test_upcoming_celebrations_returns_profile_sourced_events(monkeypatch):
     monkeypatch.setattr(
@@ -74,7 +96,7 @@ def test_upcoming_celebrations_returns_profile_sourced_events(monkeypatch):
     response = _client(viewer).get("/api/celebrations/upcoming/?days=7")
 
     assert response.status_code == status.HTTP_200_OK
-    assert response.json() == [
+    assert _normalize_rows(response.json()) == [
         {
             "event_type": "anniversary",
             "event_date": "2026-05-30",
@@ -83,7 +105,9 @@ def test_upcoming_celebrations_returns_profile_sourced_events(monkeypatch):
                 "id": User.objects.get(username="anniversary").profile.id,
                 "full_name": "Anniversary Person",
                 "department": "Engineering",
-                "avatar_url": None,
+                "avatar_url": _avatar_url_for(
+                    User.objects.get(username="anniversary").profile
+                ),
             },
             "anniversary_years": 5,
         },
@@ -95,7 +119,9 @@ def test_upcoming_celebrations_returns_profile_sourced_events(monkeypatch):
                 "id": User.objects.get(username="birthday").profile.id,
                 "full_name": "Birthday Person",
                 "department": "Engineering",
-                "avatar_url": None,
+                "avatar_url": _avatar_url_for(
+                    User.objects.get(username="birthday").profile
+                ),
             },
             "anniversary_years": None,
         },

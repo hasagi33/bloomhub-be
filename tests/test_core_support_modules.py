@@ -63,6 +63,8 @@ def test_config_settings_local_sqlite_branch(monkeypatch):
     assert settings_mod.USE_TENANTS is False
     assert settings_mod.DATABASES["default"]["ENGINE"] == "django.db.backends.sqlite3"
     assert settings_mod.INSTALLED_APPS[0] == "django.contrib.admin"
+    assert settings_mod.AI_AGENT_MAX_TOOL_STEPS == 12
+    assert settings_mod.AI_AGENT_MAX_ITERATIONS == 8
 
 
 def test_config_settings_postgres_tenant_branch(monkeypatch):
@@ -78,6 +80,20 @@ def test_config_settings_postgres_tenant_branch(monkeypatch):
         == "django_tenants.postgresql_backend"
     )
     assert "django_tenants" in settings_mod.INSTALLED_APPS
+
+
+def test_config_settings_r2_defaults_to_verified_tls(monkeypatch):
+    settings_mod = _reload_config_settings(
+        monkeypatch,
+        ENVIRONMENT="local",
+        R2_ACCOUNT_ID="acct-123",
+        R2_ACCESS_KEY_ID="key-123",
+        R2_SECRET_ACCESS_KEY="secret-123",
+        R2_BUCKET_NAME="bloomhub",
+    )
+    assert settings_mod.USE_R2 is True
+    assert settings_mod.AWS_S3_VERIFY is True
+    assert settings_mod.STORAGES["default"]["OPTIONS"]["verify"] is True
 
 
 def test_r2_storage_connection_paths(monkeypatch):

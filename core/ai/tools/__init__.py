@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import unicodedata
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any
 
 from django.db import transaction
-from django.db.models import DecimalField, OuterRef, Q, Subquery
+from django.db.models import DecimalField, OuterRef, Q, Subquery, Sum
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from pydantic import BaseModel, ConfigDict, Field
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
@@ -22,6 +23,9 @@ from core.ai.tooling import AssistantTool, ToolRegistry, probe_permission
 from core.ai.workflows import WORKFLOWS, describe_workflow, workflow_index
 from core.enums import LeaveType, TemplateVisibility
 from core.models import (
+    Announcement,
+    AnnouncementComment,
+    AnnouncementReaction,
     Application,
     Asset,
     AssetCategory,
@@ -35,12 +39,14 @@ from core.models import (
     ConferenceCourseRegistration,
     CPFLevelChange,
     Department,
+    DiscordAnnouncementChannel,
     Document,
     DocumentTemplate,
     EmployeeDocument,
     EquipmentAssignment,
     JobListing,
     LeaveBalance,
+    LeaveMonthlyAggregate,
     LeavePolicy,
     LeaveRequest,
     Notification,
@@ -55,11 +61,15 @@ from core.models import (
     ReplacementLog,
     Role,
     SalaryRecord,
+    ScheduledMaintenance,
+    TemplateField,
+    TemplateGeneratedDocument,
     TimeEntry,
     TimeTask,
     TrainingBudget,
     TrainingEntry,
     UserProfile,
+    UserTemplateSnippet,
 )
 from core.models import (
     Permission as PermissionModel,
@@ -67,15 +77,35 @@ from core.models import (
 from core.permissions import (
     IsHRAdminForAdjustment,
     IsManagerForApproval,
+    can_add_announcement_reactions,
+    can_manage_announcements,
+    can_moderate_announcement_comments,
+    can_schedule_announcements,
+    can_view_anniversaries,
+    can_view_announcements,
     can_view_asset,
+    can_view_asset_maintenance_logs,
+    can_view_birthdays,
     has_asset_permission,
+    has_leave_analytics_refresh_permission,
+    has_leave_analytics_view_permission,
+    has_own_leave_history_permission,
     is_compensation_admin,
 )
 from core.serializers import (
+    AnnouncementCommentSerializer,
+    AnnouncementDetailSerializer,
+    AnnouncementListSerializer,
+    AnnouncementReactionSerializer,
+    AnnouncementWriteSerializer,
     AssetSerializer,
     ChecklistInstanceSerializer,
+    DiscordAnnouncementChannelSerializer,
     DocumentListSerializer,
+    DocumentTemplateCreateUpdateSerializer,
+    DocumentTemplateDetailSerializer,
     DocumentTemplateListSerializer,
+    DocumentTemplatePartialUpdateSerializer,
     EmployeeProfileSerializer,
     LeaveBalanceSerializer,
     LeavePolicySerializer,
@@ -83,18 +113,50 @@ from core.serializers import (
     LeaveRequestDetailSerializer,
     LeaveRequestListSerializer,
     NotificationSerializer,
+    ScheduledMaintenanceCancelSerializer,
+    ScheduledMaintenanceCompleteSerializer,
+    ScheduledMaintenanceSerializer,
+    TemplateGeneratedDocumentSerializer,
     TimeEntrySerializer,
     TimeTaskSerializer,
+    UpcomingCelebrationSerializer,
+    UserTemplateSnippetSerializer,
 )
-from core.services.document_service import filter_accessible_documents
+from core.services.announcement_notification_service import (
+    announcement_is_published,
+    notify_announcement_published,
+)
+from core.services.celebrations import build_upcoming_profile_celebrations
+from core.services.document_service import (
+    filter_accessible_documents,
+    get_document_category_defaults,
+)
+from core.services.leave_analytics_service import (
+    employee_history as build_leave_employee_history,
+)
+from core.services.leave_analytics_service import (
+    materialize_leave_monthly_aggregates,
+    snapshot_leave_balances,
+    team_availability,
+    yearly_totals_by_type,
+)
 from core.services.leave_service import (
     approve_leave_request_hr,
     approve_leave_request_lead,
 )
 from core.services.time_tracking_service import (
+    active_time_tracking_allocations,
     can_edit_time_entry,
+    can_view_employee_timesheet,
+    has_time_tracking_permission,
     profile_for_user,
     submit_entries_for_week,
+    weekly_allocation_summary,
+)
+from core.utils import (
+    clone_template,
+    resolve_template_content,
+    validate_template_fields,
 )
 
 registry = ToolRegistry()
@@ -188,6 +250,7 @@ class EmptyArgs(_ArgsBase):
 class SearchEmployeesArgs(_ArgsBase):
     query: str = ""
     limit: int | None = Field(default=10, ge=1, le=50)
+    count_only: bool = False
 
 
 class GetEmployeeManagersArgs(_ArgsBase):
@@ -230,12 +293,14 @@ class ApproveLeaveRequestArgs(_ArgsBase):
 class ListAssetsArgs(_ArgsBase):
     query: str = ""
     limit: int | None = Field(default=10, ge=1, le=50)
+    count_only: bool = False
 
 
 class ListDocumentsArgs(_ArgsBase):
     query: str = ""
     expired: bool = False
     limit: int | None = Field(default=10, ge=1, le=50)
+    count_only: bool = False
 
 
 class ListDocumentTemplatesArgs(_ArgsBase):
@@ -244,6 +309,7 @@ class ListDocumentTemplatesArgs(_ArgsBase):
     visibility: str | None = None
     is_system_template: bool | None = None
     limit: int | None = Field(default=10, ge=1, le=50)
+    count_only: bool = False
 
 
 class ListTimeEntriesArgs(_ArgsBase):
@@ -281,6 +347,18 @@ class ListNotificationsArgs(_ArgsBase):
     limit: int | None = Field(default=10, ge=1, le=50)
 
 
+def _current_time_snapshot() -> dict[str, Any]:
+    now = timezone.localtime(timezone.now())
+    tz_name = str(timezone.get_current_timezone())
+    return {
+        "date": now.date().isoformat(),
+        "time": now.time().replace(microsecond=0).isoformat(),
+        "datetime": now.isoformat(),
+        "timezone": tz_name,
+        "summary": (f"Current local date/time is {now:%Y-%m-%d %H:%M:%S} {tz_name}."),
+    }
+
+
 def get_current_user_context(*, user) -> dict[str, Any]:
     profile = require_profile(user)
     permissions = []
@@ -299,8 +377,30 @@ def get_current_user_context(*, user) -> dict[str, Any]:
     }
 
 
+def get_current_datetime(*, user) -> dict[str, Any]:
+    return _current_time_snapshot()
+
+
+def get_current_date(*, user) -> dict[str, Any]:
+    snapshot = _current_time_snapshot()
+    return {
+        "date": snapshot["date"],
+        "timezone": snapshot["timezone"],
+        "summary": f"Today is {snapshot['date']} {snapshot['timezone']}.",
+    }
+
+
+def get_current_time(*, user) -> dict[str, Any]:
+    snapshot = _current_time_snapshot()
+    return {
+        "time": snapshot["time"],
+        "timezone": snapshot["timezone"],
+        "summary": f"Current time is {snapshot['time']} {snapshot['timezone']}.",
+    }
+
+
 def search_employees(
-    *, user, query: str = "", limit: int | None = 10
+    *, user, query: str = "", limit: int | None = 10, count_only: bool = False
 ) -> dict[str, Any]:
     require_profile(user)
     qs = (
@@ -313,12 +413,24 @@ def search_employees(
     if query_norm:
         candidates = list(qs[:500])
         matched = [p for p in candidates if _match_query(p, query_norm)]
+        total_count = len(matched)
         results = matched[: _limit(limit)]
     else:
+        total_count = qs.count()
         results = list(qs[: _limit(limit)])
+    if count_only:
+        label = f" matching `{query}`" if query_norm else ""
+        return {
+            "employees": [],
+            "total_count": total_count,
+            "returned_count": 0,
+            "summary": f"There are {total_count} employee profile(s){label}.",
+        }
     return {
         "employees": EmployeeProfileSerializer(results, many=True).data,
-        "summary": f"Found {len(results)} employee profile(s).",
+        "total_count": total_count,
+        "returned_count": len(results),
+        "summary": f"Found {len(results)} of {total_count} employee profile(s).",
     }
 
 
@@ -660,7 +772,9 @@ def approve_leave_request(
     }
 
 
-def list_assets(*, user, query: str = "", limit: int | None = 10) -> dict[str, Any]:
+def list_assets(
+    *, user, query: str = "", limit: int | None = 10, count_only: bool = False
+) -> dict[str, Any]:
     require_profile(user)
     qs = Asset.objects.all()
     if query:
@@ -670,19 +784,33 @@ def list_assets(*, user, query: str = "", limit: int | None = 10) -> dict[str, A
             | Q(serial_number__icontains=query)
         )
     visible = [
-        asset
-        for asset in qs.order_by("name", "id")[:100]
-        if can_view_asset(user, asset)
+        asset for asset in qs.order_by("name", "id") if can_view_asset(user, asset)
     ]
+    total_count = len(visible)
+    if count_only:
+        label = f" matching `{query}`" if query else ""
+        return {
+            "assets": [],
+            "total_count": total_count,
+            "returned_count": 0,
+            "summary": f"There are {total_count} visible asset(s){label}.",
+        }
     visible = visible[: _limit(limit)]
     return {
         "assets": AssetSerializer(visible, many=True).data,
-        "summary": f"Loaded {len(visible)} asset(s).",
+        "total_count": total_count,
+        "returned_count": len(visible),
+        "summary": f"Loaded {len(visible)} of {total_count} asset(s).",
     }
 
 
 def list_documents(
-    *, user, query: str = "", expired: bool = False, limit: int | None = 10
+    *,
+    user,
+    query: str = "",
+    expired: bool = False,
+    limit: int | None = 10,
+    count_only: bool = False,
 ) -> dict[str, Any]:
     base_qs = Document.objects.all()
     if query:
@@ -691,8 +819,18 @@ def list_documents(
         )
     if expired:
         base_qs = base_qs.filter(expiry_date__lt=timezone.now().date())
-    docs = filter_accessible_documents(user, base_qs.order_by("-uploaded_at"))
-    docs = list(docs)[: _limit(limit)]
+    docs = list(filter_accessible_documents(user, base_qs.order_by("-uploaded_at")))
+    total_count = len(docs)
+    if count_only:
+        label = " expired" if expired else " accessible"
+        suffix = f" matching `{query}`" if query else ""
+        return {
+            "documents": [],
+            "total_count": total_count,
+            "returned_count": 0,
+            "summary": f"There are {total_count}{label} document(s){suffix}.",
+        }
+    docs = docs[: _limit(limit)]
     serialized = DocumentListSerializer(docs, many=True).data
     if serialized:
         label = "Expired documents" if expired else "Accessible documents"
@@ -710,6 +848,8 @@ def list_documents(
         )
     return {
         "documents": serialized,
+        "total_count": total_count,
+        "returned_count": len(serialized),
         "summary": summary,
     }
 
@@ -722,6 +862,7 @@ def list_document_templates(
     visibility: str | None = None,
     is_system_template: bool | None = None,
     limit: int | None = 10,
+    count_only: bool = False,
 ) -> dict[str, Any]:
     profile = require_profile(user)
     qs = (
@@ -744,6 +885,16 @@ def list_document_templates(
     if is_system_template is not None:
         qs = qs.filter(is_system_template=is_system_template)
 
+    total_count = qs.count()
+    if count_only:
+        suffix = f" matching `{query}`" if query else ""
+        return {
+            "document_templates": [],
+            "templates": [],
+            "total_count": total_count,
+            "returned_count": 0,
+            "summary": f"There are {total_count} document template(s){suffix}.",
+        }
     templates = list(qs.order_by("-updated_at")[: _limit(limit)])
     serialized = DocumentTemplateListSerializer(templates, many=True).data
     if serialized:
@@ -757,6 +908,8 @@ def list_document_templates(
     return {
         "document_templates": serialized,
         "templates": serialized,
+        "total_count": total_count,
+        "returned_count": len(serialized),
         "summary": summary,
     }
 
@@ -794,14 +947,16 @@ def create_time_entry(
 ) -> dict[str, Any]:
     profile = require_profile(user)
     payload = {
-        "employee": profile.id,
-        "project": project_id,
-        "task": task_id,
+        "employee_id": profile.id,
+        "project_id": project_id,
+        "task_id": task_id,
         "work_date": work_date,
         "hours": hours,
-        "description": description,
+        "notes": description,
     }
-    serializer = TimeEntrySerializer(data=payload)
+    serializer = TimeEntrySerializer(
+        data=payload, context={"request": _request_for(user)}
+    )
     serializer.is_valid(raise_exception=True)
     with transaction.atomic():
         unsaved = TimeEntry(**serializer.validated_data)
@@ -907,6 +1062,33 @@ registry.register(
         "get_current_user_context",
         "Get current user, profile, and permissions.",
         get_current_user_context,
+        module="general",
+        args_schema=EmptyArgs,
+    )
+)
+registry.register(
+    AssistantTool(
+        "get_current_datetime",
+        "Get current local date and time for scheduling and relative-time calculations.",
+        get_current_datetime,
+        module="general",
+        args_schema=EmptyArgs,
+    )
+)
+registry.register(
+    AssistantTool(
+        "get_current_date",
+        "Get current local date for date-sensitive scheduling.",
+        get_current_date,
+        module="general",
+        args_schema=EmptyArgs,
+    )
+)
+registry.register(
+    AssistantTool(
+        "get_current_time",
+        "Get current local time for time-sensitive scheduling.",
+        get_current_time,
         module="general",
         args_schema=EmptyArgs,
     )
@@ -4531,8 +4713,1863 @@ def list_pending_time_approvals(
 
 
 # ============================================================================
+# ANNOUNCEMENTS MODULE
+# ============================================================================
+
+
+class ListAnnouncementsArgs(_ArgsBase):
+    query: str = ""
+    type: str | None = None
+    include_scheduled: bool = False
+    limit: int | None = Field(default=20, ge=1, le=100)
+
+
+class GetAnnouncementArgs(_ArgsBase):
+    announcement_id: int = Field(..., ge=1)
+
+
+class CreateAnnouncementArgs(_ArgsBase):
+    title: str = Field(..., min_length=1, max_length=255)
+    body: str = Field(..., min_length=1)
+    type: str = ""
+    scheduled_at: str | None = None
+    send_email_notifications: bool = False
+
+
+class UpdateAnnouncementArgs(_ArgsBase):
+    announcement_id: int = Field(..., ge=1)
+    title: str | None = Field(default=None, max_length=255)
+    body: str | None = None
+    type: str | None = None
+    scheduled_at: str | None = None
+    send_email_notifications: bool = False
+
+
+class DeleteAnnouncementArgs(_ArgsBase):
+    announcement_id: int = Field(..., ge=1)
+
+
+class AnnouncementCommentArgs(_ArgsBase):
+    announcement_id: int = Field(..., ge=1)
+    body: str = Field(..., min_length=1)
+
+
+class DeleteAnnouncementCommentArgs(_ArgsBase):
+    announcement_id: int = Field(..., ge=1)
+    comment_id: int = Field(..., ge=1)
+
+
+class ToggleAnnouncementReactionArgs(_ArgsBase):
+    announcement_id: int = Field(..., ge=1)
+    reaction_type: str = Field(..., min_length=1, max_length=64)
+
+
+class ListDiscordAnnouncementChannelsArgs(_ArgsBase):
+    announcement_type: str | None = None
+    enabled: bool | None = None
+    limit: int | None = Field(default=50, ge=1, le=100)
+
+
+class CreateDiscordAnnouncementChannelArgs(_ArgsBase):
+    announcement_type: str = Field(..., min_length=1)
+    channel_name: str = Field(..., min_length=1, max_length=255)
+    webhook_url: str = Field(..., min_length=1)
+    enabled: bool = True
+
+
+class UpdateDiscordAnnouncementChannelArgs(_ArgsBase):
+    channel_id: int = Field(..., ge=1)
+    announcement_type: str | None = None
+    channel_name: str | None = Field(default=None, max_length=255)
+    webhook_url: str | None = None
+    enabled: bool | None = None
+
+
+def _announcement_queryset(user, *, include_scheduled: bool = False):
+    if not can_view_announcements(user):
+        raise PermissionDenied("You do not have permission to view announcements.")
+    qs = Announcement.objects.select_related("author__user")
+    if can_manage_announcements(user) or can_schedule_announcements(user):
+        if not include_scheduled:
+            qs = qs.filter(
+                Q(scheduled_at__isnull=True) | Q(scheduled_at__lte=timezone.now())
+            )
+        return qs
+    return qs.filter(Q(scheduled_at__isnull=True) | Q(scheduled_at__lte=timezone.now()))
+
+
+def _get_visible_announcement(user, announcement_id: int) -> Announcement:
+    announcement = (
+        _announcement_queryset(user, include_scheduled=True)
+        .filter(pk=announcement_id)
+        .first()
+    )
+    if announcement is None:
+        raise ValidationError({"announcement_id": "Announcement not found."})
+    return announcement
+
+
+def _require_announcement_manager(user) -> None:
+    if not can_manage_announcements(user):
+        raise PermissionDenied("Announcement manager permission required.")
+
+
+def _announcement_request(user):
+    return SimpleNamespace(user=user)
+
+
+def _save_announcement_from_payload(
+    *, user, payload: dict[str, Any], instance: Announcement | None = None
+) -> dict[str, Any]:
+    _require_announcement_manager(user)
+    scheduled_at = payload.get("scheduled_at")
+    if scheduled_at and not can_schedule_announcements(user):
+        raise PermissionDenied("Scheduling announcements requires permission.")
+    serializer = AnnouncementWriteSerializer(
+        instance, data=payload, partial=instance is not None
+    )
+    serializer.is_valid(raise_exception=True)
+    was_published = announcement_is_published(instance) if instance else False
+    profile = require_profile(user)
+    with transaction.atomic():
+        announcement = (
+            serializer.save(author=profile) if instance is None else serializer.save()
+        )
+        should_notify = (
+            not was_published
+            and announcement_is_published(announcement)
+            and payload.get("send_email_notifications", False)
+        )
+        if should_notify:
+            notify_announcement_published(announcement, send_email=True)
+    return {
+        "announcement": AnnouncementDetailSerializer(
+            announcement, context={"request": _announcement_request(user)}
+        ).data,
+        "summary": f"{'Created' if instance is None else 'Updated'} announcement `{announcement.title}`.",
+    }
+
+
+def list_announcements(
+    *,
+    user,
+    query: str = "",
+    type: str | None = None,
+    include_scheduled: bool = False,
+    limit: int | None = 20,
+) -> dict[str, Any]:
+    qs = _announcement_queryset(user, include_scheduled=include_scheduled)
+    if query:
+        qs = qs.filter(Q(title__icontains=query) | Q(body__icontains=query))
+    if type:
+        qs = qs.filter(type=type)
+    qs = qs.order_by("-published_at", "-created_at")[: _limit(limit, 20, 100)]
+    return {
+        "announcements": AnnouncementListSerializer(
+            qs, many=True, context={"request": _announcement_request(user)}
+        ).data,
+        "summary": "Loaded announcements.",
+    }
+
+
+def get_announcement(*, user, announcement_id: int) -> dict[str, Any]:
+    announcement = _get_visible_announcement(user, announcement_id)
+    return {
+        "announcement": AnnouncementDetailSerializer(
+            announcement, context={"request": _announcement_request(user)}
+        ).data,
+        "summary": f"Loaded announcement `{announcement.title}`.",
+    }
+
+
+def create_announcement(
+    *,
+    user,
+    title: str,
+    body: str,
+    type: str = "",
+    scheduled_at: str | None = None,
+    send_email_notifications: bool = False,
+) -> dict[str, Any]:
+    return _save_announcement_from_payload(
+        user=user,
+        payload={
+            "title": title,
+            "body": body,
+            "type": type,
+            "scheduled_at": scheduled_at,
+            "send_email_notifications": send_email_notifications,
+        },
+    )
+
+
+def update_announcement(
+    *,
+    user,
+    announcement_id: int,
+    title: str | None = None,
+    body: str | None = None,
+    type: str | None = None,
+    scheduled_at: str | None = None,
+    send_email_notifications: bool = False,
+) -> dict[str, Any]:
+    announcement = Announcement.objects.filter(pk=announcement_id).first()
+    if announcement is None:
+        raise ValidationError({"announcement_id": "Announcement not found."})
+    payload = {
+        k: v
+        for k, v in {
+            "title": title,
+            "body": body,
+            "type": type,
+            "scheduled_at": scheduled_at,
+            "send_email_notifications": send_email_notifications,
+        }.items()
+        if v is not None
+    }
+    return _save_announcement_from_payload(
+        user=user, payload=payload, instance=announcement
+    )
+
+
+def delete_announcement(*, user, announcement_id: int) -> dict[str, Any]:
+    _require_announcement_manager(user)
+    announcement = Announcement.objects.filter(pk=announcement_id).first()
+    if announcement is None:
+        raise ValidationError({"announcement_id": "Announcement not found."})
+    title = announcement.title
+    with transaction.atomic():
+        announcement.delete()
+    return {"summary": f"Deleted announcement `{title}`."}
+
+
+def list_announcement_comments(*, user, announcement_id: int) -> dict[str, Any]:
+    announcement = _get_visible_announcement(user, announcement_id)
+    comments = announcement.comments.select_related("author__user").filter(
+        deleted_at__isnull=True
+    )
+    return {
+        "comments": AnnouncementCommentSerializer(comments, many=True).data,
+        "summary": f"Loaded {comments.count()} comment(s).",
+    }
+
+
+def add_announcement_comment(
+    *, user, announcement_id: int, body: str
+) -> dict[str, Any]:
+    announcement = _get_visible_announcement(user, announcement_id)
+    profile = require_profile(user)
+    serializer = AnnouncementCommentSerializer(
+        AnnouncementComment.objects.create(
+            announcement=announcement, author=profile, body=body.strip()
+        )
+    )
+    return {"comment": serializer.data, "summary": "Added announcement comment."}
+
+
+def delete_announcement_comment(
+    *, user, announcement_id: int, comment_id: int
+) -> dict[str, Any]:
+    announcement = _get_visible_announcement(user, announcement_id)
+    profile = require_profile(user)
+    comment = announcement.comments.filter(
+        pk=comment_id, deleted_at__isnull=True
+    ).first()
+    if comment is None:
+        raise ValidationError({"comment_id": "Comment not found."})
+    if not (
+        comment.author_id == profile.id
+        or announcement.author_id == profile.id
+        or can_moderate_announcement_comments(user)
+    ):
+        raise PermissionDenied("You do not have permission to delete this comment.")
+    comment.deleted_at = timezone.now()
+    comment.save(update_fields=["deleted_at", "updated_at"])
+    return {"summary": f"Deleted comment #{comment_id}."}
+
+
+def list_announcement_reactions(*, user, announcement_id: int) -> dict[str, Any]:
+    announcement = _get_visible_announcement(user, announcement_id)
+    reactions = announcement.reactions.select_related("user__user")
+    return {
+        "reactions": AnnouncementReactionSerializer(reactions, many=True).data,
+        "summary": f"Loaded {reactions.count()} reaction(s).",
+    }
+
+
+def toggle_announcement_reaction(
+    *, user, announcement_id: int, reaction_type: str
+) -> dict[str, Any]:
+    if not can_add_announcement_reactions(user):
+        raise PermissionDenied("Adding reactions requires add_reactions permission.")
+    announcement = _get_visible_announcement(user, announcement_id)
+    profile = require_profile(user)
+    reaction_type = reaction_type.strip().lower()
+    reaction = AnnouncementReaction.objects.filter(
+        announcement=announcement, user=profile, reaction_type=reaction_type
+    ).first()
+    if reaction:
+        reaction.delete()
+        return {
+            "active": False,
+            "reaction_type": reaction_type,
+            "summary": "Removed reaction.",
+        }
+    reaction = AnnouncementReaction.objects.create(
+        announcement=announcement, user=profile, reaction_type=reaction_type
+    )
+    return {
+        "active": True,
+        "reaction": AnnouncementReactionSerializer(reaction).data,
+        "summary": "Added reaction.",
+    }
+
+
+def list_discord_announcement_channels(
+    *,
+    user,
+    announcement_type: str | None = None,
+    enabled: bool | None = None,
+    limit: int | None = 50,
+) -> dict[str, Any]:
+    _require_announcement_manager(user)
+    qs = DiscordAnnouncementChannel.objects.all()
+    if announcement_type:
+        qs = qs.filter(announcement_type=announcement_type)
+    if enabled is not None:
+        qs = qs.filter(enabled=enabled)
+    qs = qs.order_by("announcement_type", "channel_name")[: _limit(limit, 50, 100)]
+    return {
+        "channels": DiscordAnnouncementChannelSerializer(qs, many=True).data,
+        "summary": "Loaded Discord announcement channels.",
+    }
+
+
+def create_discord_announcement_channel(
+    *,
+    user,
+    announcement_type: str,
+    channel_name: str,
+    webhook_url: str,
+    enabled: bool = True,
+) -> dict[str, Any]:
+    _require_announcement_manager(user)
+    serializer = DiscordAnnouncementChannelSerializer(
+        data={
+            "announcement_type": announcement_type,
+            "channel_name": channel_name,
+            "webhook_url": webhook_url,
+            "enabled": enabled,
+        }
+    )
+    serializer.is_valid(raise_exception=True)
+    channel = serializer.save()
+    return {
+        "channel": DiscordAnnouncementChannelSerializer(channel).data,
+        "summary": f"Created Discord channel `{channel.channel_name}`.",
+    }
+
+
+def update_discord_announcement_channel(
+    *,
+    user,
+    channel_id: int,
+    announcement_type: str | None = None,
+    channel_name: str | None = None,
+    webhook_url: str | None = None,
+    enabled: bool | None = None,
+) -> dict[str, Any]:
+    _require_announcement_manager(user)
+    channel = DiscordAnnouncementChannel.objects.filter(pk=channel_id).first()
+    if channel is None:
+        raise ValidationError({"channel_id": "Discord announcement channel not found."})
+    payload = {
+        k: v
+        for k, v in {
+            "announcement_type": announcement_type,
+            "channel_name": channel_name,
+            "webhook_url": webhook_url,
+            "enabled": enabled,
+        }.items()
+        if v is not None
+    }
+    serializer = DiscordAnnouncementChannelSerializer(
+        channel, data=payload, partial=True
+    )
+    serializer.is_valid(raise_exception=True)
+    channel = serializer.save()
+    return {
+        "channel": DiscordAnnouncementChannelSerializer(channel).data,
+        "summary": f"Updated Discord channel `{channel.channel_name}`.",
+    }
+
+
+# ============================================================================
+# CELEBRATIONS MODULE
+# ============================================================================
+
+
+class ListUpcomingCelebrationsArgs(_ArgsBase):
+    days: int = Field(default=30, ge=1, le=365)
+    type: str = Field(default="all", pattern="^(all|birthday|anniversary)$")
+
+
+def list_upcoming_celebrations(
+    *, user, days: int = 30, type: str = "all"
+) -> dict[str, Any]:
+    allowed_types: set[str] = set()
+    if can_view_birthdays(user):
+        allowed_types.add("birthday")
+    if can_view_anniversaries(user):
+        allowed_types.add("anniversary")
+    if not allowed_types:
+        raise PermissionDenied("Viewing celebrations requires permission.")
+    if type != "all" and type not in allowed_types:
+        raise PermissionDenied("Viewing this celebration type requires permission.")
+    event_types = allowed_types if type == "all" else {type}
+    events = build_upcoming_profile_celebrations(days=days, event_types=event_types)
+    return {
+        "celebrations": UpcomingCelebrationSerializer(events, many=True).data,
+        "summary": f"Loaded {len(events)} upcoming celebration(s).",
+    }
+
+
+# ============================================================================
+# LEAVE ANALYTICS MODULE
+# ============================================================================
+
+
+class LeaveAnalyticsYearArgs(_ArgsBase):
+    year: int | None = Field(default=None, ge=2000, le=2100)
+    department: str | None = None
+    month: int | None = Field(default=None, ge=1, le=12)
+
+
+class LeaveAnalyticsMonthlyArgs(LeaveAnalyticsYearArgs):
+    leave_type: str | None = None
+
+
+class LeaveEmployeeHistoryArgs(_ArgsBase):
+    employee_id: int | None = Field(default=None, ge=1)
+    year_from: int | None = Field(default=None, ge=2000, le=2100)
+    year_to: int | None = Field(default=None, ge=2000, le=2100)
+    leave_type: str | None = None
+
+
+class LeaveAvailabilityArgs(_ArgsBase):
+    start_date: str = Field(..., min_length=8)
+    end_date: str = Field(..., min_length=8)
+    project_id: int | None = Field(default=None, ge=1)
+    leave_types: list[str] | None = None
+    statuses: list[str] | None = None
+
+
+class RefreshLeaveAnalyticsArgs(_ArgsBase):
+    year_from: int | None = Field(default=None, ge=2000, le=2100)
+    year_to: int | None = Field(default=None, ge=2000, le=2100)
+
+
+def _require_leave_analytics_access(user) -> UserProfile:
+    profile = require_profile(user)
+    if not (
+        has_leave_analytics_view_permission(user)
+        or has_own_leave_history_permission(user)
+    ):
+        raise PermissionDenied("Leave analytics permission required.")
+    return profile
+
+
+def _leave_scoped_aggregates(user):
+    qs = LeaveMonthlyAggregate.objects.select_related("employee__user")
+    if has_leave_analytics_view_permission(user):
+        return qs
+    return qs.filter(employee=require_profile(user))
+
+
+def get_leave_analytics_monthly(
+    *,
+    user,
+    year: int | None = None,
+    department: str | None = None,
+    month: int | None = None,
+    leave_type: str | None = None,
+) -> dict[str, Any]:
+    _require_leave_analytics_access(user)
+    year = year or timezone.now().year
+    qs = _leave_scoped_aggregates(user).filter(year=year)
+    if department:
+        qs = qs.filter(employee__department=department)
+    if month:
+        qs = qs.filter(month=month)
+    if leave_type:
+        qs = qs.filter(leave_type=leave_type)
+    rows = list(
+        qs.values("month", "leave_type")
+        .annotate(total=Sum("approved_days"), pending=Sum("pending_days"))
+        .order_by("month", "leave_type")
+    )
+    return {
+        "rows": rows,
+        "summary": f"Loaded {len(rows)} monthly leave analytics row(s).",
+    }
+
+
+def get_leave_analytics_yearly_totals(
+    *,
+    user,
+    year: int | None = None,
+    department: str | None = None,
+    month: int | None = None,
+) -> dict[str, Any]:
+    _require_leave_analytics_access(user)
+    year = year or timezone.now().year
+    if has_leave_analytics_view_permission(user):
+        totals = yearly_totals_by_type(year, department=department, month=month)
+    else:
+        qs = _leave_scoped_aggregates(user).filter(year=year)
+        if month:
+            qs = qs.filter(month=month)
+        totals = {
+            row["leave_type"]: row["total"] or 0
+            for row in qs.values("leave_type").annotate(total=Sum("approved_days"))
+        }
+    return {
+        "year": year,
+        "total": sum(totals.values()),
+        "by_type": totals,
+        "summary": "Loaded yearly leave totals.",
+    }
+
+
+def get_leave_analytics_departments(
+    *,
+    user,
+    year: int | None = None,
+    month: int | None = None,
+    department: str | None = None,
+) -> dict[str, Any]:
+    if not has_leave_analytics_view_permission(user):
+        raise PermissionDenied("Department-level leave analytics permission required.")
+    year = year or timezone.now().year
+    qs = LeaveMonthlyAggregate.objects.select_related("employee").filter(year=year)
+    if month:
+        qs = qs.filter(month=month)
+    if department:
+        qs = qs.filter(employee__department=department)
+    rows = list(
+        qs.values("employee__department", "leave_type")
+        .annotate(total=Sum("approved_days"))
+        .order_by("employee__department", "leave_type")
+    )
+    return {"rows": rows, "summary": f"Loaded {len(rows)} department analytics row(s)."}
+
+
+def get_leave_analytics_employees(
+    *,
+    user,
+    year: int | None = None,
+    department: str | None = None,
+    month: int | None = None,
+) -> dict[str, Any]:
+    _require_leave_analytics_access(user)
+    year = year or timezone.now().year
+    qs = _leave_scoped_aggregates(user).filter(year=year)
+    if department:
+        qs = qs.filter(employee__department=department)
+    if month:
+        qs = qs.filter(month=month)
+    rows = list(
+        qs.values("employee_id", "employee__full_name", "leave_type")
+        .annotate(total=Sum("approved_days"), pending=Sum("pending_days"))
+        .order_by("employee__full_name", "leave_type")
+    )
+    return {"rows": rows, "summary": f"Loaded {len(rows)} employee analytics row(s)."}
+
+
+def get_leave_employee_history(
+    *,
+    user,
+    employee_id: int | None = None,
+    year_from: int | None = None,
+    year_to: int | None = None,
+    leave_type: str | None = None,
+) -> dict[str, Any]:
+    profile = _require_leave_analytics_access(user)
+    target_id = employee_id or profile.id
+    if target_id != profile.id and not has_leave_analytics_view_permission(user):
+        raise PermissionDenied("You can only view your own leave history.")
+    employee = UserProfile.objects.select_related("user").filter(pk=target_id).first()
+    if employee is None:
+        raise ValidationError({"employee_id": "Employee not found."})
+    payload = build_leave_employee_history(
+        employee, year_from=year_from, year_to=year_to, leave_type=leave_type
+    )
+    return {
+        "employee_id": employee.id,
+        "employee_name": employee.full_name or employee.user.username,
+        **payload,
+        "summary": "Loaded leave employee history.",
+    }
+
+
+def get_leave_availability(
+    *,
+    user,
+    start_date: str,
+    end_date: str,
+    project_id: int | None = None,
+    leave_types: list[str] | None = None,
+    statuses: list[str] | None = None,
+) -> dict[str, Any]:
+    profile = _require_leave_analytics_access(user)
+    start = parse_date(start_date)
+    end = parse_date(end_date)
+    if start is None or end is None or end < start:
+        raise ValidationError({"date": "Provide valid start_date/end_date ISO dates."})
+    project = Project.objects.filter(pk=project_id).first() if project_id else None
+    if project_id and project is None:
+        raise ValidationError({"project_id": "Project not found."})
+    fallback_employees = None
+    if not has_leave_analytics_view_permission(user):
+        fallback_employees = [profile]
+        project = None
+    payload = team_availability(
+        start_date=start,
+        end_date=end,
+        project=project,
+        employees=fallback_employees,
+        leave_types=leave_types,
+        statuses=statuses,
+    )
+    return {**payload, "summary": "Loaded leave availability."}
+
+
+def refresh_leave_analytics(
+    *, user, year_from: int | None = None, year_to: int | None = None
+) -> dict[str, Any]:
+    if not has_leave_analytics_refresh_permission(user):
+        raise PermissionDenied("Leave analytics refresh permission required.")
+    year_range = None
+    if year_from is not None or year_to is not None:
+        if year_from is None or year_to is None or year_from > year_to:
+            raise ValidationError("Pass valid year_from and year_to together.")
+        year_range = (year_from, year_to)
+    agg_stats = materialize_leave_monthly_aggregates(year_range=year_range)
+    snap_stats = snapshot_leave_balances()
+    return {
+        **agg_stats,
+        "snapshots": snap_stats,
+        "summary": "Refreshed leave analytics.",
+    }
+
+
+# ============================================================================
+# ASSET MAINTENANCE MODULE EXTENSIONS
+# ============================================================================
+
+
+class ListScheduledMaintenanceArgs(_ArgsBase):
+    asset_id: int | None = Field(default=None, ge=1)
+    owner_id: int | None = Field(default=None, ge=1)
+    status: str | None = None
+    maintenance_type: str | None = None
+    due_from: str | None = None
+    due_to: str | None = None
+    limit: int | None = Field(default=20, ge=1, le=100)
+
+
+class CreateScheduledMaintenanceArgs(_ArgsBase):
+    asset_id: int = Field(..., ge=1)
+    due_date: str = Field(..., min_length=8)
+    reason: str = Field(..., min_length=1)
+    maintenance_type: str = Field(..., min_length=1)
+    owner_id: int | None = Field(default=None, ge=1)
+    estimated_cost: str | None = None
+    vendor: str = ""
+
+
+class UpdateScheduledMaintenanceArgs(CreateScheduledMaintenanceArgs):
+    maintenance_id: int = Field(..., ge=1)
+    asset_id: int | None = Field(default=None, ge=1)
+    due_date: str | None = None
+    reason: str | None = None
+    maintenance_type: str | None = None
+
+
+class CompleteScheduledMaintenanceArgs(_ArgsBase):
+    maintenance_id: int = Field(..., ge=1)
+    date: str = Field(..., min_length=8)
+    reason: str = Field(..., min_length=1)
+    cost: str | None = None
+    asset_status_after: str | None = None
+    asset_condition_after: str | None = None
+    replacement_asset_id: int | None = Field(default=None, ge=1)
+
+
+class CancelScheduledMaintenanceArgs(_ArgsBase):
+    maintenance_id: int = Field(..., ge=1)
+    cancelled_reason: str = ""
+
+
+def _require_asset_history_write(user) -> None:
+    if not has_asset_permission(user, "log_asset_replacement"):
+        raise PermissionDenied("Asset history write permission required.")
+
+
+def list_scheduled_maintenance(
+    *,
+    user,
+    asset_id: int | None = None,
+    owner_id: int | None = None,
+    status: str | None = None,
+    maintenance_type: str | None = None,
+    due_from: str | None = None,
+    due_to: str | None = None,
+    limit: int | None = 20,
+) -> dict[str, Any]:
+    if not can_view_asset_maintenance_logs(user):
+        raise PermissionDenied("Asset maintenance history permission required.")
+    qs = ScheduledMaintenance.objects.select_related("asset", "owner__user")
+    if asset_id:
+        qs = qs.filter(asset_id=asset_id)
+    if owner_id:
+        qs = qs.filter(owner_id=owner_id)
+    if status:
+        qs = qs.filter(status=status)
+    if maintenance_type:
+        qs = qs.filter(maintenance_type=maintenance_type)
+    if due_from:
+        qs = qs.filter(due_date__gte=due_from)
+    if due_to:
+        qs = qs.filter(due_date__lte=due_to)
+    qs = qs.order_by("due_date", "id")[: _limit(limit, 20, 100)]
+    return {
+        "scheduled_maintenance": ScheduledMaintenanceSerializer(qs, many=True).data,
+        "summary": "Loaded scheduled maintenance.",
+    }
+
+
+def create_scheduled_maintenance(
+    *,
+    user,
+    asset_id: int,
+    due_date: str,
+    reason: str,
+    maintenance_type: str,
+    owner_id: int | None = None,
+    estimated_cost: str | None = None,
+    vendor: str = "",
+) -> dict[str, Any]:
+    _require_asset_history_write(user)
+    payload = {
+        "asset": asset_id,
+        "due_date": due_date,
+        "reason": reason,
+        "maintenance_type": maintenance_type,
+        "owner": owner_id,
+        "estimated_cost": estimated_cost,
+        "vendor": vendor,
+    }
+    serializer = ScheduledMaintenanceSerializer(data=payload)
+    serializer.is_valid(raise_exception=True)
+    schedule = serializer.save(created_by=require_profile(user))
+    return {
+        "scheduled_maintenance": ScheduledMaintenanceSerializer(schedule).data,
+        "summary": f"Created scheduled maintenance #{schedule.id}.",
+    }
+
+
+def update_scheduled_maintenance(
+    *,
+    user,
+    maintenance_id: int,
+    asset_id: int | None = None,
+    due_date: str | None = None,
+    reason: str | None = None,
+    maintenance_type: str | None = None,
+    owner_id: int | None = None,
+    estimated_cost: str | None = None,
+    vendor: str = "",
+) -> dict[str, Any]:
+    _require_asset_history_write(user)
+    schedule = ScheduledMaintenance.objects.filter(pk=maintenance_id).first()
+    if schedule is None:
+        raise ValidationError({"maintenance_id": "Scheduled maintenance not found."})
+    payload = {
+        k: v
+        for k, v in {
+            "asset": asset_id,
+            "due_date": due_date,
+            "reason": reason,
+            "maintenance_type": maintenance_type,
+            "owner": owner_id,
+            "estimated_cost": estimated_cost,
+            "vendor": vendor,
+        }.items()
+        if v is not None
+    }
+    serializer = ScheduledMaintenanceSerializer(schedule, data=payload, partial=True)
+    serializer.is_valid(raise_exception=True)
+    schedule = serializer.save()
+    return {
+        "scheduled_maintenance": ScheduledMaintenanceSerializer(schedule).data,
+        "summary": f"Updated scheduled maintenance #{schedule.id}.",
+    }
+
+
+def complete_scheduled_maintenance(
+    *,
+    user,
+    maintenance_id: int,
+    date: str,
+    reason: str,
+    cost: str | None = None,
+    asset_status_after: str | None = None,
+    asset_condition_after: str | None = None,
+    replacement_asset_id: int | None = None,
+) -> dict[str, Any]:
+    _require_asset_history_write(user)
+    schedule = (
+        ScheduledMaintenance.objects.select_related("asset")
+        .filter(pk=maintenance_id)
+        .first()
+    )
+    if schedule is None:
+        raise ValidationError({"maintenance_id": "Scheduled maintenance not found."})
+    payload = {
+        "date": date,
+        "reason": reason,
+        "cost": cost,
+        "asset_status_after": asset_status_after,
+        "asset_condition_after": asset_condition_after,
+        "replacement_asset": replacement_asset_id,
+    }
+    serializer = ScheduledMaintenanceCompleteSerializer(data=payload)
+    serializer.is_valid(raise_exception=True)
+    data = serializer.validated_data
+    with transaction.atomic():
+        replacement_log = ReplacementLog.objects.create(
+            asset=schedule.asset,
+            reason=data["reason"],
+            date=data["date"],
+            asset_status_before=schedule.asset.status,
+            asset_status_after=data.get("asset_status_after"),
+            asset_condition_before=schedule.asset.condition,
+            asset_condition_after=data.get("asset_condition_after"),
+            replacement_asset=data.get("replacement_asset"),
+            cost=data.get("cost"),
+            replaced_by=require_profile(user),
+        )
+        if data.get("asset_status_after"):
+            schedule.asset.status = data["asset_status_after"]
+        if data.get("asset_condition_after"):
+            schedule.asset.condition = data["asset_condition_after"]
+        schedule.asset.save()
+        schedule.status = ScheduledMaintenance.Status.COMPLETED
+        schedule.completed_log = replacement_log
+        schedule.save(update_fields=["status", "completed_log", "updated_at"])
+    return {
+        "scheduled_maintenance": ScheduledMaintenanceSerializer(schedule).data,
+        "summary": f"Completed scheduled maintenance #{schedule.id}.",
+    }
+
+
+def cancel_scheduled_maintenance(
+    *, user, maintenance_id: int, cancelled_reason: str = ""
+) -> dict[str, Any]:
+    _require_asset_history_write(user)
+    schedule = ScheduledMaintenance.objects.filter(pk=maintenance_id).first()
+    if schedule is None:
+        raise ValidationError({"maintenance_id": "Scheduled maintenance not found."})
+    serializer = ScheduledMaintenanceCancelSerializer(
+        data={"cancelled_reason": cancelled_reason}
+    )
+    serializer.is_valid(raise_exception=True)
+    schedule.status = ScheduledMaintenance.Status.CANCELLED
+    schedule.cancelled_reason = serializer.validated_data.get("cancelled_reason", "")
+    schedule.save(update_fields=["status", "cancelled_reason", "updated_at"])
+    return {
+        "scheduled_maintenance": ScheduledMaintenanceSerializer(schedule).data,
+        "summary": f"Cancelled scheduled maintenance #{schedule.id}.",
+    }
+
+
+# ============================================================================
+# DOCUMENT TEMPLATE EXTENSIONS
+# ============================================================================
+
+
+class GetDocumentTemplateArgs(_ArgsBase):
+    template_id: int = Field(..., ge=1)
+
+
+class CreateDocumentTemplateArgs(_ArgsBase):
+    name: str = Field(..., min_length=1, max_length=255)
+    description: str = ""
+    category: str = "other"
+    content: str = ""
+    visibility: str = TemplateVisibility.PRIVATE.value
+    status: str = "draft"
+    fields: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class UpdateDocumentTemplateArgs(CreateDocumentTemplateArgs):
+    template_id: int = Field(..., ge=1)
+    name: str | None = Field(default=None, max_length=255)
+    category: str | None = None
+    visibility: str | None = None
+    status: str | None = None
+    replace_fields: bool = False
+
+
+class UseDocumentTemplateArgs(_ArgsBase):
+    template_id: int = Field(..., ge=1)
+    field_values: dict[str, Any] = Field(default_factory=dict)
+    document_name: str = ""
+
+
+class ListUserTemplateSnippetsArgs(_ArgsBase):
+    limit: int | None = Field(default=50, ge=1, le=100)
+
+
+class CreateUserTemplateSnippetArgs(_ArgsBase):
+    label: str = Field(..., min_length=1, max_length=255)
+    html: str = Field(..., min_length=1)
+    sort_order: int = Field(default=0, ge=0)
+
+
+def _template_visible_queryset(user):
+    profile = require_profile(user)
+    qs = (
+        DocumentTemplate.objects.filter(is_active=True)
+        .select_related("created_by__user")
+        .prefetch_related("fields")
+    )
+    if (
+        is_hr_admin(user)
+        or getattr(user, "is_staff", False)
+        or getattr(user, "is_superuser", False)
+    ):
+        return qs
+    return qs.filter(Q(visibility=TemplateVisibility.SHARED) | Q(created_by=profile))
+
+
+def _get_visible_template(user, template_id: int) -> DocumentTemplate:
+    template = _template_visible_queryset(user).filter(pk=template_id).first()
+    if template is None:
+        raise ValidationError({"template_id": "Document template not found."})
+    return template
+
+
+def _can_edit_template(user, template: DocumentTemplate) -> bool:
+    profile = getattr(user, "profile", None)
+    return bool(
+        is_hr_admin(user)
+        or getattr(user, "is_staff", False)
+        or getattr(user, "is_superuser", False)
+        or (profile is not None and template.created_by_id == profile.id)
+    )
+
+
+def get_document_template(*, user, template_id: int) -> dict[str, Any]:
+    template = _get_visible_template(user, template_id)
+    return {
+        "template": DocumentTemplateDetailSerializer(template).data,
+        "summary": f"Loaded document template `{template.name}`.",
+    }
+
+
+def create_document_template(
+    *,
+    user,
+    name: str,
+    description: str = "",
+    category: str = "other",
+    content: str = "",
+    visibility: str = TemplateVisibility.PRIVATE.value,
+    status: str = "draft",
+    fields: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    profile = require_profile(user)
+    payload = {
+        "name": name,
+        "description": description,
+        "category": category,
+        "content": content,
+        "visibility": visibility,
+        "status": status,
+        "fields": fields or [],
+    }
+    serializer = DocumentTemplateCreateUpdateSerializer(
+        data=payload, context={"instance": None}
+    )
+    serializer.is_valid(raise_exception=True)
+    data = serializer.validated_data
+    fields_data = data.pop("fields", [])
+    with transaction.atomic():
+        template = DocumentTemplate.objects.create(
+            **data,
+            is_system_template=False,
+            is_active=True,
+            created_by=profile,
+        )
+        for field_data in fields_data:
+            TemplateField.objects.create(template=template, **field_data)
+    return {
+        "template": DocumentTemplateDetailSerializer(template).data,
+        "summary": f"Created document template `{template.name}`.",
+    }
+
+
+def update_document_template(
+    *,
+    user,
+    template_id: int,
+    name: str | None = None,
+    description: str = "",
+    category: str | None = None,
+    content: str = "",
+    visibility: str | None = None,
+    status: str | None = None,
+    fields: list[dict[str, Any]] | None = None,
+    replace_fields: bool = False,
+) -> dict[str, Any]:
+    template = _get_visible_template(user, template_id)
+    if template.is_system_template or not _can_edit_template(user, template):
+        raise PermissionDenied("You do not have permission to edit this template.")
+    payload = {
+        k: v
+        for k, v in {
+            "name": name,
+            "description": description,
+            "category": category,
+            "content": content,
+            "visibility": visibility,
+            "status": status,
+        }.items()
+        if v is not None
+    }
+    if replace_fields:
+        payload["fields"] = fields or []
+    serializer = DocumentTemplatePartialUpdateSerializer(
+        data=payload, context={"instance": template}
+    )
+    serializer.is_valid(raise_exception=True)
+    data = serializer.validated_data
+    fields_data = data.pop("fields", None)
+    with transaction.atomic():
+        for attr, value in data.items():
+            setattr(template, attr, value)
+        template.save()
+        if fields_data is not None:
+            template.fields.all().delete()
+            for field_data in fields_data:
+                TemplateField.objects.create(template=template, **field_data)
+    return {
+        "template": DocumentTemplateDetailSerializer(template).data,
+        "summary": f"Updated document template `{template.name}`.",
+    }
+
+
+def duplicate_document_template(*, user, template_id: int) -> dict[str, Any]:
+    template = _get_visible_template(user, template_id)
+    new_template = clone_template(template, require_profile(user))
+    return {
+        "template": DocumentTemplateDetailSerializer(new_template).data,
+        "summary": f"Duplicated document template `{template.name}`.",
+    }
+
+
+def deactivate_document_template(*, user, template_id: int) -> dict[str, Any]:
+    template = _get_visible_template(user, template_id)
+    if template.is_system_template or not _can_edit_template(user, template):
+        raise PermissionDenied("You do not have permission to delete this template.")
+    template.is_active = False
+    template.save(update_fields=["is_active", "updated_at"])
+    return {"summary": f"Deactivated document template `{template.name}`."}
+
+
+def use_document_template(
+    *,
+    user,
+    template_id: int,
+    field_values: dict[str, Any] | None = None,
+    document_name: str = "",
+) -> dict[str, Any]:
+    template = _get_visible_template(user, template_id)
+    field_values = field_values or {}
+    missing = validate_template_fields(template.fields.all(), field_values)
+    if missing:
+        raise ValidationError({"missing_fields": missing})
+    generated_doc = TemplateGeneratedDocument.objects.create(
+        name=document_name or f"{template.name} generated",
+        source_template=template,
+        resolved_content=resolve_template_content(template.content, field_values),
+        field_values=field_values,
+        created_by=require_profile(user),
+    )
+    return {
+        "generated_document": TemplateGeneratedDocumentSerializer(generated_doc).data,
+        "summary": f"Generated document from `{template.name}`.",
+    }
+
+
+def list_document_category_defaults(*, user) -> dict[str, Any]:
+    require_profile(user)
+    return {
+        "category_defaults": get_document_category_defaults(),
+        "summary": "Loaded document category defaults.",
+    }
+
+
+def list_user_template_snippets(*, user, limit: int | None = 50) -> dict[str, Any]:
+    profile = require_profile(user)
+    qs = UserTemplateSnippet.objects.filter(user_profile=profile).order_by(
+        "sort_order", "label"
+    )[: _limit(limit, 50, 100)]
+    return {
+        "snippets": UserTemplateSnippetSerializer(qs, many=True).data,
+        "summary": "Loaded user template snippets.",
+    }
+
+
+def create_user_template_snippet(
+    *, user, label: str, html: str, sort_order: int = 0
+) -> dict[str, Any]:
+    serializer = UserTemplateSnippetSerializer(
+        data={"label": label, "html": html, "sort_order": sort_order}
+    )
+    serializer.is_valid(raise_exception=True)
+    snippet = serializer.save(user_profile=require_profile(user))
+    return {
+        "snippet": UserTemplateSnippetSerializer(snippet).data,
+        "summary": f"Created template snippet `{snippet.label}`.",
+    }
+
+
+# ============================================================================
+# TIME TRACKING REPORT EXTENSIONS
+# ============================================================================
+
+
+class TimeWeeklySummaryArgs(_ArgsBase):
+    week_start: str = Field(..., min_length=8)
+    employee_id: int | None = Field(default=None, ge=1)
+
+
+class TimeDateArgs(_ArgsBase):
+    work_date: str | None = None
+    employee_id: int | None = Field(default=None, ge=1)
+
+
+class TimeDashboardArgs(_ArgsBase):
+    week_start: str | None = None
+    employee_id: int | None = Field(default=None, ge=1)
+
+
+class TimePlannedVsActualArgs(_ArgsBase):
+    date_from: str | None = None
+    date_to: str | None = None
+    week_start: str | None = None
+    employee_id: int | None = Field(default=None, ge=1)
+    project_id: int | None = Field(default=None, ge=1)
+
+
+class ExportTimeEntriesArgs(_ArgsBase):
+    date_from: str | None = None
+    date_to: str | None = None
+    employee_id: int | None = Field(default=None, ge=1)
+    project_id: int | None = Field(default=None, ge=1)
+    status: str | None = None
+    limit: int | None = Field(default=100, ge=1, le=500)
+
+
+def _time_employee_for(user, employee_id: int | None = None) -> UserProfile:
+    employee = (
+        UserProfile.objects.select_related("user").filter(pk=employee_id).first()
+        if employee_id
+        else profile_for_user(user)
+    )
+    if employee is None:
+        raise ValidationError({"employee_id": "Employee not found."})
+    if not can_view_employee_timesheet(user, employee):
+        raise PermissionDenied("You do not have permission to view this timesheet.")
+    return employee
+
+
+def _scoped_time_entries_for_ai(user):
+    base = TimeEntry.objects.select_related("employee__user", "project", "task")
+    if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+        return base
+    profile = profile_for_user(user)
+    if profile is None:
+        return TimeEntry.objects.none()
+    scopes = Q()
+    if has_time_tracking_permission(user, "view_own_timesheet"):
+        scopes |= Q(employee=profile)
+    if has_time_tracking_permission(
+        user, "view_team_timesheets"
+    ) or has_time_tracking_permission(user, "approve_team_timesheets"):
+        scopes |= Q(employee__managers=profile)
+    if has_time_tracking_permission(user, "view_dept_timesheets"):
+        return base
+    return base.filter(scopes).distinct() if scopes else base.none()
+
+
+def get_time_weekly_summary(
+    *, user, week_start: str, employee_id: int | None = None
+) -> dict[str, Any]:
+    start = parse_date(week_start)
+    if start is None:
+        raise ValidationError({"week_start": "week_start must be YYYY-MM-DD."})
+    employee = _time_employee_for(user, employee_id)
+    return {
+        **weekly_allocation_summary(employee=employee, week_start=start),
+        "summary": "Loaded weekly summary.",
+    }
+
+
+def get_time_active_allocations(
+    *, user, work_date: str | None = None, employee_id: int | None = None
+) -> dict[str, Any]:
+    target_date = parse_date(work_date) if work_date else timezone.localdate()
+    if target_date is None:
+        raise ValidationError({"work_date": "work_date must be YYYY-MM-DD."})
+    employee = _time_employee_for(user, employee_id)
+    return {
+        "allocations": active_time_tracking_allocations(
+            employee=employee, work_date=target_date
+        ),
+        "summary": "Loaded active allocations.",
+    }
+
+
+def get_time_weekly_dashboard(
+    *, user, week_start: str | None = None, employee_id: int | None = None
+) -> dict[str, Any]:
+    start = (
+        parse_date(week_start)
+        if week_start
+        else timezone.localdate() - timedelta(days=timezone.localdate().weekday())
+    )
+    if start is None:
+        raise ValidationError({"week_start": "week_start must be YYYY-MM-DD."})
+    end = start + timedelta(days=6)
+    qs = _scoped_time_entries_for_ai(user).filter(
+        work_date__gte=start, work_date__lte=end
+    )
+    if employee_id:
+        qs = qs.filter(employee_id=employee_id)
+    totals_by_source = {
+        row["source_type"]: str(row["total_hours"] or Decimal("0.00"))
+        for row in qs.values("source_type").annotate(total_hours=Sum("hours"))
+    }
+    totals_by_status = {
+        row["status"]: str(row["total_hours"] or Decimal("0.00"))
+        for row in qs.values("status").annotate(total_hours=Sum("hours"))
+    }
+    total_hours = qs.aggregate(total=Sum("hours"))["total"] or Decimal("0.00")
+    return {
+        "week_start": start.isoformat(),
+        "week_end": end.isoformat(),
+        "total_hours": str(total_hours),
+        "totals_by_source": totals_by_source,
+        "totals_by_status": totals_by_status,
+        "entries": TimeEntrySerializer(
+            qs.order_by("work_date", "id")[:100], many=True
+        ).data,
+        "summary": "Loaded weekly dashboard.",
+    }
+
+
+def get_time_planned_vs_actual(
+    *,
+    user,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    week_start: str | None = None,
+    employee_id: int | None = None,
+    project_id: int | None = None,
+) -> dict[str, Any]:
+    if date_from and date_to:
+        start = parse_date(date_from)
+        end = parse_date(date_to)
+    else:
+        start = (
+            parse_date(week_start)
+            if week_start
+            else timezone.localdate() - timedelta(days=timezone.localdate().weekday())
+        )
+        end = start + timedelta(days=6) if start else None
+    if start is None or end is None or end < start:
+        raise ValidationError(
+            {"date": "Provide valid date_from/date_to or week_start."}
+        )
+    employees = UserProfile.objects.filter(
+        id__in=_scoped_time_entries_for_ai(user)
+        .filter(work_date__gte=start, work_date__lte=end)
+        .values_list("employee_id", flat=True)
+        .distinct()
+    ).select_related("user")
+    if employee_id:
+        employees = employees.filter(id=employee_id)
+    rows: list[dict[str, Any]] = []
+    current = start - timedelta(days=start.weekday())
+    final_week = end - timedelta(days=end.weekday())
+    while current <= final_week:
+        for employee in employees:
+            if not can_view_employee_timesheet(user, employee):
+                continue
+            summary = weekly_allocation_summary(employee=employee, week_start=current)
+            for project in summary["projects"]:
+                if project_id and project.get("project_id") != project_id:
+                    continue
+                rows.append(
+                    {
+                        "employee_id": employee.id,
+                        "employee_name": employee.full_name or employee.user.username,
+                        "week_start": summary["week_start"],
+                        "week_end": summary["week_end"],
+                        **project,
+                    }
+                )
+        current += timedelta(days=7)
+    return {
+        "date_from": start.isoformat(),
+        "date_to": end.isoformat(),
+        "rows": rows,
+        "summary": "Loaded planned-vs-actual.",
+    }
+
+
+def export_time_entries(
+    *,
+    user,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    employee_id: int | None = None,
+    project_id: int | None = None,
+    status: str | None = None,
+    limit: int | None = 100,
+) -> dict[str, Any]:
+    if not has_time_tracking_permission(user, "export_timesheets"):
+        raise PermissionDenied("You do not have permission to export timesheets.")
+    qs = _scoped_time_entries_for_ai(user)
+    if date_from:
+        qs = qs.filter(work_date__gte=date_from)
+    if date_to:
+        qs = qs.filter(work_date__lte=date_to)
+    if employee_id:
+        qs = qs.filter(employee_id=employee_id)
+    if project_id:
+        qs = qs.filter(project_id=project_id)
+    if status:
+        qs = qs.filter(status=status)
+    qs = qs.order_by("work_date", "employee__full_name")[: _limit(limit, 100, 500)]
+    rows = [
+        {
+            "id": entry.id,
+            "employee_id": entry.employee_id,
+            "employee": entry.employee.full_name or entry.employee.user.username,
+            "date": entry.work_date.isoformat(),
+            "project": entry.project.name if entry.project else "",
+            "task": entry.task.name if entry.task else "",
+            "hours": str(entry.hours),
+            "status": entry.status,
+            "source_type": entry.source_type,
+        }
+        for entry in qs
+    ]
+    return {"rows": rows, "summary": f"Prepared {len(rows)} export row(s)."}
+
+
+# ============================================================================
+# NOTIFICATIONS EXTENSIONS
+# ============================================================================
+
+
+class MarkNotificationReadArgs(_ArgsBase):
+    notification_id: int = Field(..., ge=1)
+
+
+def mark_notification_read(*, user, notification_id: int) -> dict[str, Any]:
+    profile = require_profile(user)
+    notification = Notification.objects.filter(
+        pk=notification_id, recipient=profile
+    ).first()
+    if notification is None:
+        raise ValidationError({"notification_id": "Notification not found."})
+    notification.is_read = True
+    notification.read_at = timezone.now()
+    notification.save(update_fields=["is_read", "read_at"])
+    return {
+        "notification": NotificationSerializer(notification).data,
+        "summary": f"Marked notification #{notification.id} as read.",
+    }
+
+
+# ============================================================================
 # REGISTRATIONS for all new tools
 # ============================================================================
+
+# --- Announcements ---
+for _name, _desc, _fn, _schema, _mutating, _sensitive, _check, _perms in [
+    (
+        "list_announcements",
+        "List visible announcements, optionally including scheduled ones for managers.",
+        list_announcements,
+        ListAnnouncementsArgs,
+        False,
+        False,
+        None,
+        (),
+    ),
+    (
+        "get_announcement",
+        "Get one announcement with body, reactions, and counts.",
+        get_announcement,
+        GetAnnouncementArgs,
+        False,
+        False,
+        None,
+        (),
+    ),
+    (
+        "create_announcement",
+        "Create or schedule a rich-text announcement.",
+        create_announcement,
+        CreateAnnouncementArgs,
+        True,
+        True,
+        None,
+        ("Announcements: manage_announcements",),
+    ),
+    (
+        "update_announcement",
+        "Update an announcement or change its schedule.",
+        update_announcement,
+        UpdateAnnouncementArgs,
+        True,
+        True,
+        None,
+        ("Announcements: manage_announcements",),
+    ),
+    (
+        "delete_announcement",
+        "Delete an announcement.",
+        delete_announcement,
+        DeleteAnnouncementArgs,
+        True,
+        True,
+        None,
+        ("Announcements: manage_announcements",),
+    ),
+    (
+        "list_announcement_comments",
+        "List non-deleted comments for an announcement.",
+        list_announcement_comments,
+        GetAnnouncementArgs,
+        False,
+        False,
+        None,
+        (),
+    ),
+    (
+        "add_announcement_comment",
+        "Add a comment to an announcement.",
+        add_announcement_comment,
+        AnnouncementCommentArgs,
+        True,
+        False,
+        None,
+        (),
+    ),
+    (
+        "delete_announcement_comment",
+        "Soft-delete an announcement comment when author/owner/moderator.",
+        delete_announcement_comment,
+        DeleteAnnouncementCommentArgs,
+        True,
+        False,
+        None,
+        (),
+    ),
+    (
+        "list_announcement_reactions",
+        "List reactions for an announcement.",
+        list_announcement_reactions,
+        GetAnnouncementArgs,
+        False,
+        False,
+        None,
+        (),
+    ),
+    (
+        "toggle_announcement_reaction",
+        "Toggle the current user's reaction on an announcement.",
+        toggle_announcement_reaction,
+        ToggleAnnouncementReactionArgs,
+        True,
+        False,
+        None,
+        ("Announcements: add_reactions",),
+    ),
+    (
+        "list_discord_announcement_channels",
+        "List Discord webhook channels for announcement delivery.",
+        list_discord_announcement_channels,
+        ListDiscordAnnouncementChannelsArgs,
+        False,
+        True,
+        None,
+        ("Announcements: manage_announcements",),
+    ),
+    (
+        "create_discord_announcement_channel",
+        "Create a Discord announcement webhook channel.",
+        create_discord_announcement_channel,
+        CreateDiscordAnnouncementChannelArgs,
+        True,
+        True,
+        None,
+        ("Announcements: manage_announcements",),
+    ),
+    (
+        "update_discord_announcement_channel",
+        "Update a Discord announcement webhook channel.",
+        update_discord_announcement_channel,
+        UpdateDiscordAnnouncementChannelArgs,
+        True,
+        True,
+        None,
+        ("Announcements: manage_announcements",),
+    ),
+]:
+    registry.register(
+        AssistantTool(
+            _name,
+            _desc,
+            _fn,
+            module="announcements",
+            mutating=_mutating,
+            sensitive=_sensitive,
+            args_schema=_schema,
+            permission_check=_check,
+            required_permissions=_perms,
+        )
+    )
+
+# --- Celebrations ---
+registry.register(
+    AssistantTool(
+        "list_upcoming_celebrations",
+        "List upcoming birthdays and work anniversaries.",
+        list_upcoming_celebrations,
+        module="celebrations",
+        args_schema=ListUpcomingCelebrationsArgs,
+        required_permissions=("Announcements: view_birthdays/view_anniversaries",),
+    )
+)
+
+# --- Leave analytics ---
+for _name, _desc, _fn, _schema, _mutating, _sensitive, _perms in [
+    (
+        "get_leave_analytics_monthly",
+        "Get monthly leave trend rows by leave type.",
+        get_leave_analytics_monthly,
+        LeaveAnalyticsMonthlyArgs,
+        False,
+        False,
+        ("Leave Analytics: view own/team/org",),
+    ),
+    (
+        "get_leave_analytics_yearly_totals",
+        "Get yearly leave totals grouped by leave type.",
+        get_leave_analytics_yearly_totals,
+        LeaveAnalyticsYearArgs,
+        False,
+        False,
+        ("Leave Analytics: view own/team/org",),
+    ),
+    (
+        "get_leave_analytics_departments",
+        "Get department-level leave analytics.",
+        get_leave_analytics_departments,
+        LeaveAnalyticsYearArgs,
+        False,
+        True,
+        ("Leave Analytics: view_dept_trends",),
+    ),
+    (
+        "get_leave_analytics_employees",
+        "Get per-employee leave analytics rows.",
+        get_leave_analytics_employees,
+        LeaveAnalyticsYearArgs,
+        False,
+        True,
+        ("Leave Analytics: view own/team/org",),
+    ),
+    (
+        "get_leave_employee_history",
+        "Get leave history for one employee.",
+        get_leave_employee_history,
+        LeaveEmployeeHistoryArgs,
+        False,
+        False,
+        ("Leave Analytics: view_own_history/view_dept_trends",),
+    ),
+    (
+        "get_leave_availability",
+        "Get day-level team/project leave availability.",
+        get_leave_availability,
+        LeaveAvailabilityArgs,
+        False,
+        False,
+        ("Leave Analytics: view own/team/org",),
+    ),
+    (
+        "refresh_leave_analytics",
+        "Rebuild leave analytics aggregates and snapshots.",
+        refresh_leave_analytics,
+        RefreshLeaveAnalyticsArgs,
+        True,
+        True,
+        ("Leave Analytics: configure/adjust/override",),
+    ),
+]:
+    registry.register(
+        AssistantTool(
+            _name,
+            _desc,
+            _fn,
+            module="leave_analytics",
+            mutating=_mutating,
+            sensitive=_sensitive,
+            args_schema=_schema,
+            required_permissions=_perms,
+        )
+    )
+
+# --- Asset maintenance gaps ---
+for _name, _desc, _fn, _schema, _mutating, _sensitive, _perms in [
+    (
+        "list_scheduled_maintenance",
+        "List scheduled asset maintenance.",
+        list_scheduled_maintenance,
+        ListScheduledMaintenanceArgs,
+        False,
+        False,
+        ("Asset Management: view_asset_history",),
+    ),
+    (
+        "create_scheduled_maintenance",
+        "Create scheduled maintenance for an asset.",
+        create_scheduled_maintenance,
+        CreateScheduledMaintenanceArgs,
+        True,
+        True,
+        ("Asset Management: log_asset_replacement",),
+    ),
+    (
+        "update_scheduled_maintenance",
+        "Update scheduled asset maintenance.",
+        update_scheduled_maintenance,
+        UpdateScheduledMaintenanceArgs,
+        True,
+        True,
+        ("Asset Management: log_asset_replacement",),
+    ),
+    (
+        "complete_scheduled_maintenance",
+        "Complete scheduled maintenance and create replacement/maintenance log.",
+        complete_scheduled_maintenance,
+        CompleteScheduledMaintenanceArgs,
+        True,
+        True,
+        ("Asset Management: log_asset_replacement",),
+    ),
+    (
+        "cancel_scheduled_maintenance",
+        "Cancel scheduled asset maintenance.",
+        cancel_scheduled_maintenance,
+        CancelScheduledMaintenanceArgs,
+        True,
+        True,
+        ("Asset Management: log_asset_replacement",),
+    ),
+]:
+    registry.register(
+        AssistantTool(
+            _name,
+            _desc,
+            _fn,
+            module="assets",
+            mutating=_mutating,
+            sensitive=_sensitive,
+            args_schema=_schema,
+            required_permissions=_perms,
+        )
+    )
+
+# --- Document template / snippet gaps ---
+for _name, _desc, _fn, _schema, _mutating, _sensitive in [
+    (
+        "get_document_template",
+        "Get a visible document template with full content and fields.",
+        get_document_template,
+        GetDocumentTemplateArgs,
+        False,
+        False,
+    ),
+    (
+        "create_document_template",
+        "Create a document template with optional field definitions.",
+        create_document_template,
+        CreateDocumentTemplateArgs,
+        True,
+        False,
+    ),
+    (
+        "update_document_template",
+        "Update a document template and optionally replace fields.",
+        update_document_template,
+        UpdateDocumentTemplateArgs,
+        True,
+        False,
+    ),
+    (
+        "duplicate_document_template",
+        "Duplicate a visible document template into a private copy.",
+        duplicate_document_template,
+        GetDocumentTemplateArgs,
+        True,
+        False,
+    ),
+    (
+        "deactivate_document_template",
+        "Soft-delete/deactivate a document template.",
+        deactivate_document_template,
+        GetDocumentTemplateArgs,
+        True,
+        True,
+    ),
+    (
+        "use_document_template",
+        "Generate a document record from a template and field values.",
+        use_document_template,
+        UseDocumentTemplateArgs,
+        True,
+        False,
+    ),
+    (
+        "list_document_category_defaults",
+        "List default allowed roles by document category.",
+        list_document_category_defaults,
+        EmptyArgs,
+        False,
+        False,
+    ),
+    (
+        "list_user_template_snippets",
+        "List current user's reusable template snippets.",
+        list_user_template_snippets,
+        ListUserTemplateSnippetsArgs,
+        False,
+        False,
+    ),
+    (
+        "create_user_template_snippet",
+        "Create a reusable template snippet for the current user.",
+        create_user_template_snippet,
+        CreateUserTemplateSnippetArgs,
+        True,
+        False,
+    ),
+]:
+    registry.register(
+        AssistantTool(
+            _name,
+            _desc,
+            _fn,
+            module="documents",
+            mutating=_mutating,
+            sensitive=_sensitive,
+            args_schema=_schema,
+        )
+    )
+
+# --- Time tracking report/export gaps ---
+for _name, _desc, _fn, _schema, _mutating, _sensitive, _perms in [
+    (
+        "get_time_weekly_summary",
+        "Get planned/actual weekly allocation summary for an employee.",
+        get_time_weekly_summary,
+        TimeWeeklySummaryArgs,
+        False,
+        False,
+        ("Time Tracking: view timesheet",),
+    ),
+    (
+        "get_time_active_allocations",
+        "Get active project allocations for an employee on a date.",
+        get_time_active_allocations,
+        TimeDateArgs,
+        False,
+        False,
+        ("Time Tracking: view timesheet",),
+    ),
+    (
+        "get_time_weekly_dashboard",
+        "Get weekly time dashboard totals and entries.",
+        get_time_weekly_dashboard,
+        TimeDashboardArgs,
+        False,
+        False,
+        ("Time Tracking: view timesheet",),
+    ),
+    (
+        "get_time_planned_vs_actual",
+        "Get planned-vs-actual time allocation rows.",
+        get_time_planned_vs_actual,
+        TimePlannedVsActualArgs,
+        False,
+        False,
+        ("Time Tracking: view timesheet",),
+    ),
+    (
+        "export_time_entries",
+        "Return export-ready time entry rows.",
+        export_time_entries,
+        ExportTimeEntriesArgs,
+        False,
+        True,
+        ("Time Tracking: export_timesheets",),
+    ),
+]:
+    registry.register(
+        AssistantTool(
+            _name,
+            _desc,
+            _fn,
+            module="time_tracking",
+            mutating=_mutating,
+            sensitive=_sensitive,
+            args_schema=_schema,
+            required_permissions=_perms,
+        )
+    )
+
+# --- Notification gap ---
+registry.register(
+    AssistantTool(
+        "mark_notification_read",
+        "Mark one notification as read.",
+        mark_notification_read,
+        module="notifications",
+        mutating=True,
+        args_schema=MarkNotificationReadArgs,
+    )
+)
 
 # --- Reviews ---
 for _name, _desc, _fn, _schema, _mutating, _sensitive, _check, _perms in [

@@ -12073,8 +12073,7 @@ components:
           type: integer
           readOnly: true
         role:
-          allOf:
-          - $ref: '#/components/schemas/RoleEnum'
+          type: string
           readOnly: true
         content:
           type: string
@@ -12105,6 +12104,7 @@ components:
           description: |-
             Optional explicit tool name for deterministic client-driven calls.
 
+            * `add_announcement_comment` - add_announcement_comment
             * `add_review_action_point` - add_review_action_point
             * `add_review_note` - add_review_note
             * `adjust_leave_balance` - adjust_leave_balance
@@ -12115,32 +12115,62 @@ components:
             * `assign_manager` - assign_manager
             * `cancel_leave_request` - cancel_leave_request
             * `cancel_pending_action` - cancel_pending_action
+            * `cancel_scheduled_maintenance` - cancel_scheduled_maintenance
             * `check_permission` - check_permission
             * `classify_confirmation_response` - classify_confirmation_response
             * `close_review` - close_review
+            * `complete_scheduled_maintenance` - complete_scheduled_maintenance
             * `confirm_pending_action` - confirm_pending_action
+            * `create_announcement` - create_announcement
             * `create_asset` - create_asset
             * `create_bonus_record` - create_bonus_record
+            * `create_discord_announcement_channel` - create_discord_announcement_channel
+            * `create_document_template` - create_document_template
             * `create_job_listing` - create_job_listing
             * `create_leave_request` - create_leave_request
             * `create_onboarding_instance` - create_onboarding_instance
             * `create_role` - create_role
+            * `create_scheduled_maintenance` - create_scheduled_maintenance
             * `create_time_entry` - create_time_entry
             * `create_training_entry` - create_training_entry
+            * `create_user_template_snippet` - create_user_template_snippet
+            * `deactivate_document_template` - deactivate_document_template
+            * `delete_announcement` - delete_announcement
+            * `delete_announcement_comment` - delete_announcement_comment
             * `delete_document` - delete_document
             * `delete_role` - delete_role
+            * `duplicate_document_template` - duplicate_document_template
             * `explain_workflow` - explain_workflow
+            * `export_time_entries` - export_time_entries
+            * `get_announcement` - get_announcement
             * `get_bonus_totals` - get_bonus_totals
             * `get_checklist_instance` - get_checklist_instance
             * `get_compensation_overview` - get_compensation_overview
+            * `get_current_date` - get_current_date
+            * `get_current_datetime` - get_current_datetime
+            * `get_current_time` - get_current_time
             * `get_current_user_context` - get_current_user_context
+            * `get_document_template` - get_document_template
             * `get_employee_managers` - get_employee_managers
             * `get_employee_profile` - get_employee_profile
+            * `get_leave_analytics_departments` - get_leave_analytics_departments
+            * `get_leave_analytics_employees` - get_leave_analytics_employees
+            * `get_leave_analytics_monthly` - get_leave_analytics_monthly
+            * `get_leave_analytics_yearly_totals` - get_leave_analytics_yearly_totals
+            * `get_leave_availability` - get_leave_availability
+            * `get_leave_employee_history` - get_leave_employee_history
             * `get_leave_summary` - get_leave_summary
             * `get_payroll_snapshot` - get_payroll_snapshot
             * `get_review` - get_review
             * `get_team_leave_calendar` - get_team_leave_calendar
+            * `get_time_active_allocations` - get_time_active_allocations
+            * `get_time_planned_vs_actual` - get_time_planned_vs_actual
+            * `get_time_weekly_dashboard` - get_time_weekly_dashboard
+            * `get_time_weekly_summary` - get_time_weekly_summary
             * `get_training_budget` - get_training_budget
+            * `list_announcement_comments` - list_announcement_comments
+            * `list_announcement_reactions` - list_announcement_reactions
+            * `list_announcements` - list_announcements
             * `list_applications` - list_applications
             * `list_asset_assignments` - list_asset_assignments
             * `list_asset_replacements` - list_asset_replacements
@@ -12155,6 +12185,8 @@ components:
             * `list_compensation_policies` - list_compensation_policies
             * `list_conference_registrations` - list_conference_registrations
             * `list_cpf_level_changes` - list_cpf_level_changes
+            * `list_discord_announcement_channels` - list_discord_announcement_channels
+            * `list_document_category_defaults` - list_document_category_defaults
             * `list_document_templates` - list_document_templates
             * `list_documents` - list_documents
             * `list_employee_documents` - list_employee_documents
@@ -12174,17 +12206,22 @@ components:
             * `list_review_notes` - list_review_notes
             * `list_reviews` - list_reviews
             * `list_salary_history` - list_salary_history
+            * `list_scheduled_maintenance` - list_scheduled_maintenance
             * `list_time_entries` - list_time_entries
             * `list_time_tasks` - list_time_tasks
             * `list_top_paid_employees` - list_top_paid_employees
             * `list_training_budgets` - list_training_budgets
             * `list_training_entries` - list_training_entries
+            * `list_upcoming_celebrations` - list_upcoming_celebrations
+            * `list_user_template_snippets` - list_user_template_snippets
             * `list_workflows` - list_workflows
             * `log_peer_session` - log_peer_session
             * `mark_all_notifications_read` - mark_all_notifications_read
+            * `mark_notification_read` - mark_notification_read
             * `read_document_content` - read_document_content
             * `record_cpf_level_change` - record_cpf_level_change
             * `record_promotion` - record_promotion
+            * `refresh_leave_analytics` - refresh_leave_analytics
             * `register_for_conference` - register_for_conference
             * `reject_time_entry` - reject_time_entry
             * `return_asset` - return_asset
@@ -12192,12 +12229,18 @@ components:
             * `search_employees` - search_employees
             * `set_compensation_policy` - set_compensation_policy
             * `submit_time_week` - submit_time_week
+            * `toggle_announcement_reaction` - toggle_announcement_reaction
             * `update_action_point_status` - update_action_point_status
+            * `update_announcement` - update_announcement
             * `update_application_status` - update_application_status
             * `update_asset_status` - update_asset_status
             * `update_checklist_task_status` - update_checklist_task_status
+            * `update_discord_announcement_channel` - update_discord_announcement_channel
+            * `update_document_template` - update_document_template
             * `update_employee_profile` - update_employee_profile
             * `update_role` - update_role
+            * `update_scheduled_maintenance` - update_scheduled_maintenance
+            * `use_document_template` - use_document_template
             * `withdraw_application` - withdraw_application
         arguments:
           type: object
@@ -12294,28 +12337,6 @@ components:
       required:
       - endpoints
       - message
-    ActionEnum:
-      enum:
-      - accept_current
-      - apply_source
-      - leave_flagged
-      type: string
-      description: |-
-        * `accept_current` - accept_current
-        * `apply_source` - apply_source
-        * `leave_flagged` - leave_flagged
-    AllowedRolesEnum:
-      enum:
-      - employee
-      - manager
-      - hr
-      - admin
-      type: string
-      description: |-
-        * `employee` - Employee
-        * `manager` - Manager
-        * `hr` - HR
-        * `admin` - Admin
     AnnouncementDetail:
       type: object
       properties:
@@ -12326,8 +12347,7 @@ components:
           type: string
           readOnly: true
         type:
-          allOf:
-          - $ref: '#/components/schemas/TypeFe8Enum'
+          type: string
           readOnly: true
         author_id:
           type: integer
@@ -12398,8 +12418,7 @@ components:
           type: string
           readOnly: true
         type:
-          allOf:
-          - $ref: '#/components/schemas/TypeFe8Enum'
+          type: string
           readOnly: true
         author_id:
           type: integer
@@ -12455,18 +12474,6 @@ components:
       - title
       - type
       - updated_at
-    AnnouncementTypeEnum:
-      enum:
-      - general
-      - news
-      - celebration
-      - urgent
-      type: string
-      description: |-
-        * `general` - General
-        * `news` - News
-        * `celebration` - Celebration
-        * `urgent` - Urgent
     AnnouncementWrite:
       type: object
       properties:
@@ -12477,9 +12484,7 @@ components:
           type: string
           description: Rich text HTML content
         type:
-          oneOf:
-          - $ref: '#/components/schemas/TypeFe8Enum'
-          - $ref: '#/components/schemas/BlankEnum'
+          type: string
         scheduled_at:
           type: string
           format: date-time
@@ -12499,9 +12504,7 @@ components:
           minLength: 1
           description: Rich text HTML content
         type:
-          oneOf:
-          - $ref: '#/components/schemas/TypeFe8Enum'
-          - $ref: '#/components/schemas/BlankEnum'
+          type: string
         scheduled_at:
           type: string
           format: date-time
@@ -12534,18 +12537,9 @@ components:
           readOnly: true
           default: ''
         status:
-          allOf:
-          - $ref: '#/components/schemas/StatusA44Enum'
+          type: string
           readOnly: true
-          description: |-
-            Current status of the application
-
-            * `submitted` - Submitted
-            * `under_review` - Under Review
-            * `shortlisted` - Shortlisted
-            * `rejected` - Rejected
-            * `withdrawn` - Withdrawn
-            * `accepted` - Accepted
+          description: Current status of the application
         status_display:
           type: string
           readOnly: true
@@ -12624,17 +12618,8 @@ components:
         the new status is terminal (accepted/rejected).
       properties:
         status:
-          allOf:
-          - $ref: '#/components/schemas/StatusA44Enum'
-          description: |-
-            Current status of the application
-
-            * `submitted` - Submitted
-            * `under_review` - Under Review
-            * `shortlisted` - Shortlisted
-            * `rejected` - Rejected
-            * `withdrawn` - Withdrawn
-            * `accepted` - Accepted
+          type: string
+          description: Current status of the application
         decision_note:
           type: string
           maxLength: 4000
@@ -12647,17 +12632,8 @@ components:
         the new status is terminal (accepted/rejected).
       properties:
         status:
-          allOf:
-          - $ref: '#/components/schemas/StatusA44Enum'
-          description: |-
-            Current status of the application
-
-            * `submitted` - Submitted
-            * `under_review` - Under Review
-            * `shortlisted` - Shortlisted
-            * `rejected` - Rejected
-            * `withdrawn` - Withdrawn
-            * `accepted` - Accepted
+          type: string
+          description: Current status of the application
         decision_note:
           type: string
           maxLength: 4000
@@ -12684,30 +12660,11 @@ components:
           description: Asset name/type
           maxLength: 200
         category:
-          allOf:
-          - $ref: '#/components/schemas/Category59fEnum'
-          description: |-
-            Asset category
-
-            * `laptops` - Laptops
-            * `phones` - Phones
-            * `monitors` - Monitors
-            * `headphones` - Headphones
-            * `cameras` - Cameras
-            * `vehicles` - Vehicles
-            * `furniture` - Furniture
-            * `other` - Other
+          type: string
+          description: Asset category
         condition:
-          allOf:
-          - $ref: '#/components/schemas/ConditionEnum'
-          description: |-
-            Current condition of the asset
-
-            * `excellent` - Excellent
-            * `good` - Good
-            * `fair` - Fair
-            * `poor` - Poor
-            * `damaged` - Damaged
+          type: string
+          description: Current condition of the asset
         warranty_until:
           type: string
           format: date
@@ -12718,17 +12675,8 @@ components:
           format: date
           description: Date when the asset was purchased
         status:
-          allOf:
-          - $ref: '#/components/schemas/StatusEnum'
-          description: |-
-            Current status of the asset
-
-            * `active` - Active
-            * `maintenance` - Maintenance
-            * `retired` - Retired
-            * `lost` - Lost
-            * `returned` - Returned
-            * `damaged` - Damaged
+          type: string
+          description: Current status of the asset
         serial_number:
           type: string
           nullable: true
@@ -12815,30 +12763,11 @@ components:
           description: Asset name/type
           maxLength: 200
         category:
-          allOf:
-          - $ref: '#/components/schemas/Category59fEnum'
-          description: |-
-            Asset category
-
-            * `laptops` - Laptops
-            * `phones` - Phones
-            * `monitors` - Monitors
-            * `headphones` - Headphones
-            * `cameras` - Cameras
-            * `vehicles` - Vehicles
-            * `furniture` - Furniture
-            * `other` - Other
+          type: string
+          description: Asset category
         condition:
-          allOf:
-          - $ref: '#/components/schemas/ConditionEnum'
-          description: |-
-            Current condition of the asset
-
-            * `excellent` - Excellent
-            * `good` - Good
-            * `fair` - Fair
-            * `poor` - Poor
-            * `damaged` - Damaged
+          type: string
+          description: Current condition of the asset
         warranty_until:
           type: string
           format: date
@@ -12849,17 +12778,8 @@ components:
           format: date
           description: Date when the asset was purchased
         status:
-          allOf:
-          - $ref: '#/components/schemas/StatusEnum'
-          description: |-
-            Current status of the asset
-
-            * `active` - Active
-            * `maintenance` - Maintenance
-            * `retired` - Retired
-            * `lost` - Lost
-            * `returned` - Returned
-            * `damaged` - Damaged
+          type: string
+          description: Current status of the asset
         serial_number:
           type: string
           nullable: true
@@ -12894,11 +12814,11 @@ components:
       description: Supported filters for exported assets.
       properties:
         status:
-          $ref: '#/components/schemas/StatusEnum'
+          type: string
         condition:
-          $ref: '#/components/schemas/ConditionEnum'
+          type: string
         category:
-          $ref: '#/components/schemas/Category59fEnum'
+          type: string
         available:
           type: boolean
         assigned_employee_id:
@@ -12913,7 +12833,7 @@ components:
         fields:
           type: array
           items:
-            $ref: '#/components/schemas/FieldsEnum'
+            type: string
         include_assignment:
           type: boolean
           default: true
@@ -12937,30 +12857,11 @@ components:
           description: Asset name/type
           maxLength: 200
         category:
-          allOf:
-          - $ref: '#/components/schemas/Category59fEnum'
-          description: |-
-            Asset category
-
-            * `laptops` - Laptops
-            * `phones` - Phones
-            * `monitors` - Monitors
-            * `headphones` - Headphones
-            * `cameras` - Cameras
-            * `vehicles` - Vehicles
-            * `furniture` - Furniture
-            * `other` - Other
+          type: string
+          description: Asset category
         condition:
-          allOf:
-          - $ref: '#/components/schemas/ConditionEnum'
-          description: |-
-            Current condition of the asset
-
-            * `excellent` - Excellent
-            * `good` - Good
-            * `fair` - Fair
-            * `poor` - Poor
-            * `damaged` - Damaged
+          type: string
+          description: Current condition of the asset
         warranty_until:
           type: string
           format: date
@@ -12971,17 +12872,8 @@ components:
           format: date
           description: Date when the asset was purchased
         status:
-          allOf:
-          - $ref: '#/components/schemas/StatusEnum'
-          description: |-
-            Current status of the asset
-
-            * `active` - Active
-            * `maintenance` - Maintenance
-            * `retired` - Retired
-            * `lost` - Lost
-            * `returned` - Returned
-            * `damaged` - Damaged
+          type: string
+          description: Current status of the asset
         serial_number:
           type: string
           nullable: true
@@ -13035,15 +12927,8 @@ components:
           nullable: true
           description: When the asset was returned (optional)
         return_request_status:
-          allOf:
-          - $ref: '#/components/schemas/ReturnRequestStatusEnum'
-          description: |-
-            Two-step return workflow status
-
-            * `none` - None
-            * `pending` - Pending
-            * `approved` - Approved
-            * `rejected` - Rejected
+          type: string
+          description: Two-step return workflow status
         return_requested_by:
           type: integer
           nullable: true
@@ -13083,19 +12968,9 @@ components:
           nullable: true
           description: Who made the assignment
         return_condition:
+          type: string
           nullable: true
-          description: |-
-            Condition when returned
-
-            * `excellent` - Excellent
-            * `good` - Good
-            * `fair` - Fair
-            * `poor` - Poor
-            * `damaged` - Damaged
-          oneOf:
-          - $ref: '#/components/schemas/ConditionEnum'
-          - $ref: '#/components/schemas/BlankEnum'
-          - $ref: '#/components/schemas/NullEnum'
+          description: Condition when returned
         notes:
           type: string
           nullable: true
@@ -13170,15 +13045,8 @@ components:
           nullable: true
           description: When the asset was returned (optional)
         return_request_status:
-          allOf:
-          - $ref: '#/components/schemas/ReturnRequestStatusEnum'
-          description: |-
-            Two-step return workflow status
-
-            * `none` - None
-            * `pending` - Pending
-            * `approved` - Approved
-            * `rejected` - Rejected
+          type: string
+          description: Two-step return workflow status
         return_requested_by:
           type: integer
           nullable: true
@@ -13206,19 +13074,9 @@ components:
           nullable: true
           description: Who made the assignment
         return_condition:
+          type: string
           nullable: true
-          description: |-
-            Condition when returned
-
-            * `excellent` - Excellent
-            * `good` - Good
-            * `fair` - Fair
-            * `poor` - Poor
-            * `damaged` - Damaged
-          oneOf:
-          - $ref: '#/components/schemas/ConditionEnum'
-          - $ref: '#/components/schemas/BlankEnum'
-          - $ref: '#/components/schemas/NullEnum'
+          description: Condition when returned
         notes:
           type: string
           nullable: true
@@ -13246,19 +13104,9 @@ components:
       description: Serializer for returning assets
       properties:
         return_condition:
+          type: string
           nullable: true
-          description: |-
-            Condition when returned
-
-            * `excellent` - Excellent
-            * `good` - Good
-            * `fair` - Fair
-            * `poor` - Poor
-            * `damaged` - Damaged
-          oneOf:
-          - $ref: '#/components/schemas/ConditionEnum'
-          - $ref: '#/components/schemas/BlankEnum'
-          - $ref: '#/components/schemas/NullEnum'
+          description: Condition when returned
         notes:
           type: string
           nullable: true
@@ -13278,7 +13126,7 @@ components:
           type: integer
           readOnly: true
         benefit_type:
-          $ref: '#/components/schemas/BenefitTypeEnum'
+          type: string
         benefit_type_display:
           type: string
           readOnly: true
@@ -13334,7 +13182,7 @@ components:
       type: object
       properties:
         benefit_type:
-          $ref: '#/components/schemas/BenefitTypeEnum'
+          type: string
         name:
           type: string
           minLength: 1
@@ -13363,31 +13211,6 @@ components:
       - effective_date
       - monthly_amount
       - name
-    BenefitTypeEnum:
-      enum:
-      - transport
-      - meal
-      - recreation
-      - health
-      - education
-      - equipment
-      - remote_work
-      - phone
-      - other
-      type: string
-      description: |-
-        * `transport` - Transport allowance
-        * `meal` - Meal allowance
-        * `recreation` - Recreation
-        * `health` - Private health
-        * `education` - Education stipend
-        * `equipment` - Equipment allowance
-        * `remote_work` - Remote-work stipend
-        * `phone` - Phone / data
-        * `other` - Other
-    BlankEnum:
-      enum:
-      - ''
     BonusRecord:
       type: object
       properties:
@@ -13400,7 +13223,7 @@ components:
           type: string
           readOnly: true
         bonus_type:
-          $ref: '#/components/schemas/BonusTypeEnum'
+          type: string
         bonus_type_display:
           type: string
           readOnly: true
@@ -13445,7 +13268,7 @@ components:
         user_profile:
           type: integer
         bonus_type:
-          $ref: '#/components/schemas/BonusTypeEnum'
+          type: string
         amount:
           type: string
           format: decimal
@@ -13464,22 +13287,6 @@ components:
       - bonus_type
       - effective_date
       - user_profile
-    BonusTypeEnum:
-      enum:
-      - performance
-      - retention
-      - referral
-      - project
-      - education
-      - spot
-      type: string
-      description: |-
-        * `performance` - Performance
-        * `retention` - Retention
-        * `referral` - Referral
-        * `project` - Project
-        * `education` - Education
-        * `spot` - Spot
     BulkIdsRequest:
       type: object
       properties:
@@ -13490,16 +13297,6 @@ components:
             minimum: 1
       required:
       - ids
-    CPFChangeSourceEnum:
-      enum:
-      - manual
-      - performance_review
-      - promotion
-      type: string
-      description: |-
-        * `manual` - Manual
-        * `performance_review` - Performance Review
-        * `promotion` - Promotion
     CPFLevelChange:
       type: object
       description: Read serialiser for a single CPF level change record.
@@ -13528,15 +13325,9 @@ components:
           readOnly: true
           description: Date the new level took effect
         source:
-          allOf:
-          - $ref: '#/components/schemas/CPFChangeSourceEnum'
+          type: string
           readOnly: true
-          description: |-
-            What triggered the level change
-
-            * `manual` - Manual
-            * `performance_review` - Performance Review
-            * `promotion` - Promotion
+          description: What triggered the level change
         source_display:
           type: string
           readOnly: true
@@ -13604,14 +13395,8 @@ components:
           format: date
           description: Date the new level took effect
         source:
-          allOf:
-          - $ref: '#/components/schemas/CPFChangeSourceEnum'
-          description: |-
-            What triggered the level change
-
-            * `manual` - Manual
-            * `performance_review` - Performance Review
-            * `promotion` - Promotion
+          type: string
+          description: What triggered the level change
         cpf_score:
           type: integer
           maximum: 100
@@ -13651,14 +13436,8 @@ components:
           format: date
           description: Date the new level took effect
         source:
-          allOf:
-          - $ref: '#/components/schemas/CPFChangeSourceEnum'
-          description: |-
-            What triggered the level change
-
-            * `manual` - Manual
-            * `performance_review` - Performance Review
-            * `promotion` - Promotion
+          type: string
+          description: What triggered the level change
         cpf_score:
           type: integer
           maximum: 100
@@ -13721,13 +13500,13 @@ components:
           type: string
           format: date
         event_type:
-          $ref: '#/components/schemas/CPFProgressionEventEventTypeEnum'
+          type: string
         previous_level:
           type: string
         new_level:
           type: string
         source:
-          $ref: '#/components/schemas/CPFProgressionEventSourceEnum'
+          type: string
         cpf_score:
           type: integer
           nullable: true
@@ -13748,84 +13527,6 @@ components:
       - reference_id
       - reference_label
       - source
-    CPFProgressionEventEventTypeEnum:
-      enum:
-      - level_change
-      - review_assessment
-      type: string
-      description: |-
-        * `level_change` - level_change
-        * `review_assessment` - review_assessment
-    CPFProgressionEventSourceEnum:
-      enum:
-      - manual
-      - performance_review
-      - promotion
-      type: string
-      description: |-
-        * `manual` - manual
-        * `performance_review` - performance_review
-        * `promotion` - promotion
-    Category59fEnum:
-      enum:
-      - laptops
-      - phones
-      - monitors
-      - headphones
-      - cameras
-      - vehicles
-      - furniture
-      - other
-      type: string
-      description: |-
-        * `laptops` - Laptops
-        * `phones` - Phones
-        * `monitors` - Monitors
-        * `headphones` - Headphones
-        * `cameras` - Cameras
-        * `vehicles` - Vehicles
-        * `furniture` - Furniture
-        * `other` - Other
-    Category748Enum:
-      enum:
-      - contracts
-      - policies
-      - agreements
-      - compliance
-      - onboarding
-      - training
-      - benefits
-      - other
-      type: string
-      description: |-
-        * `contracts` - Contracts
-        * `policies` - Policies
-        * `agreements` - Agreements
-        * `compliance` - Compliance
-        * `onboarding` - Onboarding
-        * `training` - Training
-        * `benefits` - Benefits
-        * `other` - Other
-    Category9ecEnum:
-      enum:
-      - contract
-      - policy
-      - agreement
-      - onboarding
-      - compliance
-      - training
-      - benefits
-      - other
-      type: string
-      description: |-
-        * `contract` - Contract
-        * `policy` - Policy
-        * `agreement` - Agreement
-        * `onboarding` - Onboarding
-        * `compliance` - Compliance
-        * `training` - Training
-        * `benefits` - Benefits
-        * `other` - Other
     CelebrationEmployee:
       type: object
       properties:
@@ -14029,7 +13730,7 @@ components:
           - $ref: '#/components/schemas/ChecklistTemplate'
           readOnly: true
         status:
-          $ref: '#/components/schemas/ChecklistInstanceStatusEnum'
+          type: string
         due_date:
           type: string
           format: date
@@ -14068,19 +13769,11 @@ components:
       type: object
       properties:
         status:
-          $ref: '#/components/schemas/ChecklistInstanceStatusEnum'
+          type: string
         due_date:
           type: string
           format: date
           nullable: true
-    ChecklistInstanceStatusEnum:
-      enum:
-      - in_progress
-      - done
-      type: string
-      description: |-
-        * `in_progress` - In Progress
-        * `done` - Done
     ChecklistTask:
       type: object
       properties:
@@ -14099,7 +13792,7 @@ components:
           type: string
           maxLength: 200
         status:
-          $ref: '#/components/schemas/ChecklistTaskStatusEnum'
+          type: string
         assigned_to:
           allOf:
           - $ref: '#/components/schemas/UserProfile'
@@ -14120,16 +13813,6 @@ components:
       - id
       - task_template
       - title
-    ChecklistTaskStatusEnum:
-      enum:
-      - todo
-      - in_progress
-      - done
-      type: string
-      description: |-
-        * `todo` - To Do
-        * `in_progress` - In Progress
-        * `done` - Done
     ChecklistTemplate:
       type: object
       properties:
@@ -14140,9 +13823,9 @@ components:
           type: string
           maxLength: 150
         type:
-          $ref: '#/components/schemas/ChecklistTemplateTypeEnum'
+          type: string
         role_responsible:
-          $ref: '#/components/schemas/RoleResponsibleEnum'
+          type: string
         task_templates:
           type: array
           items:
@@ -14159,9 +13842,9 @@ components:
           minLength: 1
           maxLength: 150
         type:
-          $ref: '#/components/schemas/ChecklistTemplateTypeEnum'
+          type: string
         role_responsible:
-          $ref: '#/components/schemas/RoleResponsibleEnum'
+          type: string
         task_templates:
           type: array
           items:
@@ -14169,14 +13852,6 @@ components:
       required:
       - name
       - type
-    ChecklistTemplateTypeEnum:
-      enum:
-      - onboarding
-      - offboarding
-      type: string
-      description: |-
-        * `onboarding` - Onboarding
-        * `offboarding` - Offboarding
     CompensationPolicy:
       type: object
       properties:
@@ -14251,20 +13926,6 @@ components:
       - cpf_level
       - effective_date
       - net_monthly
-    ConditionEnum:
-      enum:
-      - excellent
-      - good
-      - fair
-      - poor
-      - damaged
-      type: string
-      description: |-
-        * `excellent` - Excellent
-        * `good` - Good
-        * `fair` - Fair
-        * `poor` - Poor
-        * `damaged` - Damaged
     ConferenceCourseRegistrationCreateUpdate:
       type: object
       description: Writable serializer for conference / course registrations.
@@ -14278,14 +13939,8 @@ components:
           format: date
           description: Scheduled date of the conference or course
         status:
-          allOf:
-          - $ref: '#/components/schemas/Status081Enum'
-          description: |-
-            Attendance status
-
-            * `registered` - Registered
-            * `attended` - Attended
-            * `cancelled` - Cancelled
+          type: string
+          description: Attendance status
         notes:
           type: string
           description: Additional notes
@@ -14306,14 +13961,8 @@ components:
           format: date
           description: Scheduled date of the conference or course
         status:
-          allOf:
-          - $ref: '#/components/schemas/Status081Enum'
-          description: |-
-            Attendance status
-
-            * `registered` - Registered
-            * `attended` - Attended
-            * `cancelled` - Cancelled
+          type: string
+          description: Attendance status
         notes:
           type: string
           description: Additional notes
@@ -14343,14 +13992,8 @@ components:
           format: date
           description: Scheduled date of the conference or course
         status:
-          allOf:
-          - $ref: '#/components/schemas/Status081Enum'
-          description: |-
-            Attendance status
-
-            * `registered` - Registered
-            * `attended` - Attended
-            * `cancelled` - Cancelled
+          type: string
+          description: Attendance status
         status_display:
           type: string
           readOnly: true
@@ -14404,7 +14047,7 @@ components:
           type: integer
           readOnly: true
         announcement_type:
-          $ref: '#/components/schemas/AnnouncementTypeEnum'
+          type: string
         channel_name:
           type: string
           maxLength: 255
@@ -14432,7 +14075,8 @@ components:
       type: object
       properties:
         announcement_type:
-          $ref: '#/components/schemas/AnnouncementTypeEnum'
+          type: string
+          minLength: 1
         channel_name:
           type: string
           minLength: 1
@@ -14457,7 +14101,7 @@ components:
           minLength: 1
           maxLength: 255
         category:
-          $ref: '#/components/schemas/Category748Enum'
+          type: string
         description:
           type: string
           default: ''
@@ -14473,10 +14117,9 @@ components:
         allowed_roles:
           type: array
           items:
-            $ref: '#/components/schemas/AllowedRolesEnum'
+            type: string
         visibility_scope:
-          allOf:
-          - $ref: '#/components/schemas/VisibilityScopeEnum'
+          type: string
           default: roles
       required:
       - category
@@ -14494,7 +14137,7 @@ components:
         description:
           type: string
         category:
-          $ref: '#/components/schemas/Category748Enum'
+          type: string
         file_name:
           type: string
           readOnly: true
@@ -14522,7 +14165,7 @@ components:
           format: date
           nullable: true
         signature_status:
-          $ref: '#/components/schemas/SignatureStatusEnum'
+          type: string
         signed_at:
           type: string
           format: date-time
@@ -14532,7 +14175,7 @@ components:
         tags: {}
         allowed_roles: {}
         visibility_scope:
-          $ref: '#/components/schemas/VisibilityScopeEnum'
+          type: string
         current_version:
           type: string
           maxLength: 20
@@ -14563,7 +14206,7 @@ components:
         description:
           type: string
         category:
-          $ref: '#/components/schemas/Category748Enum'
+          type: string
         file_size:
           type: integer
           maximum: 9223372036854775807
@@ -14577,7 +14220,7 @@ components:
           format: date
           nullable: true
         signature_status:
-          $ref: '#/components/schemas/SignatureStatusEnum'
+          type: string
         signed_at:
           type: string
           format: date-time
@@ -14587,7 +14230,7 @@ components:
         tags: {}
         allowed_roles: {}
         visibility_scope:
-          $ref: '#/components/schemas/VisibilityScopeEnum'
+          type: string
         current_version:
           type: string
           minLength: 1
@@ -14608,8 +14251,7 @@ components:
           format: email
           maxLength: 254
         status:
-          allOf:
-          - $ref: '#/components/schemas/DocumentSignerStatusEnum'
+          type: string
           readOnly: true
         signed_at:
           type: string
@@ -14649,18 +14291,6 @@ components:
       required:
       - email
       - name
-    DocumentSignerStatusEnum:
-      enum:
-      - pending
-      - signed
-      - rejected
-      - notsent
-      type: string
-      description: |-
-        * `pending` - Pending
-        * `signed` - Signed
-        * `rejected` - Rejected
-        * `notsent` - Not Sent
     DocumentTemplateCreateUpdateRequest:
       type: object
       description: |-
@@ -14678,19 +14308,16 @@ components:
           type: string
           default: ''
         category:
-          allOf:
-          - $ref: '#/components/schemas/Category9ecEnum'
+          type: string
           default: other
         content:
           type: string
           default: ''
         visibility:
-          allOf:
-          - $ref: '#/components/schemas/VisibilityEnum'
+          type: string
           default: private
         status:
-          allOf:
-          - $ref: '#/components/schemas/Status58cEnum'
+          type: string
           default: draft
         fields:
           type: array
@@ -14713,8 +14340,7 @@ components:
           type: string
           readOnly: true
         category:
-          allOf:
-          - $ref: '#/components/schemas/Category9ecEnum'
+          type: string
           readOnly: true
         content:
           type: string
@@ -14725,12 +14351,10 @@ components:
             $ref: '#/components/schemas/TemplateField'
           readOnly: true
         visibility:
-          allOf:
-          - $ref: '#/components/schemas/VisibilityEnum'
+          type: string
           readOnly: true
         status:
-          allOf:
-          - $ref: '#/components/schemas/Status58cEnum'
+          type: string
           readOnly: true
         is_system_template:
           type: boolean
@@ -14784,8 +14408,7 @@ components:
           type: string
           readOnly: true
         category:
-          allOf:
-          - $ref: '#/components/schemas/Category9ecEnum'
+          type: string
           readOnly: true
         content:
           type: string
@@ -14796,12 +14419,10 @@ components:
             $ref: '#/components/schemas/TemplateField'
           readOnly: true
         visibility:
-          allOf:
-          - $ref: '#/components/schemas/VisibilityEnum'
+          type: string
           readOnly: true
         status:
-          allOf:
-          - $ref: '#/components/schemas/Status58cEnum'
+          type: string
           readOnly: true
         is_system_template:
           type: boolean
@@ -14929,7 +14550,7 @@ components:
           type: string
           nullable: true
         employment_status:
-          $ref: '#/components/schemas/EmploymentStatusEnum'
+          type: string
         avatar:
           type: string
           format: uri
@@ -15004,7 +14625,7 @@ components:
           type: integer
           readOnly: true
         field:
-          $ref: '#/components/schemas/FieldEnum'
+          type: string
         old_value:
           nullable: true
         new_value:
@@ -15083,7 +14704,7 @@ components:
           type: string
           nullable: true
         employment_status:
-          $ref: '#/components/schemas/EmploymentStatusEnum'
+          type: string
         avatar:
           type: string
           format: binary
@@ -15140,84 +14761,6 @@ components:
           $ref: '#/components/schemas/EmployeeTechLeadsData'
       required:
       - data
-    EmploymentStatusEnum:
-      enum:
-      - active
-      - probation
-      - on_leave
-      - inactive
-      type: string
-      description: |-
-        * `active` - Active
-        * `probation` - Probation
-        * `on_leave` - On Leave
-        * `inactive` - Inactive
-    FieldEnum:
-      enum:
-      - role
-      - salary
-      - cpf_level
-      - department
-      - manager_ids
-      - employment_status
-      - career_level
-      - start_date
-      type: string
-      description: |-
-        * `role` - Role
-        * `salary` - Salary
-        * `cpf_level` - CPF Level
-        * `department` - Department
-        * `manager_ids` - Manager IDs
-        * `employment_status` - Employment Status
-        * `career_level` - Career Level
-        * `start_date` - Start Date
-    FieldsEnum:
-      enum:
-      - id
-      - asset_id
-      - name
-      - category
-      - condition
-      - warranty_until
-      - purchase_date
-      - status
-      - serial_number
-      - model
-      - manufacturer
-      - purchase_price
-      - description
-      - created_at
-      - updated_at
-      - is_under_warranty
-      - is_available
-      type: string
-      description: |-
-        * `id` - id
-        * `asset_id` - asset_id
-        * `name` - name
-        * `category` - category
-        * `condition` - condition
-        * `warranty_until` - warranty_until
-        * `purchase_date` - purchase_date
-        * `status` - status
-        * `serial_number` - serial_number
-        * `model` - model
-        * `manufacturer` - manufacturer
-        * `purchase_price` - purchase_price
-        * `description` - description
-        * `created_at` - created_at
-        * `updated_at` - updated_at
-        * `is_under_warranty` - is_under_warranty
-        * `is_available` - is_available
-    FormatEnum:
-      enum:
-      - pdf
-      - docx
-      type: string
-      description: |-
-        * `pdf` - pdf
-        * `docx` - docx
     GoogleExchangeRequest:
       type: object
       properties:
@@ -15338,21 +14881,11 @@ components:
       required:
       - date_from
       - date_to
-    JiraMappingMutationMappingTypeEnum:
-      enum:
-      - user
-      - project
-      - issue
-      type: string
-      description: |-
-        * `user` - user
-        * `project` - project
-        * `issue` - issue
     JiraMappingMutationRequest:
       type: object
       properties:
         mapping_type:
-          $ref: '#/components/schemas/JiraMappingMutationMappingTypeEnum'
+          type: string
         id:
           type: integer
         jira_account_id:
@@ -15430,16 +14963,9 @@ components:
           readOnly: true
           description: When the listing closes for applications
         status:
-          allOf:
-          - $ref: '#/components/schemas/Status776Enum'
+          type: string
           readOnly: true
-          description: |-
-            Current status of the listing
-
-            * `draft` - Draft
-            * `open` - Open
-            * `closed` - Closed
-            * `cancelled` - Cancelled
+          description: Current status of the listing
         status_display:
           type: string
           readOnly: true
@@ -15515,16 +15041,9 @@ components:
           readOnly: true
           description: When the listing closes for applications
         status:
-          allOf:
-          - $ref: '#/components/schemas/Status776Enum'
+          type: string
           readOnly: true
-          description: |-
-            Current status of the listing
-
-            * `draft` - Draft
-            * `open` - Open
-            * `closed` - Closed
-            * `cancelled` - Cancelled
+          description: Current status of the listing
         status_display:
           type: string
           readOnly: true
@@ -15574,15 +15093,8 @@ components:
           format: date-time
           description: When the listing closes for applications
         status:
-          allOf:
-          - $ref: '#/components/schemas/Status776Enum'
-          description: |-
-            Current status of the listing
-
-            * `draft` - Draft
-            * `open` - Open
-            * `closed` - Closed
-            * `cancelled` - Cancelled
+          type: string
+          description: Current status of the listing
       required:
       - close_at
       - open_at
@@ -15611,15 +15123,8 @@ components:
           format: date-time
           description: When the listing closes for applications
         status:
-          allOf:
-          - $ref: '#/components/schemas/Status776Enum'
-          description: |-
-            Current status of the listing
-
-            * `draft` - Draft
-            * `open` - Open
-            * `closed` - Closed
-            * `cancelled` - Cancelled
+          type: string
+          description: Current status of the listing
       required:
       - close_at
       - open_at
@@ -15638,7 +15143,7 @@ components:
           type: string
           readOnly: true
         leave_type:
-          $ref: '#/components/schemas/LeaveTypeEnum'
+          type: string
         leave_type_display:
           type: string
           readOnly: true
@@ -15963,7 +15468,7 @@ components:
           type: string
           readOnly: true
         leave_type:
-          $ref: '#/components/schemas/LeaveTypeEnum'
+          type: string
         leave_type_display:
           type: string
           readOnly: true
@@ -16017,8 +15522,7 @@ components:
           type: string
           readOnly: true
         leave_type:
-          allOf:
-          - $ref: '#/components/schemas/LeaveTypeEnum'
+          type: string
           readOnly: true
         leave_type_display:
           type: string
@@ -16083,8 +15587,7 @@ components:
           type: string
           readOnly: true
         leave_type:
-          allOf:
-          - $ref: '#/components/schemas/LeaveTypeEnum'
+          type: string
           readOnly: true
         leave_type_display:
           type: string
@@ -16153,7 +15656,7 @@ components:
           type: integer
           readOnly: true
         leave_type:
-          $ref: '#/components/schemas/LeaveTypeEnum'
+          type: string
         leave_type_display:
           type: string
           readOnly: true
@@ -16208,7 +15711,7 @@ components:
       description: Serializer for creating leave requests with validation.
       properties:
         leave_type:
-          $ref: '#/components/schemas/LeaveTypeEnum'
+          type: string
         start_date:
           type: string
           format: date
@@ -16230,7 +15733,7 @@ components:
       description: Serializer for creating leave requests with validation.
       properties:
         leave_type:
-          $ref: '#/components/schemas/LeaveTypeEnum'
+          type: string
         start_date:
           type: string
           format: date
@@ -16265,7 +15768,7 @@ components:
           type: string
           readOnly: true
         leave_type:
-          $ref: '#/components/schemas/LeaveTypeEnum'
+          type: string
         leave_type_display:
           type: string
           readOnly: true
@@ -16281,7 +15784,7 @@ components:
         reason:
           type: string
         status:
-          $ref: '#/components/schemas/Status5c0Enum'
+          type: string
         status_display:
           type: string
           readOnly: true
@@ -16382,7 +15885,7 @@ components:
           type: string
           readOnly: true
         leave_type:
-          $ref: '#/components/schemas/LeaveTypeEnum'
+          type: string
         leave_type_display:
           type: string
           readOnly: true
@@ -16398,7 +15901,7 @@ components:
         reason:
           type: string
         status:
-          $ref: '#/components/schemas/Status5c0Enum'
+          type: string
         status_display:
           type: string
           readOnly: true
@@ -16424,7 +15927,7 @@ components:
       description: Minimal serializer for listing leave requests.
       properties:
         leave_type:
-          $ref: '#/components/schemas/LeaveTypeEnum'
+          type: string
         start_date:
           type: string
           format: date
@@ -16435,7 +15938,7 @@ components:
           type: string
           minLength: 1
         status:
-          $ref: '#/components/schemas/Status5c0Enum'
+          type: string
       required:
       - end_date
       - leave_type
@@ -16468,26 +15971,6 @@ components:
       - avatar_url
       - id
       - name
-    LeaveTypeEnum:
-      enum:
-      - vacation
-      - sick
-      - wfh
-      - personal
-      - maternity
-      - paternity
-      - bereavement
-      - unpaid
-      type: string
-      description: |-
-        * `vacation` - Vacation
-        * `sick` - Sick Leave
-        * `wfh` - Work From Home
-        * `personal` - Personal
-        * `maternity` - Maternity
-        * `paternity` - Paternity
-        * `bereavement` - Bereavement
-        * `unpaid` - Unpaid Leave
     LoginRequest:
       type: object
       properties:
@@ -16502,40 +15985,6 @@ components:
       required:
       - email
       - password
-    MaintenanceTypeEnum:
-      enum:
-      - preventive
-      - repair
-      - inspection
-      - warranty
-      - replacement
-      - other
-      type: string
-      description: |-
-        * `preventive` - Preventive
-        * `repair` - Repair
-        * `inspection` - Inspection
-        * `warranty` - Warranty
-        * `replacement` - Replacement
-        * `other` - Other
-    ModuleEnum:
-      enum:
-      - documents
-      - vacations
-      - reviews
-      - onboarding
-      - announcements
-      - training
-      - general
-      type: string
-      description: |-
-        * `documents` - Documents
-        * `vacations` - Vacations
-        * `reviews` - Reviews
-        * `onboarding` - Onboarding
-        * `announcements` - Announcements
-        * `training` - Training
-        * `general` - General
     Notification:
       type: object
       properties:
@@ -16543,12 +15992,10 @@ components:
           type: integer
           readOnly: true
         module:
-          allOf:
-          - $ref: '#/components/schemas/ModuleEnum'
+          type: string
           readOnly: true
         type:
-          allOf:
-          - $ref: '#/components/schemas/NotificationTypeEnum'
+          type: string
           readOnly: true
         title:
           type: string
@@ -16584,21 +16031,6 @@ components:
       - read_at
       - title
       - type
-    NotificationTypeEnum:
-      enum:
-      - info
-      - success
-      - warning
-      - alert
-      type: string
-      description: |-
-        * `info` - Info
-        * `success` - Success
-        * `warning` - Warning
-        * `alert` - Alert
-    NullEnum:
-      enum:
-      - null
     OrgChartDepartment:
       type: object
       properties:
@@ -16776,20 +16208,6 @@ components:
       required:
       - id
       - name
-    OutcomeEnum:
-      enum:
-      - exceeds_expectations
-      - meets_expectations
-      - partially_meets
-      - needs_improvement
-      - unsatisfactory
-      type: string
-      description: |-
-        * `exceeds_expectations` - Exceeds Expectations
-        * `meets_expectations` - Meets Expectations
-        * `partially_meets` - Partially Meets Expectations
-        * `needs_improvement` - Needs Improvement
-        * `unsatisfactory` - Unsatisfactory
     PaginatedDocumentListList:
       type: object
       required:
@@ -16917,9 +16335,7 @@ components:
           minLength: 1
           description: Rich text HTML content
         type:
-          oneOf:
-          - $ref: '#/components/schemas/TypeFe8Enum'
-          - $ref: '#/components/schemas/BlankEnum'
+          type: string
         scheduled_at:
           type: string
           format: date-time
@@ -16937,17 +16353,8 @@ components:
         the new status is terminal (accepted/rejected).
       properties:
         status:
-          allOf:
-          - $ref: '#/components/schemas/StatusA44Enum'
-          description: |-
-            Current status of the application
-
-            * `submitted` - Submitted
-            * `under_review` - Under Review
-            * `shortlisted` - Shortlisted
-            * `rejected` - Rejected
-            * `withdrawn` - Withdrawn
-            * `accepted` - Accepted
+          type: string
+          description: Current status of the application
         decision_note:
           type: string
           maxLength: 4000
@@ -16966,30 +16373,11 @@ components:
           description: Asset name/type
           maxLength: 200
         category:
-          allOf:
-          - $ref: '#/components/schemas/Category59fEnum'
-          description: |-
-            Asset category
-
-            * `laptops` - Laptops
-            * `phones` - Phones
-            * `monitors` - Monitors
-            * `headphones` - Headphones
-            * `cameras` - Cameras
-            * `vehicles` - Vehicles
-            * `furniture` - Furniture
-            * `other` - Other
+          type: string
+          description: Asset category
         condition:
-          allOf:
-          - $ref: '#/components/schemas/ConditionEnum'
-          description: |-
-            Current condition of the asset
-
-            * `excellent` - Excellent
-            * `good` - Good
-            * `fair` - Fair
-            * `poor` - Poor
-            * `damaged` - Damaged
+          type: string
+          description: Current condition of the asset
         warranty_until:
           type: string
           format: date
@@ -17000,17 +16388,8 @@ components:
           format: date
           description: Date when the asset was purchased
         status:
-          allOf:
-          - $ref: '#/components/schemas/StatusEnum'
-          description: |-
-            Current status of the asset
-
-            * `active` - Active
-            * `maintenance` - Maintenance
-            * `retired` - Retired
-            * `lost` - Lost
-            * `returned` - Returned
-            * `damaged` - Damaged
+          type: string
+          description: Current status of the asset
         serial_number:
           type: string
           nullable: true
@@ -17040,7 +16419,7 @@ components:
       type: object
       properties:
         benefit_type:
-          $ref: '#/components/schemas/BenefitTypeEnum'
+          type: string
         name:
           type: string
           minLength: 1
@@ -17070,7 +16449,7 @@ components:
         user_profile:
           type: integer
         bonus_type:
-          $ref: '#/components/schemas/BonusTypeEnum'
+          type: string
         amount:
           type: string
           format: decimal
@@ -17105,14 +16484,8 @@ components:
           format: date
           description: Date the new level took effect
         source:
-          allOf:
-          - $ref: '#/components/schemas/CPFChangeSourceEnum'
-          description: |-
-            What triggered the level change
-
-            * `manual` - Manual
-            * `performance_review` - Performance Review
-            * `promotion` - Promotion
+          type: string
+          description: What triggered the level change
         cpf_score:
           type: integer
           maximum: 100
@@ -17165,7 +16538,7 @@ components:
           minLength: 1
           maxLength: 200
         status:
-          $ref: '#/components/schemas/ChecklistTaskStatusEnum'
+          type: string
         due_date:
           type: string
           format: date
@@ -17178,9 +16551,9 @@ components:
           minLength: 1
           maxLength: 150
         type:
-          $ref: '#/components/schemas/ChecklistTemplateTypeEnum'
+          type: string
         role_responsible:
-          $ref: '#/components/schemas/RoleResponsibleEnum'
+          type: string
         task_templates:
           type: array
           items:
@@ -17219,14 +16592,8 @@ components:
           format: date
           description: Scheduled date of the conference or course
         status:
-          allOf:
-          - $ref: '#/components/schemas/Status081Enum'
-          description: |-
-            Attendance status
-
-            * `registered` - Registered
-            * `attended` - Attended
-            * `cancelled` - Cancelled
+          type: string
+          description: Attendance status
         notes:
           type: string
           description: Additional notes
@@ -17234,7 +16601,8 @@ components:
       type: object
       properties:
         announcement_type:
-          $ref: '#/components/schemas/AnnouncementTypeEnum'
+          type: string
+          minLength: 1
         channel_name:
           type: string
           minLength: 1
@@ -17251,7 +16619,7 @@ components:
         allowed_roles:
           type: array
           items:
-            $ref: '#/components/schemas/AllowedRolesEnum'
+            type: string
     PatchedDocumentTemplatePartialUpdateRequest:
       type: object
       description: PATCH variant — all top-level fields are optional.
@@ -17264,19 +16632,16 @@ components:
           type: string
           default: ''
         category:
-          allOf:
-          - $ref: '#/components/schemas/Category9ecEnum'
+          type: string
           default: other
         content:
           type: string
           default: ''
         visibility:
-          allOf:
-          - $ref: '#/components/schemas/VisibilityEnum'
+          type: string
           default: private
         status:
-          allOf:
-          - $ref: '#/components/schemas/Status58cEnum'
+          type: string
           default: draft
         fields:
           type: array
@@ -17288,10 +16653,9 @@ components:
         allowed_roles:
           type: array
           items:
-            $ref: '#/components/schemas/AllowedRolesEnum'
+            type: string
         visibility_scope:
-          allOf:
-          - $ref: '#/components/schemas/VisibilityScopeEnum'
+          type: string
           default: roles
     PatchedEmployeeProfileRequest:
       type: object
@@ -17346,7 +16710,7 @@ components:
           type: string
           nullable: true
         employment_status:
-          $ref: '#/components/schemas/EmploymentStatusEnum'
+          type: string
         avatar:
           type: string
           format: binary
@@ -17405,7 +16769,7 @@ components:
       type: object
       properties:
         mapping_type:
-          $ref: '#/components/schemas/JiraMappingMutationMappingTypeEnum'
+          type: string
         id:
           type: integer
         jira_account_id:
@@ -17452,21 +16816,14 @@ components:
           format: date-time
           description: When the listing closes for applications
         status:
-          allOf:
-          - $ref: '#/components/schemas/Status776Enum'
-          description: |-
-            Current status of the listing
-
-            * `draft` - Draft
-            * `open` - Open
-            * `closed` - Closed
-            * `cancelled` - Cancelled
+          type: string
+          description: Current status of the listing
     PatchedLeaveRequestListRequest:
       type: object
       description: Minimal serializer for listing leave requests.
       properties:
         leave_type:
-          $ref: '#/components/schemas/LeaveTypeEnum'
+          type: string
         start_date:
           type: string
           format: date
@@ -17477,7 +16834,7 @@ components:
           type: string
           minLength: 1
         status:
-          $ref: '#/components/schemas/Status5c0Enum'
+          type: string
     PatchedPeerSessionCreateUpdateRequest:
       type: object
       description: Serializer used for creating/updating peer sessions.
@@ -17493,16 +16850,14 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -17526,7 +16881,7 @@ components:
           format: date
           nullable: true
         status:
-          $ref: '#/components/schemas/PerformanceReviewActionPointStatusEnum'
+          type: string
         progress:
           type: integer
           maximum: 100
@@ -17544,7 +16899,7 @@ components:
           type: integer
           nullable: true
         review_type:
-          $ref: '#/components/schemas/ReviewTypeEnum'
+          type: string
         title:
           type: string
           maxLength: 200
@@ -17566,11 +16921,9 @@ components:
           nullable: true
           description: Optional follow-up review date for the next cycle.
         status:
-          $ref: '#/components/schemas/StatusC59Enum'
+          type: string
         outcome:
-          oneOf:
-          - $ref: '#/components/schemas/OutcomeEnum'
-          - $ref: '#/components/schemas/BlankEnum'
+          type: string
         overall_rating:
           type: integer
           maximum: 5
@@ -17613,7 +16966,7 @@ components:
       type: object
       properties:
         visibility:
-          $ref: '#/components/schemas/VisibilityEnum'
+          type: string
         content:
           type: string
           minLength: 1
@@ -17646,7 +16999,7 @@ components:
           format: date
           nullable: true
         status:
-          $ref: '#/components/schemas/ProjectAssignmentStatusEnum'
+          type: string
         notes:
           type: string
           nullable: true
@@ -17669,11 +17022,11 @@ components:
           nullable: true
           maxLength: 200
         project_type:
-          $ref: '#/components/schemas/ProjectTypeEnum'
+          type: string
         status:
-          $ref: '#/components/schemas/StatusF9aEnum'
+          type: string
         stage:
-          $ref: '#/components/schemas/StageEnum'
+          type: string
         stage_note:
           type: string
         start_date:
@@ -17734,63 +17087,21 @@ components:
           format: date
           description: Date when the replacement occurred
         asset_status_before:
+          type: string
           nullable: true
-          description: |-
-            Asset status before the replacement or maintenance event
-
-            * `active` - Active
-            * `maintenance` - Maintenance
-            * `retired` - Retired
-            * `lost` - Lost
-            * `returned` - Returned
-            * `damaged` - Damaged
-          oneOf:
-          - $ref: '#/components/schemas/StatusEnum'
-          - $ref: '#/components/schemas/BlankEnum'
-          - $ref: '#/components/schemas/NullEnum'
+          description: Asset status before the replacement or maintenance event
         asset_status_after:
+          type: string
           nullable: true
-          description: |-
-            Asset status after the replacement or maintenance event
-
-            * `active` - Active
-            * `maintenance` - Maintenance
-            * `retired` - Retired
-            * `lost` - Lost
-            * `returned` - Returned
-            * `damaged` - Damaged
-          oneOf:
-          - $ref: '#/components/schemas/StatusEnum'
-          - $ref: '#/components/schemas/BlankEnum'
-          - $ref: '#/components/schemas/NullEnum'
+          description: Asset status after the replacement or maintenance event
         asset_condition_before:
+          type: string
           nullable: true
-          description: |-
-            Asset condition before the replacement or maintenance event
-
-            * `excellent` - Excellent
-            * `good` - Good
-            * `fair` - Fair
-            * `poor` - Poor
-            * `damaged` - Damaged
-          oneOf:
-          - $ref: '#/components/schemas/ConditionEnum'
-          - $ref: '#/components/schemas/BlankEnum'
-          - $ref: '#/components/schemas/NullEnum'
+          description: Asset condition before the replacement or maintenance event
         asset_condition_after:
+          type: string
           nullable: true
-          description: |-
-            Asset condition after the replacement or maintenance event
-
-            * `excellent` - Excellent
-            * `good` - Good
-            * `fair` - Fair
-            * `poor` - Poor
-            * `damaged` - Damaged
-          oneOf:
-          - $ref: '#/components/schemas/ConditionEnum'
-          - $ref: '#/components/schemas/BlankEnum'
-          - $ref: '#/components/schemas/NullEnum'
+          description: Asset condition after the replacement or maintenance event
         replacement_asset:
           type: integer
           nullable: true
@@ -17817,17 +17128,8 @@ components:
           minLength: 1
           description: Reason maintenance is needed
         maintenance_type:
-          allOf:
-          - $ref: '#/components/schemas/MaintenanceTypeEnum'
-          description: |-
-            Type of scheduled maintenance
-
-            * `preventive` - Preventive
-            * `repair` - Repair
-            * `inspection` - Inspection
-            * `warranty` - Warranty
-            * `replacement` - Replacement
-            * `other` - Other
+          type: string
+          description: Type of scheduled maintenance
         owner:
           type: integer
           nullable: true
@@ -17855,14 +17157,9 @@ components:
         is_anonymous:
           type: boolean
         status:
-          allOf:
-          - $ref: '#/components/schemas/SurveyStatusEnum'
-          description: |-
-            Lifecycle state. Closed surveys keep responses but reject new ones.
-
-            * `draft` - Draft
-            * `active` - Active
-            * `closed` - Closed
+          type: string
+          description: Lifecycle state. Closed surveys keep responses but reject new
+            ones.
         end_date:
           type: string
           format: date
@@ -17893,7 +17190,7 @@ components:
       type: object
       properties:
         mapping_type:
-          $ref: '#/components/schemas/TempoMappingMutationMappingTypeEnum'
+          type: string
         id:
           type: integer
         tempo_user_id:
@@ -17950,11 +17247,10 @@ components:
         notes:
           type: string
         source_type:
-          allOf:
-          - $ref: '#/components/schemas/TimeEntrySourceTypeEnum'
+          type: string
           default: manual
         status:
-          $ref: '#/components/schemas/TimeEntryStatusEnum'
+          type: string
         source_external_id:
           type: string
           default: ''
@@ -17987,9 +17283,8 @@ components:
           type: integer
         fiscal_year:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           description: Fiscal year for which budget is allocated
         allocated_budget:
           type: string
@@ -18015,17 +17310,8 @@ components:
           format: date
           description: Date when training occurred
         training_type:
-          allOf:
-          - $ref: '#/components/schemas/TrainingTypeEnum'
-          description: |-
-            Type of training activity
-
-            * `course` - Course
-            * `conference` - Conference
-            * `workshop` - Workshop
-            * `webinar` - Webinar
-            * `certification` - Certification
-            * `other` - Other
+          type: string
+          description: Type of training activity
         cost:
           type: string
           format: decimal
@@ -18075,16 +17361,14 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -18109,16 +17393,14 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -18151,16 +17433,14 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -18206,16 +17486,14 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -18265,7 +17543,7 @@ components:
           format: date
           nullable: true
         status:
-          $ref: '#/components/schemas/PerformanceReviewActionPointStatusEnum'
+          type: string
         progress:
           type: integer
           maximum: 100
@@ -18316,7 +17594,7 @@ components:
           format: date
           nullable: true
         status:
-          $ref: '#/components/schemas/PerformanceReviewActionPointStatusEnum'
+          type: string
         progress:
           type: integer
           maximum: 100
@@ -18327,18 +17605,6 @@ components:
           nullable: true
       required:
       - title
-    PerformanceReviewActionPointStatusEnum:
-      enum:
-      - pending
-      - in_progress
-      - completed
-      - cancelled
-      type: string
-      description: |-
-        * `pending` - Pending
-        * `in_progress` - In Progress
-        * `completed` - Completed
-        * `cancelled` - Cancelled
     PerformanceReviewAttachment:
       type: object
       properties:
@@ -18403,7 +17669,7 @@ components:
           type: integer
           nullable: true
         review_type:
-          $ref: '#/components/schemas/ReviewTypeEnum'
+          type: string
         title:
           type: string
           maxLength: 200
@@ -18425,11 +17691,9 @@ components:
           nullable: true
           description: Optional follow-up review date for the next cycle.
         status:
-          $ref: '#/components/schemas/StatusC59Enum'
+          type: string
         outcome:
-          oneOf:
-          - $ref: '#/components/schemas/OutcomeEnum'
-          - $ref: '#/components/schemas/BlankEnum'
+          type: string
         overall_rating:
           type: integer
           maximum: 5
@@ -18480,7 +17744,7 @@ components:
           type: integer
           nullable: true
         review_type:
-          $ref: '#/components/schemas/ReviewTypeEnum'
+          type: string
         title:
           type: string
           maxLength: 200
@@ -18502,11 +17766,9 @@ components:
           nullable: true
           description: Optional follow-up review date for the next cycle.
         status:
-          $ref: '#/components/schemas/StatusC59Enum'
+          type: string
         outcome:
-          oneOf:
-          - $ref: '#/components/schemas/OutcomeEnum'
-          - $ref: '#/components/schemas/BlankEnum'
+          type: string
         overall_rating:
           type: integer
           maximum: 5
@@ -18572,7 +17834,7 @@ components:
           readOnly: true
           nullable: true
         review_type:
-          $ref: '#/components/schemas/ReviewTypeEnum'
+          type: string
         review_type_display:
           type: string
           readOnly: true
@@ -18584,7 +17846,7 @@ components:
           format: date
           description: Date on which the formal performance review is due.
         status:
-          $ref: '#/components/schemas/StatusC59Enum'
+          type: string
         status_display:
           type: string
           readOnly: true
@@ -18595,9 +17857,7 @@ components:
           nullable: true
           description: Overall review rating on a 1-5 scale.
         outcome:
-          oneOf:
-          - $ref: '#/components/schemas/OutcomeEnum'
-          - $ref: '#/components/schemas/BlankEnum'
+          type: string
         progress:
           type: string
           readOnly: true
@@ -18708,8 +17968,7 @@ components:
           type: integer
           readOnly: true
         event_type:
-          allOf:
-          - $ref: '#/components/schemas/PerformanceReviewHistoryEventEventTypeEnum'
+          type: string
           readOnly: true
         event_type_display:
           type: string
@@ -18740,38 +17999,6 @@ components:
       - event_type_display
       - id
       - metadata
-    PerformanceReviewHistoryEventEventTypeEnum:
-      enum:
-      - created
-      - updated
-      - scheduled
-      - rescheduled
-      - status_changed
-      - outcome_updated
-      - note_added
-      - note_updated
-      - action_point_added
-      - action_point_updated
-      - attachment_added
-      - attachment_removed
-      - reminder_generated
-      - reminder_read
-      type: string
-      description: |-
-        * `created` - Created
-        * `updated` - Updated
-        * `scheduled` - Scheduled
-        * `rescheduled` - Rescheduled
-        * `status_changed` - Status Changed
-        * `outcome_updated` - Outcome Updated
-        * `note_added` - Note Added
-        * `note_updated` - Note Updated
-        * `action_point_added` - Action Point Added
-        * `action_point_updated` - Action Point Updated
-        * `attachment_added` - Attachment Added
-        * `attachment_removed` - Attachment Removed
-        * `reminder_generated` - Reminder Generated
-        * `reminder_read` - Reminder Read
     PerformanceReviewList:
       type: object
       properties:
@@ -18796,7 +18023,7 @@ components:
           readOnly: true
           nullable: true
         review_type:
-          $ref: '#/components/schemas/ReviewTypeEnum'
+          type: string
         review_type_display:
           type: string
           readOnly: true
@@ -18808,7 +18035,7 @@ components:
           format: date
           description: Date on which the formal performance review is due.
         status:
-          $ref: '#/components/schemas/StatusC59Enum'
+          type: string
         status_display:
           type: string
           readOnly: true
@@ -18819,9 +18046,7 @@ components:
           nullable: true
           description: Overall review rating on a 1-5 scale.
         outcome:
-          oneOf:
-          - $ref: '#/components/schemas/OutcomeEnum'
-          - $ref: '#/components/schemas/BlankEnum'
+          type: string
         progress:
           type: string
           readOnly: true
@@ -18866,7 +18091,7 @@ components:
           readOnly: true
           nullable: true
         visibility:
-          $ref: '#/components/schemas/VisibilityEnum'
+          type: string
         content:
           type: string
         edited_by_id:
@@ -18898,7 +18123,7 @@ components:
       type: object
       properties:
         visibility:
-          $ref: '#/components/schemas/VisibilityEnum'
+          type: string
         content:
           type: string
           minLength: 1
@@ -18932,8 +18157,7 @@ components:
           type: string
           readOnly: true
         reminder_type:
-          allOf:
-          - $ref: '#/components/schemas/ReminderTypeEnum'
+          type: string
           readOnly: true
         reminder_type_display:
           type: string
@@ -19024,7 +18248,7 @@ components:
           format: date
           nullable: true
         status:
-          $ref: '#/components/schemas/ProjectAssignmentStatusEnum'
+          type: string
         notes:
           type: string
           nullable: true
@@ -19074,23 +18298,13 @@ components:
           format: date
           nullable: true
         status:
-          $ref: '#/components/schemas/ProjectAssignmentStatusEnum'
+          type: string
         notes:
           type: string
           nullable: true
       required:
       - project_id
       - start_date
-    ProjectAssignmentStatusEnum:
-      enum:
-      - active
-      - completed
-      - on_hold
-      type: string
-      description: |-
-        * `active` - Active
-        * `completed` - Completed
-        * `on_hold` - On Hold
     ProjectDetail:
       type: object
       properties:
@@ -19112,11 +18326,11 @@ components:
           nullable: true
           maxLength: 200
         project_type:
-          $ref: '#/components/schemas/ProjectTypeEnum'
+          type: string
         status:
-          $ref: '#/components/schemas/StatusF9aEnum'
+          type: string
         stage:
-          $ref: '#/components/schemas/StageEnum'
+          type: string
         stage_note:
           type: string
         start_date:
@@ -19176,11 +18390,11 @@ components:
           nullable: true
           maxLength: 200
         project_type:
-          $ref: '#/components/schemas/ProjectTypeEnum'
+          type: string
         status:
-          $ref: '#/components/schemas/StatusF9aEnum'
+          type: string
         stage:
-          $ref: '#/components/schemas/StageEnum'
+          type: string
         stage_note:
           type: string
         start_date:
@@ -19234,11 +18448,11 @@ components:
           nullable: true
           maxLength: 200
         project_type:
-          $ref: '#/components/schemas/ProjectTypeEnum'
+          type: string
         status:
-          $ref: '#/components/schemas/StatusF9aEnum'
+          type: string
         stage:
-          $ref: '#/components/schemas/StageEnum'
+          type: string
         stage_note:
           type: string
         start_date:
@@ -19254,14 +18468,6 @@ components:
           nullable: true
       required:
       - name
-    ProjectTypeEnum:
-      enum:
-      - client
-      - internal
-      type: string
-      description: |-
-        * `client` - Client
-        * `internal` - Internal
     PromotionHistory:
       type: object
       description: Read serialiser for a promotion history record.
@@ -19422,15 +18628,8 @@ components:
           nullable: true
           description: Null if submitted anonymously.
         category:
-          allOf:
-          - $ref: '#/components/schemas/PulseCheckCategoryEnum'
-          description: |-
-            Which dimension the rating applies to.
-
-            * `overall` - Overall Satisfaction
-            * `workload` - Workload Balance
-            * `management` - Management Support
-            * `culture` - Team Culture
+          type: string
+          description: Which dimension the rating applies to.
         value:
           type: integer
           maximum: 5
@@ -19445,32 +18644,13 @@ components:
       - employee
       - id
       - value
-    PulseCheckCategoryEnum:
-      enum:
-      - overall
-      - workload
-      - management
-      - culture
-      type: string
-      description: |-
-        * `overall` - Overall Satisfaction
-        * `workload` - Workload Balance
-        * `management` - Management Support
-        * `culture` - Team Culture
     PulseCheckRequest:
       type: object
       description: Single-tap sentiment submission.
       properties:
         category:
-          allOf:
-          - $ref: '#/components/schemas/PulseCheckCategoryEnum'
-          description: |-
-            Which dimension the rating applies to.
-
-            * `overall` - Overall Satisfaction
-            * `workload` - Workload Balance
-            * `management` - Management Support
-            * `culture` - Team Culture
+          type: string
+          description: Which dimension the rating applies to.
         value:
           type: integer
           maximum: 5
@@ -19487,12 +18667,11 @@ components:
         text:
           type: string
         type:
-          $ref: '#/components/schemas/QuestionTypeEnum'
+          type: string
         order:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
         options:
           description: List of option strings for choice questions; ignored otherwise.
         required:
@@ -19510,12 +18689,11 @@ components:
           type: string
           minLength: 1
         type:
-          $ref: '#/components/schemas/QuestionTypeEnum'
+          type: string
         order:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
         options:
           description: List of option strings for choice questions; ignored otherwise.
         required:
@@ -19523,16 +18701,6 @@ components:
           description: If true, respondents must provide a non-empty answer.
       required:
       - text
-    QuestionTypeEnum:
-      enum:
-      - text
-      - choice
-      - scale
-      type: string
-      description: |-
-        * `text` - Text
-        * `choice` - Choice
-        * `scale` - Scale
     RegisterRequest:
       type: object
       properties:
@@ -19576,16 +18744,6 @@ components:
       - password
       - password_confirm
       - username
-    ReminderTypeEnum:
-      enum:
-      - upcoming
-      - due_today
-      - overdue
-      type: string
-      description: |-
-        * `upcoming` - Upcoming
-        * `due_today` - Due Today
-        * `overdue` - Overdue
     ReplacementLog:
       type: object
       description: Serializer for ReplacementLog model
@@ -19604,63 +18762,21 @@ components:
           format: date
           description: Date when the replacement occurred
         asset_status_before:
+          type: string
           nullable: true
-          description: |-
-            Asset status before the replacement or maintenance event
-
-            * `active` - Active
-            * `maintenance` - Maintenance
-            * `retired` - Retired
-            * `lost` - Lost
-            * `returned` - Returned
-            * `damaged` - Damaged
-          oneOf:
-          - $ref: '#/components/schemas/StatusEnum'
-          - $ref: '#/components/schemas/BlankEnum'
-          - $ref: '#/components/schemas/NullEnum'
+          description: Asset status before the replacement or maintenance event
         asset_status_after:
+          type: string
           nullable: true
-          description: |-
-            Asset status after the replacement or maintenance event
-
-            * `active` - Active
-            * `maintenance` - Maintenance
-            * `retired` - Retired
-            * `lost` - Lost
-            * `returned` - Returned
-            * `damaged` - Damaged
-          oneOf:
-          - $ref: '#/components/schemas/StatusEnum'
-          - $ref: '#/components/schemas/BlankEnum'
-          - $ref: '#/components/schemas/NullEnum'
+          description: Asset status after the replacement or maintenance event
         asset_condition_before:
+          type: string
           nullable: true
-          description: |-
-            Asset condition before the replacement or maintenance event
-
-            * `excellent` - Excellent
-            * `good` - Good
-            * `fair` - Fair
-            * `poor` - Poor
-            * `damaged` - Damaged
-          oneOf:
-          - $ref: '#/components/schemas/ConditionEnum'
-          - $ref: '#/components/schemas/BlankEnum'
-          - $ref: '#/components/schemas/NullEnum'
+          description: Asset condition before the replacement or maintenance event
         asset_condition_after:
+          type: string
           nullable: true
-          description: |-
-            Asset condition after the replacement or maintenance event
-
-            * `excellent` - Excellent
-            * `good` - Good
-            * `fair` - Fair
-            * `poor` - Poor
-            * `damaged` - Damaged
-          oneOf:
-          - $ref: '#/components/schemas/ConditionEnum'
-          - $ref: '#/components/schemas/BlankEnum'
-          - $ref: '#/components/schemas/NullEnum'
+          description: Asset condition after the replacement or maintenance event
         replaced_by:
           type: integer
           readOnly: true
@@ -19715,63 +18831,21 @@ components:
           format: date
           description: Date when the replacement occurred
         asset_status_before:
+          type: string
           nullable: true
-          description: |-
-            Asset status before the replacement or maintenance event
-
-            * `active` - Active
-            * `maintenance` - Maintenance
-            * `retired` - Retired
-            * `lost` - Lost
-            * `returned` - Returned
-            * `damaged` - Damaged
-          oneOf:
-          - $ref: '#/components/schemas/StatusEnum'
-          - $ref: '#/components/schemas/BlankEnum'
-          - $ref: '#/components/schemas/NullEnum'
+          description: Asset status before the replacement or maintenance event
         asset_status_after:
+          type: string
           nullable: true
-          description: |-
-            Asset status after the replacement or maintenance event
-
-            * `active` - Active
-            * `maintenance` - Maintenance
-            * `retired` - Retired
-            * `lost` - Lost
-            * `returned` - Returned
-            * `damaged` - Damaged
-          oneOf:
-          - $ref: '#/components/schemas/StatusEnum'
-          - $ref: '#/components/schemas/BlankEnum'
-          - $ref: '#/components/schemas/NullEnum'
+          description: Asset status after the replacement or maintenance event
         asset_condition_before:
+          type: string
           nullable: true
-          description: |-
-            Asset condition before the replacement or maintenance event
-
-            * `excellent` - Excellent
-            * `good` - Good
-            * `fair` - Fair
-            * `poor` - Poor
-            * `damaged` - Damaged
-          oneOf:
-          - $ref: '#/components/schemas/ConditionEnum'
-          - $ref: '#/components/schemas/BlankEnum'
-          - $ref: '#/components/schemas/NullEnum'
+          description: Asset condition before the replacement or maintenance event
         asset_condition_after:
+          type: string
           nullable: true
-          description: |-
-            Asset condition after the replacement or maintenance event
-
-            * `excellent` - Excellent
-            * `good` - Good
-            * `fair` - Fair
-            * `poor` - Poor
-            * `damaged` - Damaged
-          oneOf:
-          - $ref: '#/components/schemas/ConditionEnum'
-          - $ref: '#/components/schemas/BlankEnum'
-          - $ref: '#/components/schemas/NullEnum'
+          description: Asset condition after the replacement or maintenance event
         replacement_asset:
           type: integer
           nullable: true
@@ -19802,63 +18876,21 @@ components:
           format: date
           description: Date when the replacement occurred
         asset_status_before:
+          type: string
           nullable: true
-          description: |-
-            Asset status before the replacement or maintenance event
-
-            * `active` - Active
-            * `maintenance` - Maintenance
-            * `retired` - Retired
-            * `lost` - Lost
-            * `returned` - Returned
-            * `damaged` - Damaged
-          oneOf:
-          - $ref: '#/components/schemas/StatusEnum'
-          - $ref: '#/components/schemas/BlankEnum'
-          - $ref: '#/components/schemas/NullEnum'
+          description: Asset status before the replacement or maintenance event
         asset_status_after:
+          type: string
           nullable: true
-          description: |-
-            Asset status after the replacement or maintenance event
-
-            * `active` - Active
-            * `maintenance` - Maintenance
-            * `retired` - Retired
-            * `lost` - Lost
-            * `returned` - Returned
-            * `damaged` - Damaged
-          oneOf:
-          - $ref: '#/components/schemas/StatusEnum'
-          - $ref: '#/components/schemas/BlankEnum'
-          - $ref: '#/components/schemas/NullEnum'
+          description: Asset status after the replacement or maintenance event
         asset_condition_before:
+          type: string
           nullable: true
-          description: |-
-            Asset condition before the replacement or maintenance event
-
-            * `excellent` - Excellent
-            * `good` - Good
-            * `fair` - Fair
-            * `poor` - Poor
-            * `damaged` - Damaged
-          oneOf:
-          - $ref: '#/components/schemas/ConditionEnum'
-          - $ref: '#/components/schemas/BlankEnum'
-          - $ref: '#/components/schemas/NullEnum'
+          description: Asset condition before the replacement or maintenance event
         asset_condition_after:
+          type: string
           nullable: true
-          description: |-
-            Asset condition after the replacement or maintenance event
-
-            * `excellent` - Excellent
-            * `good` - Good
-            * `fair` - Fair
-            * `poor` - Poor
-            * `damaged` - Damaged
-          oneOf:
-          - $ref: '#/components/schemas/ConditionEnum'
-          - $ref: '#/components/schemas/BlankEnum'
-          - $ref: '#/components/schemas/NullEnum'
+          description: Asset condition after the replacement or maintenance event
         replacement_asset:
           type: integer
           nullable: true
@@ -19898,15 +18930,8 @@ components:
           - $ref: '#/components/schemas/UserProfile'
           readOnly: true
         return_request_status:
-          allOf:
-          - $ref: '#/components/schemas/ReturnRequestStatusEnum'
-          description: |-
-            Two-step return workflow status
-
-            * `none` - None
-            * `pending` - Pending
-            * `approved` - Approved
-            * `rejected` - Rejected
+          type: string
+          description: Two-step return workflow status
         return_requested_at:
           type: string
           format: date-time
@@ -19931,44 +18956,6 @@ components:
       - assignment_id
       - employee
       - requested_by
-    ReturnRequestStatusEnum:
-      enum:
-      - none
-      - pending
-      - approved
-      - rejected
-      type: string
-      description: |-
-        * `none` - None
-        * `pending` - Pending
-        * `approved` - Approved
-        * `rejected` - Rejected
-    ReviewTypeEnum:
-      enum:
-      - quarterly
-      - mid_year
-      - annual
-      - probation
-      - custom
-      type: string
-      description: |-
-        * `quarterly` - Quarterly Review
-        * `mid_year` - Mid-Year Review
-        * `annual` - Annual Review
-        * `probation` - Probation Review
-        * `custom` - Custom Review
-    RoleEnum:
-      enum:
-      - user
-      - assistant
-      - system
-      - tool
-      type: string
-      description: |-
-        * `user` - User
-        * `assistant` - Assistant
-        * `system` - System
-        * `tool` - Tool
     RoleListResponse:
       type: object
       properties:
@@ -19978,16 +18965,6 @@ components:
             $ref: '#/components/schemas/RoleSummary'
       required:
       - roles
-    RoleResponsibleEnum:
-      enum:
-      - HR
-      - IT
-      - Manager
-      type: string
-      description: |-
-        * `HR` - HR
-        * `IT` - IT
-        * `Manager` - Manager
     RoleSummary:
       type: object
       properties:
@@ -20019,17 +18996,8 @@ components:
           type: string
           description: Reason maintenance is needed
         maintenance_type:
-          allOf:
-          - $ref: '#/components/schemas/MaintenanceTypeEnum'
-          description: |-
-            Type of scheduled maintenance
-
-            * `preventive` - Preventive
-            * `repair` - Repair
-            * `inspection` - Inspection
-            * `warranty` - Warranty
-            * `replacement` - Replacement
-            * `other` - Other
+          type: string
+          description: Type of scheduled maintenance
         owner:
           type: integer
           nullable: true
@@ -20045,15 +19013,9 @@ components:
           description: Optional external vendor or service provider
           maxLength: 200
         status:
-          allOf:
-          - $ref: '#/components/schemas/ScheduledMaintenanceStatusEnum'
+          type: string
           readOnly: true
-          description: |-
-            Scheduled maintenance lifecycle status
-
-            * `scheduled` - Scheduled
-            * `completed` - Completed
-            * `cancelled` - Cancelled
+          description: Scheduled maintenance lifecycle status
         cancelled_reason:
           type: string
           readOnly: true
@@ -20135,29 +19097,17 @@ components:
           pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
           nullable: true
         asset_status_before:
+          type: string
           nullable: true
-          oneOf:
-          - $ref: '#/components/schemas/StatusEnum'
-          - $ref: '#/components/schemas/BlankEnum'
-          - $ref: '#/components/schemas/NullEnum'
         asset_status_after:
+          type: string
           nullable: true
-          oneOf:
-          - $ref: '#/components/schemas/StatusEnum'
-          - $ref: '#/components/schemas/BlankEnum'
-          - $ref: '#/components/schemas/NullEnum'
         asset_condition_before:
+          type: string
           nullable: true
-          oneOf:
-          - $ref: '#/components/schemas/ConditionEnum'
-          - $ref: '#/components/schemas/BlankEnum'
-          - $ref: '#/components/schemas/NullEnum'
         asset_condition_after:
+          type: string
           nullable: true
-          oneOf:
-          - $ref: '#/components/schemas/ConditionEnum'
-          - $ref: '#/components/schemas/BlankEnum'
-          - $ref: '#/components/schemas/NullEnum'
         replacement_asset:
           type: integer
           nullable: true
@@ -20180,17 +19130,8 @@ components:
           minLength: 1
           description: Reason maintenance is needed
         maintenance_type:
-          allOf:
-          - $ref: '#/components/schemas/MaintenanceTypeEnum'
-          description: |-
-            Type of scheduled maintenance
-
-            * `preventive` - Preventive
-            * `repair` - Repair
-            * `inspection` - Inspection
-            * `warranty` - Warranty
-            * `replacement` - Replacement
-            * `other` - Other
+          type: string
+          description: Type of scheduled maintenance
         owner:
           type: integer
           nullable: true
@@ -20210,16 +19151,6 @@ components:
       - due_date
       - maintenance_type
       - reason
-    ScheduledMaintenanceStatusEnum:
-      enum:
-      - scheduled
-      - completed
-      - cancelled
-      type: string
-      description: |-
-        * `scheduled` - Scheduled
-        * `completed` - Completed
-        * `cancelled` - Cancelled
     SignDocumentRequest:
       type: object
       properties:
@@ -20233,20 +19164,6 @@ components:
       required:
       - signature
       - signer_email
-    SignatureStatusEnum:
-      enum:
-      - pending
-      - signed
-      - rejected
-      - expired
-      - not_required
-      type: string
-      description: |-
-        * `pending` - Pending
-        * `signed` - Signed
-        * `rejected` - Rejected
-        * `expired` - Expired
-        * `not_required` - Not Required
     SignerInputRequest:
       type: object
       properties:
@@ -20261,132 +19178,6 @@ components:
       required:
       - email
       - name
-    StageEnum:
-      enum:
-      - intake
-      - scoping
-      - triage
-      - estimation
-      - review_approval
-      - proposal_sent
-      - kickoff
-      - delivery
-      type: string
-      description: |-
-        * `intake` - Proposal request
-        * `scoping` - Scoping
-        * `triage` - Triage
-        * `estimation` - Estimation
-        * `review_approval` - Review & approval
-        * `proposal_sent` - Proposal sent
-        * `kickoff` - Team assembly & kick-off
-        * `delivery` - Delivery
-    Status081Enum:
-      enum:
-      - registered
-      - attended
-      - cancelled
-      type: string
-      description: |-
-        * `registered` - Registered
-        * `attended` - Attended
-        * `cancelled` - Cancelled
-    Status58cEnum:
-      enum:
-      - draft
-      - published
-      - inactive
-      type: string
-      description: |-
-        * `draft` - Draft
-        * `published` - Published
-        * `inactive` - Inactive
-    Status5c0Enum:
-      enum:
-      - pending
-      - lead_approved
-      - approved
-      - rejected
-      - cancelled
-      type: string
-      description: |-
-        * `pending` - Pending
-        * `lead_approved` - Lead Approved
-        * `approved` - Approved
-        * `rejected` - Rejected
-        * `cancelled` - Cancelled
-    Status776Enum:
-      enum:
-      - draft
-      - open
-      - closed
-      - cancelled
-      type: string
-      description: |-
-        * `draft` - Draft
-        * `open` - Open
-        * `closed` - Closed
-        * `cancelled` - Cancelled
-    StatusA44Enum:
-      enum:
-      - submitted
-      - under_review
-      - shortlisted
-      - rejected
-      - withdrawn
-      - accepted
-      type: string
-      description: |-
-        * `submitted` - Submitted
-        * `under_review` - Under Review
-        * `shortlisted` - Shortlisted
-        * `rejected` - Rejected
-        * `withdrawn` - Withdrawn
-        * `accepted` - Accepted
-    StatusC59Enum:
-      enum:
-      - scheduled
-      - in_progress
-      - completed
-      - cancelled
-      type: string
-      description: |-
-        * `scheduled` - Scheduled
-        * `in_progress` - In Progress
-        * `completed` - Completed
-        * `cancelled` - Cancelled
-    StatusEnum:
-      enum:
-      - active
-      - maintenance
-      - retired
-      - lost
-      - returned
-      - damaged
-      type: string
-      description: |-
-        * `active` - Active
-        * `maintenance` - Maintenance
-        * `retired` - Retired
-        * `lost` - Lost
-        * `returned` - Returned
-        * `damaged` - Damaged
-    StatusF9aEnum:
-      enum:
-      - planned
-      - active
-      - on_hold
-      - completed
-      - cancelled
-      - archived
-      type: string
-      description: |-
-        * `planned` - Planned
-        * `active` - Active
-        * `on_hold` - On Hold
-        * `completed` - Completed
-        * `cancelled` - Cancelled
-        * `archived` - Archived
     Survey:
       type: object
       description: Survey with nested questions for create/update and retrieval.
@@ -20402,14 +19193,9 @@ components:
         is_anonymous:
           type: boolean
         status:
-          allOf:
-          - $ref: '#/components/schemas/SurveyStatusEnum'
-          description: |-
-            Lifecycle state. Closed surveys keep responses but reject new ones.
-
-            * `draft` - Draft
-            * `active` - Active
-            * `closed` - Closed
+          type: string
+          description: Lifecycle state. Closed surveys keep responses but reject new
+            ones.
         end_date:
           type: string
           format: date
@@ -20461,14 +19247,9 @@ components:
         is_anonymous:
           type: boolean
         status:
-          allOf:
-          - $ref: '#/components/schemas/SurveyStatusEnum'
-          description: |-
-            Lifecycle state. Closed surveys keep responses but reject new ones.
-
-            * `draft` - Draft
-            * `active` - Active
-            * `closed` - Closed
+          type: string
+          description: Lifecycle state. Closed surveys keep responses but reject new
+            ones.
         end_date:
           type: string
           format: date
@@ -20484,16 +19265,6 @@ components:
             type: integer
       required:
       - title
-    SurveyStatusEnum:
-      enum:
-      - draft
-      - active
-      - closed
-      type: string
-      description: |-
-        * `draft` - Draft
-        * `active` - Active
-        * `closed` - Closed
     TaskTemplate:
       type: object
       properties:
@@ -20701,8 +19472,7 @@ components:
           type: object
           additionalProperties: {}
         format:
-          allOf:
-          - $ref: '#/components/schemas/FormatEnum'
+          type: string
           default: pdf
         document_name:
           type: string
@@ -20829,23 +19599,11 @@ components:
       required:
       - date_from
       - date_to
-    TempoMappingMutationMappingTypeEnum:
-      enum:
-      - user
-      - account
-      - project
-      - team
-      type: string
-      description: |-
-        * `user` - user
-        * `account` - account
-        * `project` - project
-        * `team` - team
     TempoMappingMutationRequest:
       type: object
       properties:
         mapping_type:
-          $ref: '#/components/schemas/TempoMappingMutationMappingTypeEnum'
+          type: string
         id:
           type: integer
         tempo_user_id:
@@ -20954,11 +19712,10 @@ components:
         notes:
           type: string
         source_type:
-          allOf:
-          - $ref: '#/components/schemas/TimeEntrySourceTypeEnum'
+          type: string
           default: manual
         status:
-          $ref: '#/components/schemas/TimeEntryStatusEnum'
+          type: string
         source_external_id:
           type: string
           default: ''
@@ -21044,8 +19801,7 @@ components:
           type: integer
           readOnly: true
         event_type:
-          allOf:
-          - $ref: '#/components/schemas/TimeEntryAuditEventEventTypeEnum'
+          type: string
           readOnly: true
         actor:
           type: integer
@@ -21071,28 +19827,6 @@ components:
       - id
       - message
       - metadata
-    TimeEntryAuditEventEventTypeEnum:
-      enum:
-      - created
-      - updated
-      - submitted
-      - approved
-      - rejected
-      - deleted
-      - imported
-      - corrected
-      - source_changed
-      type: string
-      description: |-
-        * `created` - Created
-        * `updated` - Updated
-        * `submitted` - Submitted
-        * `approved` - Approved
-        * `rejected` - Rejected
-        * `deleted` - Deleted
-        * `imported` - Imported
-        * `corrected` - Corrected
-        * `source_changed` - Source Changed
     TimeEntryRejectRequest:
       type: object
       properties:
@@ -21129,11 +19863,10 @@ components:
         notes:
           type: string
         source_type:
-          allOf:
-          - $ref: '#/components/schemas/TimeEntrySourceTypeEnum'
+          type: string
           default: manual
         status:
-          $ref: '#/components/schemas/TimeEntryStatusEnum'
+          type: string
         source_external_id:
           type: string
           default: ''
@@ -21143,30 +19876,6 @@ components:
       - hours
       - project_id
       - work_date
-    TimeEntrySourceTypeEnum:
-      enum:
-      - manual
-      - jira
-      - tempo
-      - document_import
-      type: string
-      description: |-
-        * `manual` - Manual
-        * `jira` - Jira
-        * `tempo` - Tempo
-        * `document_import` - Document Import
-    TimeEntryStatusEnum:
-      enum:
-      - draft
-      - submitted
-      - approved
-      - rejected
-      type: string
-      description: |-
-        * `draft` - Draft
-        * `submitted` - Submitted
-        * `approved` - Approved
-        * `rejected` - Rejected
     TimeEntrySubmitWeekRequest:
       type: object
       properties:
@@ -21184,8 +19893,7 @@ components:
           type: integer
           readOnly: true
         source_type:
-          allOf:
-          - $ref: '#/components/schemas/TimeImportBatchSourceTypeEnum'
+          type: string
           readOnly: true
         file_name:
           type: string
@@ -21204,8 +19912,7 @@ components:
         detected_columns:
           readOnly: true
         status:
-          allOf:
-          - $ref: '#/components/schemas/TimeImportBatchStatusEnum'
+          type: string
           readOnly: true
         total_rows:
           type: integer
@@ -21256,32 +19963,6 @@ components:
       - uploaded_by_name
       - valid_rows
       - validation_messages
-    TimeImportBatchSourceTypeEnum:
-      enum:
-      - jira
-      - tempo
-      - document_import
-      type: string
-      description: |-
-        * `jira` - Jira
-        * `tempo` - Tempo
-        * `document_import` - Document Import
-    TimeImportBatchStatusEnum:
-      enum:
-      - uploaded
-      - needs_mapping
-      - previewed
-      - partially_committed
-      - committed
-      - failed
-      type: string
-      description: |-
-        * `uploaded` - Uploaded
-        * `needs_mapping` - Needs Mapping
-        * `previewed` - Previewed
-        * `partially_committed` - Partially Committed
-        * `committed` - Committed
-        * `failed` - Failed
     TimeImportRow:
       type: object
       properties:
@@ -21309,8 +19990,7 @@ components:
           type: string
           readOnly: true
         status:
-          allOf:
-          - $ref: '#/components/schemas/TimeImportRowStatusEnum'
+          type: string
           readOnly: true
         validation_messages:
           readOnly: true
@@ -21339,25 +20019,11 @@ components:
       - table_index
       - updated_at
       - validation_messages
-    TimeImportRowStatusEnum:
-      enum:
-      - pending
-      - valid
-      - error
-      - skipped
-      - committed
-      type: string
-      description: |-
-        * `pending` - Pending
-        * `valid` - Valid
-        * `error` - Error
-        * `skipped` - Skipped
-        * `committed` - Committed
     TimeSourceChangeResolveRequest:
       type: object
       properties:
         action:
-          $ref: '#/components/schemas/ActionEnum'
+          type: string
         note:
           type: string
       required:
@@ -21438,6 +20104,7 @@ components:
       - user
     ToolNameEnum:
       enum:
+      - add_announcement_comment
       - add_review_action_point
       - add_review_note
       - adjust_leave_balance
@@ -21448,32 +20115,62 @@ components:
       - assign_manager
       - cancel_leave_request
       - cancel_pending_action
+      - cancel_scheduled_maintenance
       - check_permission
       - classify_confirmation_response
       - close_review
+      - complete_scheduled_maintenance
       - confirm_pending_action
+      - create_announcement
       - create_asset
       - create_bonus_record
+      - create_discord_announcement_channel
+      - create_document_template
       - create_job_listing
       - create_leave_request
       - create_onboarding_instance
       - create_role
+      - create_scheduled_maintenance
       - create_time_entry
       - create_training_entry
+      - create_user_template_snippet
+      - deactivate_document_template
+      - delete_announcement
+      - delete_announcement_comment
       - delete_document
       - delete_role
+      - duplicate_document_template
       - explain_workflow
+      - export_time_entries
+      - get_announcement
       - get_bonus_totals
       - get_checklist_instance
       - get_compensation_overview
+      - get_current_date
+      - get_current_datetime
+      - get_current_time
       - get_current_user_context
+      - get_document_template
       - get_employee_managers
       - get_employee_profile
+      - get_leave_analytics_departments
+      - get_leave_analytics_employees
+      - get_leave_analytics_monthly
+      - get_leave_analytics_yearly_totals
+      - get_leave_availability
+      - get_leave_employee_history
       - get_leave_summary
       - get_payroll_snapshot
       - get_review
       - get_team_leave_calendar
+      - get_time_active_allocations
+      - get_time_planned_vs_actual
+      - get_time_weekly_dashboard
+      - get_time_weekly_summary
       - get_training_budget
+      - list_announcement_comments
+      - list_announcement_reactions
+      - list_announcements
       - list_applications
       - list_asset_assignments
       - list_asset_replacements
@@ -21488,6 +20185,8 @@ components:
       - list_compensation_policies
       - list_conference_registrations
       - list_cpf_level_changes
+      - list_discord_announcement_channels
+      - list_document_category_defaults
       - list_document_templates
       - list_documents
       - list_employee_documents
@@ -21507,17 +20206,22 @@ components:
       - list_review_notes
       - list_reviews
       - list_salary_history
+      - list_scheduled_maintenance
       - list_time_entries
       - list_time_tasks
       - list_top_paid_employees
       - list_training_budgets
       - list_training_entries
+      - list_upcoming_celebrations
+      - list_user_template_snippets
       - list_workflows
       - log_peer_session
       - mark_all_notifications_read
+      - mark_notification_read
       - read_document_content
       - record_cpf_level_change
       - record_promotion
+      - refresh_leave_analytics
       - register_for_conference
       - reject_time_entry
       - return_asset
@@ -21525,15 +20229,22 @@ components:
       - search_employees
       - set_compensation_policy
       - submit_time_week
+      - toggle_announcement_reaction
       - update_action_point_status
+      - update_announcement
       - update_application_status
       - update_asset_status
       - update_checklist_task_status
+      - update_discord_announcement_channel
+      - update_document_template
       - update_employee_profile
       - update_role
+      - update_scheduled_maintenance
+      - use_document_template
       - withdraw_application
       type: string
       description: |-
+        * `add_announcement_comment` - add_announcement_comment
         * `add_review_action_point` - add_review_action_point
         * `add_review_note` - add_review_note
         * `adjust_leave_balance` - adjust_leave_balance
@@ -21544,32 +20255,62 @@ components:
         * `assign_manager` - assign_manager
         * `cancel_leave_request` - cancel_leave_request
         * `cancel_pending_action` - cancel_pending_action
+        * `cancel_scheduled_maintenance` - cancel_scheduled_maintenance
         * `check_permission` - check_permission
         * `classify_confirmation_response` - classify_confirmation_response
         * `close_review` - close_review
+        * `complete_scheduled_maintenance` - complete_scheduled_maintenance
         * `confirm_pending_action` - confirm_pending_action
+        * `create_announcement` - create_announcement
         * `create_asset` - create_asset
         * `create_bonus_record` - create_bonus_record
+        * `create_discord_announcement_channel` - create_discord_announcement_channel
+        * `create_document_template` - create_document_template
         * `create_job_listing` - create_job_listing
         * `create_leave_request` - create_leave_request
         * `create_onboarding_instance` - create_onboarding_instance
         * `create_role` - create_role
+        * `create_scheduled_maintenance` - create_scheduled_maintenance
         * `create_time_entry` - create_time_entry
         * `create_training_entry` - create_training_entry
+        * `create_user_template_snippet` - create_user_template_snippet
+        * `deactivate_document_template` - deactivate_document_template
+        * `delete_announcement` - delete_announcement
+        * `delete_announcement_comment` - delete_announcement_comment
         * `delete_document` - delete_document
         * `delete_role` - delete_role
+        * `duplicate_document_template` - duplicate_document_template
         * `explain_workflow` - explain_workflow
+        * `export_time_entries` - export_time_entries
+        * `get_announcement` - get_announcement
         * `get_bonus_totals` - get_bonus_totals
         * `get_checklist_instance` - get_checklist_instance
         * `get_compensation_overview` - get_compensation_overview
+        * `get_current_date` - get_current_date
+        * `get_current_datetime` - get_current_datetime
+        * `get_current_time` - get_current_time
         * `get_current_user_context` - get_current_user_context
+        * `get_document_template` - get_document_template
         * `get_employee_managers` - get_employee_managers
         * `get_employee_profile` - get_employee_profile
+        * `get_leave_analytics_departments` - get_leave_analytics_departments
+        * `get_leave_analytics_employees` - get_leave_analytics_employees
+        * `get_leave_analytics_monthly` - get_leave_analytics_monthly
+        * `get_leave_analytics_yearly_totals` - get_leave_analytics_yearly_totals
+        * `get_leave_availability` - get_leave_availability
+        * `get_leave_employee_history` - get_leave_employee_history
         * `get_leave_summary` - get_leave_summary
         * `get_payroll_snapshot` - get_payroll_snapshot
         * `get_review` - get_review
         * `get_team_leave_calendar` - get_team_leave_calendar
+        * `get_time_active_allocations` - get_time_active_allocations
+        * `get_time_planned_vs_actual` - get_time_planned_vs_actual
+        * `get_time_weekly_dashboard` - get_time_weekly_dashboard
+        * `get_time_weekly_summary` - get_time_weekly_summary
         * `get_training_budget` - get_training_budget
+        * `list_announcement_comments` - list_announcement_comments
+        * `list_announcement_reactions` - list_announcement_reactions
+        * `list_announcements` - list_announcements
         * `list_applications` - list_applications
         * `list_asset_assignments` - list_asset_assignments
         * `list_asset_replacements` - list_asset_replacements
@@ -21584,6 +20325,8 @@ components:
         * `list_compensation_policies` - list_compensation_policies
         * `list_conference_registrations` - list_conference_registrations
         * `list_cpf_level_changes` - list_cpf_level_changes
+        * `list_discord_announcement_channels` - list_discord_announcement_channels
+        * `list_document_category_defaults` - list_document_category_defaults
         * `list_document_templates` - list_document_templates
         * `list_documents` - list_documents
         * `list_employee_documents` - list_employee_documents
@@ -21603,17 +20346,22 @@ components:
         * `list_review_notes` - list_review_notes
         * `list_reviews` - list_reviews
         * `list_salary_history` - list_salary_history
+        * `list_scheduled_maintenance` - list_scheduled_maintenance
         * `list_time_entries` - list_time_entries
         * `list_time_tasks` - list_time_tasks
         * `list_top_paid_employees` - list_top_paid_employees
         * `list_training_budgets` - list_training_budgets
         * `list_training_entries` - list_training_entries
+        * `list_upcoming_celebrations` - list_upcoming_celebrations
+        * `list_user_template_snippets` - list_user_template_snippets
         * `list_workflows` - list_workflows
         * `log_peer_session` - log_peer_session
         * `mark_all_notifications_read` - mark_all_notifications_read
+        * `mark_notification_read` - mark_notification_read
         * `read_document_content` - read_document_content
         * `record_cpf_level_change` - record_cpf_level_change
         * `record_promotion` - record_promotion
+        * `refresh_leave_analytics` - refresh_leave_analytics
         * `register_for_conference` - register_for_conference
         * `reject_time_entry` - reject_time_entry
         * `return_asset` - return_asset
@@ -21621,12 +20369,18 @@ components:
         * `search_employees` - search_employees
         * `set_compensation_policy` - set_compensation_policy
         * `submit_time_week` - submit_time_week
+        * `toggle_announcement_reaction` - toggle_announcement_reaction
         * `update_action_point_status` - update_action_point_status
+        * `update_announcement` - update_announcement
         * `update_application_status` - update_application_status
         * `update_asset_status` - update_asset_status
         * `update_checklist_task_status` - update_checklist_task_status
+        * `update_discord_announcement_channel` - update_discord_announcement_channel
+        * `update_document_template` - update_document_template
         * `update_employee_profile` - update_employee_profile
         * `update_role` - update_role
+        * `update_scheduled_maintenance` - update_scheduled_maintenance
+        * `use_document_template` - use_document_template
         * `withdraw_application` - withdraw_application
     TrainingBudget:
       type: object
@@ -21642,9 +20396,8 @@ components:
           readOnly: true
         fiscal_year:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           description: Fiscal year for which budget is allocated
         allocated_budget:
           type: string
@@ -21700,9 +20453,8 @@ components:
           type: integer
         fiscal_year:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           description: Fiscal year for which budget is allocated
         allocated_budget:
           type: string
@@ -21732,17 +20484,8 @@ components:
           format: date
           description: Date when training occurred
         training_type:
-          allOf:
-          - $ref: '#/components/schemas/TrainingTypeEnum'
-          description: |-
-            Type of training activity
-
-            * `course` - Course
-            * `conference` - Conference
-            * `workshop` - Workshop
-            * `webinar` - Webinar
-            * `certification` - Certification
-            * `other` - Other
+          type: string
+          description: Type of training activity
         cost:
           type: string
           format: decimal
@@ -21788,17 +20531,8 @@ components:
           format: date
           description: Date when training occurred
         training_type:
-          allOf:
-          - $ref: '#/components/schemas/TrainingTypeEnum'
-          description: |-
-            Type of training activity
-
-            * `course` - Course
-            * `conference` - Conference
-            * `workshop` - Workshop
-            * `webinar` - Webinar
-            * `certification` - Certification
-            * `other` - Other
+          type: string
+          description: Type of training activity
         cost:
           type: string
           format: decimal
@@ -21850,17 +20584,8 @@ components:
           format: date
           description: Date when training occurred
         training_type:
-          allOf:
-          - $ref: '#/components/schemas/TrainingTypeEnum'
-          description: |-
-            Type of training activity
-
-            * `course` - Course
-            * `conference` - Conference
-            * `workshop` - Workshop
-            * `webinar` - Webinar
-            * `certification` - Certification
-            * `other` - Other
+          type: string
+          description: Type of training activity
         training_type_display:
           type: string
           readOnly: true
@@ -21933,17 +20658,8 @@ components:
           format: date
           description: Date when training occurred
         training_type:
-          allOf:
-          - $ref: '#/components/schemas/TrainingTypeEnum'
-          description: |-
-            Type of training activity
-
-            * `course` - Course
-            * `conference` - Conference
-            * `workshop` - Workshop
-            * `webinar` - Webinar
-            * `certification` - Certification
-            * `other` - Other
+          type: string
+          description: Type of training activity
         training_type_display:
           type: string
           readOnly: true
@@ -21981,39 +20697,11 @@ components:
       - status
       - training_date
       - training_type_display
-    TrainingTypeEnum:
-      enum:
-      - course
-      - conference
-      - workshop
-      - webinar
-      - certification
-      - other
-      type: string
-      description: |-
-        * `course` - Course
-        * `conference` - Conference
-        * `workshop` - Workshop
-        * `webinar` - Webinar
-        * `certification` - Certification
-        * `other` - Other
-    TypeFe8Enum:
-      enum:
-      - general
-      - news
-      - celebration
-      - urgent
-      type: string
-      description: |-
-        * `general` - General
-        * `news` - News
-        * `celebration` - Celebration
-        * `urgent` - Urgent
     UpcomingCelebration:
       type: object
       properties:
         event_type:
-          $ref: '#/components/schemas/UpcomingCelebrationEventTypeEnum'
+          type: string
         event_date:
           type: string
           format: date
@@ -22032,14 +20720,6 @@ components:
       - employee
       - event_date
       - event_type
-    UpcomingCelebrationEventTypeEnum:
-      enum:
-      - birthday
-      - anniversary
-      type: string
-      description: |-
-        * `birthday` - birthday
-        * `anniversary` - anniversary
     UpdatePermissionsRequest:
       type: object
       properties:
@@ -22278,24 +20958,6 @@ components:
       - can_approve_requests
       - can_configure_leave_types
       - can_hr_approve
-    VisibilityEnum:
-      enum:
-      - private
-      - shared
-      type: string
-      description: |-
-        * `private` - Private
-        * `shared` - Shared
-    VisibilityScopeEnum:
-      enum:
-      - roles
-      - only_me
-      - project_group
-      type: string
-      description: |-
-        * `roles` - Roles
-        * `only_me` - Only Me
-        * `project_group` - Project Group
   securitySchemes:
     JWTAuth:
       type: http

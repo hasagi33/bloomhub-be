@@ -7,22 +7,37 @@ from django.shortcuts import get_object_or_404
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import serializers, status
+from rest_framework.exceptions import APIException
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.ai.graph import run_assistant_turn, runtime_status
+from core.ai.json_utils import make_json_safe
+from core.ai.message_display import display_chat_message_content
 from core.ai.tools import registry
+from core.choice_fields import patch_serializer_choice_fields
 from core.models import AIChatMessage, AIChatSession
+
+patch_serializer_choice_fields()
 
 logger = logging.getLogger(__name__)
 
 
 class AIChatMessageSerializer(serializers.ModelSerializer):
+    content = serializers.SerializerMethodField()
+
     class Meta:
         model = AIChatMessage
         fields = ["id", "role", "content", "metadata", "created_at"]
         read_only_fields = fields
+
+    def get_content(self, obj) -> str:
+        return display_chat_message_content(
+            role=obj.role,
+            content=obj.content,
+            metadata=obj.metadata,
+        )
 
 
 class AIChatSessionSerializer(serializers.ModelSerializer):
@@ -133,6 +148,8 @@ class AIChatView(APIView):
                 arguments=data.get("arguments") or {},
                 confirm=data.get("confirm", False),
             )
+        except APIException:
+            raise
         except Exception as exc:
             logger.exception(
                 "[AI] api.chat_failed session=%s user=%s error=%s",
@@ -140,8 +157,38 @@ class AIChatView(APIView):
                 request.user.id,
                 exc,
             )
-            raise
-        return Response(result, status=status.HTTP_200_OK)
+            fallback_message = (
+                "I am not able to fulfill your request, try a different prompt."
+            )
+            result = {
+                "session_id": session.id,
+                "message": fallback_message,
+                "tool_name": None,
+                "module": "general",
+                "result": {
+                    "summary": fallback_message,
+                    "blocked": True,
+                    "reason": "ai_service_failed",
+                },
+                "entities": [],
+                "entity_spans": [],
+                "ui_action_type": "message",
+                "ui_action": {"type": "message"},
+                "requires_confirmation": False,
+                "requires_input": False,
+                "pending_confirmation": session.pending_confirmation,
+            }
+            AIChatMessage.objects.create(
+                session=session,
+                role=AIChatMessage.Role.ASSISTANT,
+                content=fallback_message,
+                metadata={
+                    "module": "general",
+                    "result": result["result"],
+                    "error": f"{type(exc).__name__}: {exc}",
+                },
+            )
+        return Response(make_json_safe(result), status=status.HTTP_200_OK)
 
 
 class AIChatSessionListView(APIView):

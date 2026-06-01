@@ -150,6 +150,48 @@ def test_creator_can_create_immediate_announcement():
 
 
 @pytest.mark.django_db
+def test_creator_can_create_announcement_with_title_case_type():
+    user = User.objects.create_user(username="creator-case", password="x")
+    profile = user.profile
+    _role(profile, "HR")
+
+    response = _client(user).post(
+        "/api/announcements/",
+        {"title": "Published", "body": "<p>Hello</p>", "type": "GeNeRaL"},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    announcement = Announcement.objects.get()
+    assert announcement.author == profile
+    assert announcement.type == "general"
+
+
+@pytest.mark.django_db
+def test_staff_can_create_discord_channel_with_mixed_case_type():
+    user = User.objects.create_user(
+        username="staff-discord-mixed",
+        password="x",
+        is_staff=True,
+    )
+
+    response = _client(user).post(
+        "/api/announcement-discord-channels/",
+        {
+            "announcement_type": "NeWs",
+            "channel_name": "company-news",
+            "webhook_url": "https://discord.com/api/webhooks/123/token",
+            "enabled": True,
+        },
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    channel = DiscordAnnouncementChannel.objects.get()
+    assert channel.announcement_type == "news"
+
+
+@pytest.mark.django_db
 def test_staff_can_configure_discord_announcement_channels_without_secret_leak():
     user = User.objects.create_user(
         username="staff-discord",

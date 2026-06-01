@@ -202,6 +202,21 @@ pre-commit install
 pre-commit install --hook-type commit-msg
 ```
 
+### Parallel tests
+
+`pytest` now runs in parallel by default via `pytest-xdist`.
+
+```bash
+pytest
+```
+
+The repo-local shard runner still exists if you want file-level sharding across
+subprocesses:
+
+```bash
+python scripts/run_pytest_parallel.py -j 4
+```
+
 ---
 
 ## Role & Permission Management System

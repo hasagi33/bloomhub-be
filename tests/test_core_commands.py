@@ -46,25 +46,26 @@ def test_backfill_asset_qr_codes_dry_run(monkeypatch):
 
 @pytest.mark.django_db
 def test_load_permissions_and_role_permissions(tmp_path):
+    module_name = "TmpTestModule"
     perm_csv = tmp_path / "permissions.csv"
     perm_csv.write_text(
-        "module_name,feature_action\nDocuments,view\nDocuments,edit\n",
+        f"module_name,feature_action\n{module_name},view\n{module_name},edit\n",
         encoding="utf-8",
     )
     out = io.StringIO()
     call_command("load_permissions", str(perm_csv), stdout=out)
     assert "Finished loading permissions" in out.getvalue()
-    assert Permission.objects.filter(module_name="Documents").count() == 2
+    assert Permission.objects.filter(module_name=module_name).count() == 2
 
     role_csv = tmp_path / "role_permissions.csv"
     role_csv.write_text(
         "\n".join(
             [
                 "role_id,module_name,feature_action,permission,operation_type",
-                "EDITOR,Documents,view,YES,add",
-                "EDITOR,Documents,edit,NO,merge",
-                "EDITOR,Documents,edit,YES,merge",
-                "ADMIN,Documents,view,YES,override",
+                f"EDITOR,{module_name},view,YES,add",
+                f"EDITOR,{module_name},edit,NO,merge",
+                f"EDITOR,{module_name},edit,YES,merge",
+                f"ADMIN,{module_name},view,YES,override",
             ]
         ),
         encoding="utf-8",
@@ -73,8 +74,8 @@ def test_load_permissions_and_role_permissions(tmp_path):
     call_command("load_role_permissions", str(role_csv), stdout=out)
     editor = Role.objects.get(name="EDITOR")
     admin = Role.objects.get(name="ADMIN")
-    assert editor.permissions.filter(module_name="Documents").exists()
-    assert admin.permissions.filter(module_name="Documents").exists()
+    assert editor.permissions.filter(module_name=module_name).exists()
+    assert admin.permissions.filter(module_name=module_name).exists()
     assert "Finished loading role permissions" in out.getvalue()
 
 

@@ -221,7 +221,9 @@ if USE_R2:
     elif _r2_verify_env in ("1", "true", "yes"):
         AWS_S3_VERIFY = True
     else:
-        AWS_S3_VERIFY = not DEBUG
+        # Default to verified TLS. R2 uses a valid public cert, so turning
+        # verification off should stay explicit via R2_VERIFY_SSL.
+        AWS_S3_VERIFY = True
     STORAGES = {
         "default": {
             "BACKEND": "config.storage.R2Storage",
@@ -270,7 +272,7 @@ OPENROUTER_MODEL = os.environ.get(
 OPENROUTER_BASE_URL = os.environ.get(
     "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"
 ).strip()
-AI_AGENT_MAX_TOOL_STEPS = int(os.environ.get("AI_AGENT_MAX_TOOL_STEPS", "8"))
+AI_AGENT_MAX_TOOL_STEPS = int(os.environ.get("AI_AGENT_MAX_TOOL_STEPS", "12"))
 AI_AGENT_REQUIRE_CONFIRMATION = os.environ.get(
     "AI_AGENT_REQUIRE_CONFIRMATION", "true"
 ).lower() in ("1", "true", "yes")
@@ -279,17 +281,17 @@ AI_AGENT_ENABLE_STREAMING = os.environ.get(
 ).lower() in ("1", "true", "yes")
 
 OPENROUTER_TEMPERATURE = float(os.environ.get("OPENROUTER_TEMPERATURE", "0.1"))
-OPENROUTER_MAX_TOKENS = int(os.environ.get("OPENROUTER_MAX_TOKENS", "2048"))
+OPENROUTER_MAX_TOKENS = int(os.environ.get("OPENROUTER_MAX_TOKENS", "4096"))
 OPENROUTER_REQUEST_TIMEOUT = float(os.environ.get("OPENROUTER_REQUEST_TIMEOUT", "60"))
 OPENROUTER_MAX_RETRIES = int(os.environ.get("OPENROUTER_MAX_RETRIES", "2"))
 
-AI_AGENT_MAX_ITERATIONS = int(os.environ.get("AI_AGENT_MAX_ITERATIONS", "4"))
-AI_AGENT_HISTORY_LIMIT = int(os.environ.get("AI_AGENT_HISTORY_LIMIT", "8"))
+AI_AGENT_MAX_ITERATIONS = int(os.environ.get("AI_AGENT_MAX_ITERATIONS", "8"))
+AI_AGENT_HISTORY_LIMIT = int(os.environ.get("AI_AGENT_HISTORY_LIMIT", "20"))
 AI_AGENT_HISTORY_CHAR_BUDGET = int(
-    os.environ.get("AI_AGENT_HISTORY_CHAR_BUDGET", "6000")
+    os.environ.get("AI_AGENT_HISTORY_CHAR_BUDGET", "12000")
 )
 AI_AGENT_HISTORY_MSG_CHAR_CAP = int(
-    os.environ.get("AI_AGENT_HISTORY_MSG_CHAR_CAP", "800")
+    os.environ.get("AI_AGENT_HISTORY_MSG_CHAR_CAP", "1200")
 )
 AI_AGENT_SENSITIVE_RECENT_AUTH_SECONDS = int(
     os.environ.get("AI_AGENT_SENSITIVE_RECENT_AUTH_SECONDS", "3600")

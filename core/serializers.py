@@ -5170,7 +5170,24 @@ class AnnouncementDetailSerializer(AnnouncementListSerializer):
         read_only_fields = fields
 
 
+def _normalize_announcement_type(value: Any) -> str:
+    normalized = str(value or "").strip().lower()
+    if not normalized:
+        return ""
+    for choice in Announcement.Type:
+        candidates = {
+            choice.value.lower(),
+            choice.label.lower(),
+            choice.name.lower(),
+            choice.label.replace(" ", "_").lower(),
+        }
+        if normalized in candidates:
+            return choice.value
+    return str(value or "").strip()
+
+
 class AnnouncementWriteSerializer(serializers.ModelSerializer):
+    type = serializers.CharField(required=False, allow_blank=True)
     send_email_notifications = serializers.BooleanField(
         required=False, default=False, write_only=True
     )
@@ -5190,6 +5207,12 @@ class AnnouncementWriteSerializer(serializers.ModelSerializer):
         if not value:
             raise serializers.ValidationError("Body is required.")
         return value
+
+    def validate_type(self, value: str) -> str:
+        normalized = _normalize_announcement_type(value)
+        if normalized:
+            return normalized
+        return ""
 
     def create(self, validated_data):
         validated_data.pop("send_email_notifications", None)
@@ -5291,6 +5314,7 @@ class AnnouncementReactionToggleSerializer(serializers.Serializer):
 
 
 class DiscordAnnouncementChannelSerializer(serializers.ModelSerializer):
+    announcement_type = serializers.CharField()
     webhook_url = serializers.URLField(
         write_only=True, required=False, allow_blank=True
     )
@@ -5315,6 +5339,12 @@ class DiscordAnnouncementChannelSerializer(serializers.ModelSerializer):
         if not value:
             raise serializers.ValidationError("Channel name is required.")
         return value
+
+    def validate_announcement_type(self, value: str) -> str:
+        normalized = _normalize_announcement_type(value)
+        if normalized:
+            return normalized
+        raise serializers.ValidationError("Invalid announcement type.")
 
     def validate_webhook_url(self, value: str) -> str:
         return (value or "").strip()

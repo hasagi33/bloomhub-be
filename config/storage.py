@@ -1,8 +1,7 @@
 """
-Custom S3/R2 storage that forces SSL verify=False when configured.
+Custom S3/R2 storage that respects the configured SSL verify setting.
 
-Workaround for Python 3.14 + Cloudflare R2 SSL handshake failures when
-django-storages does not pass verify through to the client.
+Used to pass the requested verify flag through to boto3 sessions.
 """
 
 from django.conf import settings as django_settings

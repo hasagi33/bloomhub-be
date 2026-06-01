@@ -12,6 +12,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from core.ai.entities import collect_entities
 from core.ai.errors import SensitiveActionDenied, ToolArgumentError
+from core.ai.json_utils import make_json_safe
 from core.models import AIChatSession, AIToolCallLog
 
 logger = logging.getLogger(__name__)
@@ -422,6 +423,7 @@ def execute_tool(
 
     try:
         result = tool.handler(user=user, **validated_args)
+        result = make_json_safe(result)
     except PermissionDenied as exc:
         log_tool_call(
             session=session,

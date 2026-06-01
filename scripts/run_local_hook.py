@@ -46,6 +46,8 @@ def main() -> int:
         ]
     elif hook_name == "pytest":
         command = [python_bin, "-m", "pytest"]
+    elif hook_name == "pytest-parallel":
+        command = [python_bin, str(repo_root / "scripts" / "run_pytest_parallel.py")]
     elif hook_name == "commit-message-bhb":
         if not extra_args:
             print("Commit message file is required.")
