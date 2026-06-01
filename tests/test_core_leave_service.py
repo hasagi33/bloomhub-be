@@ -92,11 +92,16 @@ def test_calculate_and_validate_leave_request_branches():
     )
     assert ok is False and "covering employee" in msg.lower()
 
+    # Anchor to the next Monday + 16 days so the range always covers >10
+    # working days (3 work-weeks + 1 day) regardless of which weekday
+    # `today` lands on. Calendar-day offsets are weekday-sensitive.
+    days_until_monday = (7 - today.weekday()) % 7 or 7
+    anchor_monday = today + timedelta(days=days_until_monday)
     ok, msg = leave_service.validate_leave_request(
         profile,
         LeaveType.VACATION,
-        today + timedelta(days=5),
-        today + timedelta(days=20),
+        anchor_monday,
+        anchor_monday + timedelta(days=16),
         covering_employee=covering,
     )
     assert ok is False and "maximum" in msg.lower()

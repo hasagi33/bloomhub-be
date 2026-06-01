@@ -7034,6 +7034,14 @@ class XLSXExportRenderer(BaseRenderer):
         return data
 
 
+class PDFExportRenderer(BaseRenderer):
+    media_type = "application/pdf"
+    format = "pdf"
+
+    def render(self, data, accepted_media_type=None, renderer_context=None):
+        return data
+
+
 @extend_schema(tags=["Time Tracking"])
 class TimeTrackingTimesheetExportView(APIView):
     permission_classes = [IsAuthenticated]
@@ -10351,6 +10359,86 @@ class LeaveAnalyticsViewSet(
             }
         )
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        tags=["Leave Analytics"],
+        summary="Export leave analytics report as CSV or PDF",
+        parameters=[
+            OpenApiParameter(
+                name="format",
+                required=True,
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="Export format: 'csv' or 'pdf'.",
+            ),
+            OpenApiParameter(
+                name="year",
+                required=False,
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description="Calendar year (defaults to current year).",
+            ),
+            OpenApiParameter(
+                name="month",
+                required=False,
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+            ),
+            OpenApiParameter(
+                name="department",
+                required=False,
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="HR/admin only — non-HR callers ignore this parameter.",
+            ),
+        ],
+        responses={
+            200: OpenApiTypes.BINARY,
+            400: None,
+            403: None,
+        },
+    )
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="export",
+        renderer_classes=[JSONRenderer, CSVExportRenderer, PDFExportRenderer],
+    )
+    def export(self, request):
+        from core.services.leave_analytics_export_service import (
+            ALLOWED_EXPORT_FORMATS,
+            export_leave_analytics,
+        )
+
+        export_format = (request.query_params.get("format") or "").lower()
+        if export_format not in ALLOWED_EXPORT_FORMATS:
+            raise ValidationError({"format": "format must be one of: csv, pdf."})
+
+        year = self._parse_year(
+            request.query_params.get("year"), default=timezone.now().year
+        )
+        month = self._parse_month(request.query_params.get("month"))
+
+        is_hr = has_leave_analytics_view_permission(request.user)
+        department = (
+            self._parse_department(request.query_params.get("department"))
+            if is_hr
+            else None
+        )
+
+        result = export_leave_analytics(
+            queryset=self.get_queryset(),
+            export_format=export_format,
+            year=year,
+            month=month,
+            department=department,
+            is_hr=is_hr,
+        )
+
+        response = HttpResponse(result.content, content_type=result.content_type)
+        response["Content-Disposition"] = f'attachment; filename="{result.filename}"'
+        response["Access-Control-Expose-Headers"] = "Content-Disposition"
+        return response
 
 
 @extend_schema_view(
