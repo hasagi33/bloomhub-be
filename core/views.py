@@ -1,8 +1,10 @@
 import csv
 import hashlib
 import io
+import secrets as _jira_oauth_secrets
 from collections import defaultdict
 from datetime import date, timedelta
+from datetime import timedelta as _jira_oauth_timedelta
 from decimal import Decimal
 from typing import Any, cast
 from urllib.parse import unquote, urlparse
@@ -31,6 +33,7 @@ from rest_framework import (
     status,
     viewsets,
 )
+from rest_framework import status as _drf_status
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -88,7 +91,9 @@ from .models import (
     EmployeeProfileChangeHistory,
     JiraConnection,
     JiraIssueMapping,
+    JiraOAuthState,
     JiraProjectMapping,
+    JiraUserConnection,
     JiraUserMapping,
     JobListing,
     JobListingStatus,
@@ -121,8 +126,10 @@ from .models import (
     TemplateGeneratedDocument,
     TempoAccountMapping,
     TempoConnection,
+    TempoOAuthState,
     TempoProjectMapping,
     TempoTeamMapping,
+    TempoUserConnection,
     TempoUserMapping,
     TimeEntry,
     TimeImportBatch,
@@ -377,6 +384,17 @@ from .services.document_time_import_service import (
     upload_document_import,
     validate_batch_rows,
 )
+from .services.jira_oauth import (
+    DEFAULT_SCOPES as _JIRA_OAUTH_DEFAULT_SCOPES,
+)
+from .services.jira_oauth import (
+    JiraReauthRequired,
+    build_authorize_url,
+    exchange_code_for_token,
+    fetch_accessible_resources,
+    fetch_me,
+    prune_expired_oauth_states,
+)
 from .services.jira_time_import_service import (
     JiraAssignedIssueImportOptions,
     JiraImportFilters,
@@ -402,6 +420,24 @@ from .services.project_service import (
     can_view_project,
     reactivate_project,
     visible_projects_for,
+)
+from .services.tempo_oauth import (
+    DEFAULT_SCOPES as _TEMPO_OAUTH_DEFAULT_SCOPES,
+)
+from .services.tempo_oauth import (
+    TEMPO_DEFAULT_API_BASE as _TEMPO_OAUTH_DEFAULT_API_BASE,
+)
+from .services.tempo_oauth import (
+    TempoReauthRequired,
+)
+from .services.tempo_oauth import (
+    build_authorize_url as _tempo_build_authorize_url,
+)
+from .services.tempo_oauth import (
+    exchange_code_for_token as _tempo_exchange_code_for_token,
+)
+from .services.tempo_oauth import (
+    prune_expired_oauth_states as _tempo_prune_expired_oauth_states,
 )
 from .services.tempo_time_import_service import (
     TempoImportFilters,
@@ -1877,7 +1913,10 @@ class ProjectDetailView(APIView):
 class ProjectArchiveView(APIView):
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(responses={200: ProjectDetailSerializer, 403: None, 404: None})
+    @extend_schema(
+        request=None,
+        responses={200: ProjectDetailSerializer, 403: None, 404: None},
+    )
     def post(self, request, pk):
         project = Project.objects.filter(pk=pk).first()
         if project is None:
@@ -1900,7 +1939,10 @@ class ProjectArchiveView(APIView):
 class ProjectReactivateView(APIView):
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(responses={200: ProjectDetailSerializer, 403: None, 404: None})
+    @extend_schema(
+        request=None,
+        responses={200: ProjectDetailSerializer, 403: None, 404: None},
+    )
     def post(self, request, pk):
         project = Project.objects.filter(pk=pk).first()
         if project is None:
@@ -2229,6 +2271,7 @@ class ProjectAssignmentEndView(APIView):
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
+        request=OpenApiTypes.OBJECT,
         responses={200: ProjectAssignmentSerializer, 400: None, 403: None, 404: None},
     )
     def post(self, request, pk):
@@ -7147,7 +7190,10 @@ class JiraSettingsView(APIView):
 class JiraTestConnectionView(APIView):
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(responses={200: JiraConnectionSerializer, 400: None, 403: None})
+    @extend_schema(
+        request=None,
+        responses={200: JiraConnectionSerializer, 400: None, 403: None},
+    )
     def post(self, request):
         require_jira_admin(request.user)
         connection = JiraConnection.get_solo()
@@ -7908,7 +7954,10 @@ class TimeTrackingSourceChangeResolveView(APIView):
 class TimeImportBatchCommitView(APIView):
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(responses={200: TimeImportBatchSerializer, 403: None, 404: None})
+    @extend_schema(
+        request=None,
+        responses={200: TimeImportBatchSerializer, 403: None, 404: None},
+    )
     def post(self, request, batch_id):
         require_document_import_admin(request.user)
         try:
@@ -10519,6 +10568,9 @@ class EmployeeBonusListView(APIView):
 
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        responses={200: BonusRecordSerializer(many=True), 403: None, 404: None}
+    )
     def get(self, request, employee_id: int):
         try:
             profile = UserProfile.objects.get(pk=employee_id)
@@ -10546,6 +10598,7 @@ class CompensationOverviewView(APIView):
 
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(responses={200: OpenApiTypes.OBJECT, 403: None})
     def get(self, request):
         if not is_compensation_admin(request.user):
             raise PermissionDenied("Compensation overview is HR-only.")
@@ -11363,3 +11416,441 @@ class PulseCheckViewSet(
                 "by_category": by_category,
             }
         )
+
+
+# ---- Jira OAuth (per-user 3LO) ----
+
+
+def _serialize_jira_user_connection(connection: JiraUserConnection | None) -> dict:
+    if connection is None:
+        return {
+            "connected": False,
+            "jira_account_id": None,
+            "jira_email": None,
+            "jira_display_name": None,
+            "cloud_id": None,
+            "site_url": None,
+            "connected_at": None,
+            "token_expires_at": None,
+            "scopes": [],
+        }
+    return {
+        "connected": True,
+        "jira_account_id": connection.jira_account_id,
+        "jira_email": connection.jira_email,
+        "jira_display_name": connection.jira_display_name,
+        "cloud_id": connection.cloud_id,
+        "site_url": connection.site_url,
+        "connected_at": connection.created_at,
+        "token_expires_at": connection.token_expires_at,
+        "scopes": list(connection.scopes or []),
+    }
+
+
+@extend_schema(tags=["Time Tracking"])
+class JiraOAuthAuthorizeView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(responses={200: None})
+    def get(self, request):
+        prune_expired_oauth_states()
+        state = _jira_oauth_secrets.token_urlsafe(32)
+        redirect_to = request.query_params.get("redirect_to", "")[:512]
+        JiraOAuthState.objects.create(
+            user=request.user, state=state, redirect_to=redirect_to
+        )
+        return Response({"authorize_url": build_authorize_url(state), "state": state})
+
+
+@extend_schema(tags=["Time Tracking"])
+class JiraOAuthCallbackView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        request=OpenApiTypes.OBJECT, responses={200: None, 400: None, 401: None}
+    )
+    def post(self, request):
+        code = (request.data.get("code") or "").strip()
+        state = (request.data.get("state") or "").strip()
+        if not code or not state:
+            return Response(
+                {"detail": "code and state are required."},
+                status=_drf_status.HTTP_400_BAD_REQUEST,
+            )
+
+        prune_expired_oauth_states()
+        state_row = JiraOAuthState.objects.filter(
+            state=state, user=request.user
+        ).first()
+        if state_row is None:
+            return Response(
+                {"detail": "Invalid or expired OAuth state."},
+                status=_drf_status.HTTP_400_BAD_REQUEST,
+            )
+        cutoff = timezone.now() - _jira_oauth_timedelta(minutes=10)
+        if state_row.created_at < cutoff:
+            state_row.delete()
+            return Response(
+                {"detail": "OAuth state expired."},
+                status=_drf_status.HTTP_400_BAD_REQUEST,
+            )
+        state_row.delete()
+
+        try:
+            token_payload = exchange_code_for_token(code)
+            access_token = token_payload["access_token"]
+            refresh_token = token_payload.get("refresh_token", "")
+            expires_in = int(token_payload.get("expires_in", 3600))
+            scope_str = token_payload.get("scope", "")
+            scopes = (
+                scope_str.split() if scope_str else list(_JIRA_OAUTH_DEFAULT_SCOPES)
+            )
+
+            resources = fetch_accessible_resources(access_token)
+            if not resources:
+                return Response(
+                    {"detail": "No Atlassian sites accessible for this account."},
+                    status=_drf_status.HTTP_400_BAD_REQUEST,
+                )
+            resource = resources[0]
+            me = fetch_me(access_token)
+        except JiraReauthRequired as exc:
+            return Response(
+                {"detail": str(exc), "code": "jira_reauth_required"},
+                status=_drf_status.HTTP_401_UNAUTHORIZED,
+            )
+
+        jira_account_id = me.get("account_id") or ""
+        if not jira_account_id:
+            return Response(
+                {"detail": "Atlassian profile missing account_id."},
+                status=_drf_status.HTTP_400_BAD_REQUEST,
+            )
+
+        expires_at = timezone.now() + _jira_oauth_timedelta(
+            seconds=max(expires_in - 60, 60)
+        )
+        defaults = {
+            "user": request.user,
+            "jira_email": me.get("email") or None,
+            "jira_display_name": me.get("name") or "",
+            "cloud_id": resource.get("id", ""),
+            "site_url": resource.get("url", ""),
+            "token_expires_at": expires_at,
+            "scopes": scopes,
+            "last_refresh_at": timezone.now(),
+            "last_refresh_error": "",
+        }
+        connection, _created = JiraUserConnection.objects.update_or_create(
+            jira_account_id=jira_account_id, defaults=defaults
+        )
+        connection.set_access_token(access_token)
+        if refresh_token:
+            connection.set_refresh_token(refresh_token)
+        connection.save(
+            update_fields=[
+                "access_token_encrypted",
+                "refresh_token_encrypted",
+                "updated_at",
+            ]
+        )
+
+        # Auto-create / update JiraUserMapping for this employee if not yet mapped.
+        profile = UserProfile.objects.filter(user=request.user).first()
+        if profile is not None:
+            mapping = JiraUserMapping.objects.filter(
+                jira_account_id=jira_account_id
+            ).first()
+            if mapping is None:
+                JiraUserMapping.objects.create(
+                    jira_account_id=jira_account_id,
+                    jira_display_name=connection.jira_display_name,
+                    employee=profile,
+                    is_active=True,
+                )
+            else:
+                changed = False
+                if mapping.employee_id != profile.id:
+                    mapping.employee = profile
+                    changed = True
+                if mapping.jira_display_name != connection.jira_display_name:
+                    mapping.jira_display_name = connection.jira_display_name
+                    changed = True
+                if not mapping.is_active:
+                    mapping.is_active = True
+                    changed = True
+                if changed:
+                    mapping.save()
+
+        return Response(_serialize_jira_user_connection(connection))
+
+
+@extend_schema(tags=["Time Tracking"])
+class JiraOAuthStatusView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(responses={200: None})
+    def get(self, request):
+        connection = JiraUserConnection.objects.filter(user=request.user).first()
+        return Response(_serialize_jira_user_connection(connection))
+
+
+@extend_schema(tags=["Time Tracking"])
+class JiraOAuthDisconnectView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(responses={204: None})
+    def delete(self, request):
+        JiraUserConnection.objects.filter(user=request.user).delete()
+        return Response(status=_drf_status.HTTP_204_NO_CONTENT)
+
+
+@extend_schema(tags=["Time Tracking"])
+class JiraSyncView(APIView):
+    """POST /api/time-integrations/jira/sync/ — pull and commit Jira worklogs for the
+    authenticated user using their per-user OAuth token. Body (all optional):
+    `date_from`, `date_to` (ISO dates). Defaults: last 30 days, or since
+    `last_synced_at`. Returns import counts + last_synced_at."""
+
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        request=OpenApiTypes.OBJECT, responses={200: None, 400: None, 401: None}
+    )
+    def post(self, request):
+        from datetime import date as _date
+        from datetime import timedelta as _timedelta
+
+        connection = JiraUserConnection.objects.filter(user=request.user).first()
+        if connection is None:
+            return Response(
+                {
+                    "detail": "No Jira connection. Connect via /oauth/authorize/ first.",
+                    "code": "jira_reauth_required",
+                },
+                status=_drf_status.HTTP_401_UNAUTHORIZED,
+            )
+
+        profile = UserProfile.objects.filter(user=request.user).first()
+        if profile is None:
+            return Response(
+                {"detail": "Authenticated user has no employee profile."},
+                status=_drf_status.HTTP_400_BAD_REQUEST,
+            )
+
+        today = _date.today()
+        default_from = (
+            connection.last_synced_at.date()
+            if connection.last_synced_at
+            else today - _timedelta(days=30)
+        )
+        try:
+            date_from = (
+                _date.fromisoformat(request.data["date_from"])
+                if request.data.get("date_from")
+                else default_from
+            )
+            date_to = (
+                _date.fromisoformat(request.data["date_to"])
+                if request.data.get("date_to")
+                else today
+            )
+        except (TypeError, ValueError):
+            return Response(
+                {"detail": "date_from / date_to must be ISO dates (YYYY-MM-DD)."},
+                status=_drf_status.HTTP_400_BAD_REQUEST,
+            )
+        if date_from > date_to:
+            return Response(
+                {"detail": "date_from must be <= date_to."},
+                status=_drf_status.HTTP_400_BAD_REQUEST,
+            )
+
+        filters = JiraImportFilters(
+            date_from=date_from,
+            date_to=date_to,
+            employee_id=profile.id,
+        )
+        admin_connection = JiraConnection.get_solo()
+        try:
+            worklogs = fetch_jira_worklogs(admin_connection, filters)
+            result = commit_jira_worklogs(
+                user=request.user, filters=filters, raw_worklogs=worklogs
+            )
+        except JiraReauthRequired as exc:
+            connection.last_sync_error = str(exc)
+            connection.save(update_fields=["last_sync_error", "updated_at"])
+            return Response(
+                {"detail": str(exc), "code": "jira_reauth_required"},
+                status=_drf_status.HTTP_401_UNAUTHORIZED,
+            )
+
+        connection.last_synced_at = timezone.now()
+        connection.last_sync_error = ""
+        connection.save(
+            update_fields=["last_synced_at", "last_sync_error", "updated_at"]
+        )
+        return Response(
+            {
+                "date_from": date_from.isoformat(),
+                "date_to": date_to.isoformat(),
+                "counts": result["counts"],
+                "batch_id": result["batch_id"],
+                "last_synced_at": connection.last_synced_at,
+            }
+        )
+
+
+# ---- Tempo OAuth (per-user 3LO) ----
+
+
+def _serialize_tempo_user_connection(connection: TempoUserConnection | None) -> dict:
+    if connection is None:
+        return {
+            "connected": False,
+            "tempo_account_id": None,
+            "tempo_email": None,
+            "tempo_display_name": None,
+            "base_url": None,
+            "connected_at": None,
+            "token_expires_at": None,
+            "scopes": [],
+        }
+    return {
+        "connected": True,
+        "tempo_account_id": connection.tempo_account_id,
+        "tempo_email": connection.tempo_email,
+        "tempo_display_name": connection.tempo_display_name,
+        "base_url": connection.base_url,
+        "connected_at": connection.created_at,
+        "token_expires_at": connection.token_expires_at,
+        "scopes": list(connection.scopes or []),
+    }
+
+
+@extend_schema(tags=["Time Tracking"])
+class TempoOAuthAuthorizeView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(responses={200: None})
+    def get(self, request):
+        _tempo_prune_expired_oauth_states()
+        state = _jira_oauth_secrets.token_urlsafe(32)
+        redirect_to = request.query_params.get("redirect_to", "")[:512]
+        requested_redirect_uri = request.query_params.get("redirect_uri", "")[
+            :512
+        ].strip()
+        requested_jira_url = (
+            request.query_params.get("jira_url", "")[:512].strip().rstrip("/")
+        )
+        jira_connection = JiraUserConnection.objects.filter(user=request.user).first()
+        jira_url = requested_jira_url or (
+            jira_connection.site_url.strip().rstrip("/") if jira_connection else ""
+        )
+        TempoOAuthState.objects.create(
+            user=request.user, state=state, redirect_to=redirect_to
+        )
+        authorize_url = _tempo_build_authorize_url(
+            state, jira_url=jira_url, redirect_uri=requested_redirect_uri
+        )
+        return Response({"authorize_url": authorize_url, "state": state})
+
+
+@extend_schema(tags=["Time Tracking"])
+class TempoOAuthCallbackView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        request=OpenApiTypes.OBJECT, responses={200: None, 400: None, 401: None}
+    )
+    def post(self, request):
+        code = (request.data.get("code") or "").strip()
+        state = (request.data.get("state") or "").strip()
+        redirect_uri = (request.data.get("redirect_uri") or "").strip()
+        if not code or not state:
+            return Response(
+                {"detail": "code and state are required."},
+                status=_drf_status.HTTP_400_BAD_REQUEST,
+            )
+
+        _tempo_prune_expired_oauth_states()
+        state_row = TempoOAuthState.objects.filter(
+            state=state, user=request.user
+        ).first()
+        if state_row is None:
+            return Response(
+                {"detail": "Invalid or expired OAuth state."},
+                status=_drf_status.HTTP_400_BAD_REQUEST,
+            )
+        cutoff = timezone.now() - _jira_oauth_timedelta(minutes=10)
+        if state_row.created_at < cutoff:
+            state_row.delete()
+            return Response(
+                {"detail": "OAuth state expired."},
+                status=_drf_status.HTTP_400_BAD_REQUEST,
+            )
+        state_row.delete()
+
+        try:
+            token_payload = _tempo_exchange_code_for_token(
+                code, redirect_uri=redirect_uri
+            )
+        except TempoReauthRequired as exc:
+            return Response(
+                {"detail": str(exc), "code": "tempo_reauth_required"},
+                status=_drf_status.HTTP_401_UNAUTHORIZED,
+            )
+
+        access_token = token_payload["access_token"]
+        refresh_token = token_payload.get("refresh_token", "")
+        expires_in = int(token_payload.get("expires_in", 3600))
+        scope_str = token_payload.get("scope", "")
+        scopes = scope_str.split() if scope_str else list(_TEMPO_OAUTH_DEFAULT_SCOPES)
+
+        expires_at = timezone.now() + _jira_oauth_timedelta(
+            seconds=max(expires_in - 60, 60)
+        )
+        # Tempo's OAuth token payload may include account info, but per-user identity
+        # is generally derived from a downstream Tempo API call. We store what we have.
+        defaults = {
+            "base_url": _TEMPO_OAUTH_DEFAULT_API_BASE,
+            "token_expires_at": expires_at,
+            "scopes": scopes,
+            "last_refresh_at": timezone.now(),
+            "last_refresh_error": "",
+        }
+        connection, _created = TempoUserConnection.objects.update_or_create(
+            user=request.user, defaults=defaults
+        )
+        connection.set_access_token(access_token)
+        if refresh_token:
+            connection.set_refresh_token(refresh_token)
+        connection.save(
+            update_fields=[
+                "access_token_encrypted",
+                "refresh_token_encrypted",
+                "updated_at",
+            ]
+        )
+
+        return Response(_serialize_tempo_user_connection(connection))
+
+
+@extend_schema(tags=["Time Tracking"])
+class TempoOAuthStatusView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(responses={200: None})
+    def get(self, request):
+        connection = TempoUserConnection.objects.filter(user=request.user).first()
+        return Response(_serialize_tempo_user_connection(connection))
+
+
+@extend_schema(tags=["Time Tracking"])
+class TempoOAuthDisconnectView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(responses={204: None})
+    def delete(self, request):
+        TempoUserConnection.objects.filter(user=request.user).delete()
+        return Response(status=_drf_status.HTTP_204_NO_CONTENT)

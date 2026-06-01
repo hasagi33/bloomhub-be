@@ -264,6 +264,31 @@ else:
             "FRONTEND_URL or SITE_URL must be set when ENVIRONMENT=prod."
         )
 
+# Jira OAuth 2.0 (3LO) — per-user Atlassian connections.
+JIRA_OAUTH_CLIENT_ID = os.environ.get("JIRA_OAUTH_CLIENT_ID", "").strip()
+JIRA_OAUTH_CLIENT_SECRET = os.environ.get("JIRA_OAUTH_CLIENT_SECRET", "").strip()
+JIRA_OAUTH_REDIRECT_URI = os.environ.get("JIRA_OAUTH_REDIRECT_URI", "").strip()
+# Encryption key for per-user access/refresh tokens. Falls back to CREDENTIAL_ENCRYPTION_KEY,
+# which itself falls back to SECRET_KEY. Set explicitly in production.
+JIRA_TOKEN_ENCRYPTION_KEY = os.environ.get("JIRA_TOKEN_ENCRYPTION_KEY", "").strip()
+CREDENTIAL_ENCRYPTION_KEY = os.environ.get(
+    "CREDENTIAL_ENCRYPTION_KEY", JIRA_TOKEN_ENCRYPTION_KEY
+).strip()
+if (
+    ENVIRONMENT == "prod"
+    and not JIRA_TOKEN_ENCRYPTION_KEY
+    and not CREDENTIAL_ENCRYPTION_KEY
+):
+    raise ImproperlyConfigured(
+        "JIRA_TOKEN_ENCRYPTION_KEY (or CREDENTIAL_ENCRYPTION_KEY) must be set in production."
+    )
+
+# Tempo OAuth 2.0 — per-user Tempo Cloud connections.
+TEMPO_OAUTH_CLIENT_ID = os.environ.get("TEMPO_OAUTH_CLIENT_ID", "").strip()
+TEMPO_OAUTH_CLIENT_SECRET = os.environ.get("TEMPO_OAUTH_CLIENT_SECRET", "").strip()
+TEMPO_OAUTH_REDIRECT_URI = os.environ.get("TEMPO_OAUTH_REDIRECT_URI", "").strip()
+TEMPO_OAUTH_JIRA_URL = os.environ.get("TEMPO_OAUTH_JIRA_URL", "").strip().rstrip("/")
+
 # AI assistant / OpenRouter
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 OPENROUTER_MODEL = os.environ.get(

@@ -22,10 +22,11 @@ repos:
         language: system
         pass_filenames: false
       - id: pytest
-        name: pytest
-        entry: python scripts/run_local_hook.py pytest
+        name: pytest changed tests
+        entry: python scripts/run_local_hook.py pytest-changed
         language: system
-        pass_filenames: false
+        files: '(^tests/.*\.py$|^test_.*\.py$)'
+        pass_filenames: true
       - id: commit-message-bhb
         name: commit message [BHB-XX]
         entry: python scripts/run_local_hook.py commit-message-bhb

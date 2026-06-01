@@ -25,9 +25,17 @@ from core.models import (
     TempoConnection,
     TempoProjectMapping,
     TempoTeamMapping,
+    TempoUserConnection,
     TempoUserMapping,
     TimeEntry,
     TimeTask,
+    UserProfile,
+)
+from core.services.tempo_oauth import (
+    TempoReauthRequired,
+)
+from core.services.tempo_oauth import (
+    get_valid_access_token as tempo_get_valid_access_token,
 )
 from core.services.time_import_batch_service import persist_external_import_batch
 from core.services.time_tracking_service import (
@@ -64,21 +72,68 @@ def require_tempo_admin(user):
         )
 
 
+@dataclass
+class TempoApiContext:
+    """Auth + base-URL bundle for Tempo REST calls. Supports admin token or per-user OAuth bearer."""
+
+    base_url: str
+    bearer_token: str
+
+    @classmethod
+    def from_admin_connection(cls, connection: TempoConnection) -> TempoApiContext:
+        return cls(
+            base_url=connection.base_url.rstrip("/"),
+            bearer_token=connection.get_api_token(),
+        )
+
+    @classmethod
+    def from_user_oauth(
+        cls, user_connection: TempoUserConnection, access_token: str
+    ) -> TempoApiContext:
+        return cls(
+            base_url=(user_connection.base_url or "https://api.tempo.io/4").rstrip("/"),
+            bearer_token=access_token,
+        )
+
+    def headers(self) -> dict[str, str]:
+        return {
+            "Accept": "application/json",
+            "Authorization": f"Bearer {self.bearer_token}",
+        }
+
+
+def build_tempo_api_context_for_employee(
+    employee_id: int | None,
+    *,
+    fallback_connection: TempoConnection,
+) -> TempoApiContext:
+    """Prefer per-user OAuth token for the given employee, else fall back to admin global token."""
+    if employee_id is not None:
+        profile = (
+            UserProfile.objects.filter(id=employee_id).select_related("user").first()
+        )
+        if profile is not None:
+            try:
+                token, user_conn = tempo_get_valid_access_token(profile.user)
+                return TempoApiContext.from_user_oauth(user_conn, token)
+            except TempoReauthRequired:
+                pass
+    return TempoApiContext.from_admin_connection(fallback_connection)
+
+
 def _headers(connection: TempoConnection) -> dict[str, str]:
-    return {
-        "Accept": "application/json",
-        "Authorization": f"Bearer {connection.get_api_token()}",
-    }
+    # Legacy admin-token header builder (kept for backwards compatibility).
+    return TempoApiContext.from_admin_connection(connection).headers()
 
 
-def _tempo_get(connection: TempoConnection, url: str, **kwargs):
+def _tempo_get(context: TempoApiContext, url: str, **kwargs):
     max_attempts = 3
     timeout = kwargs.pop("timeout", 30)
     for attempt in range(1, max_attempts + 1):
         try:
             response = requests.get(
                 url,
-                headers=_headers(connection),
+                headers=context.headers(),
                 timeout=timeout,
                 **kwargs,
             )
@@ -108,10 +163,11 @@ def test_tempo_connection(connection: TempoConnection) -> dict[str, Any]:
             "message": "Tempo base URL and API token are required.",
             "metadata": {},
         }
+    context = TempoApiContext.from_admin_connection(connection)
     try:
         response = _tempo_get(
-            connection,
-            f"{connection.base_url.rstrip('/')}/worklogs",
+            context,
+            f"{context.base_url}/worklogs",
             params={
                 "from": date.today().isoformat(),
                 "to": date.today().isoformat(),
@@ -144,6 +200,12 @@ def fetch_tempo_worklogs(
     if not connection.base_url or not connection.has_api_token:
         raise ValidationError("Tempo connection is not configured.")
 
+    # Prefer per-user OAuth context when filters.employee_id has a TempoUserConnection;
+    # fall back to the admin global token otherwise.
+    context = build_tempo_api_context_for_employee(
+        filters.employee_id, fallback_connection=connection
+    )
+
     params: dict[str, Any] = {
         "from": filters.date_from.isoformat(),
         "to": filters.date_to.isoformat(),
@@ -159,8 +221,8 @@ def fetch_tempo_worklogs(
         params["issue"] = filters.jira_issue_key
 
     response = _tempo_get(
-        connection,
-        f"{connection.base_url.rstrip('/')}/worklogs",
+        context,
+        f"{context.base_url}/worklogs",
         params=params,
         timeout=30,
     )
@@ -181,19 +243,19 @@ def _payload_results(payload: Any) -> list[dict[str, Any]]:
 
 
 def _tempo_paginated_results(
-    connection: TempoConnection,
+    context: TempoApiContext,
     path: str,
     *,
     limit: int = 1000,
 ) -> tuple[list[dict[str, Any]], str | None]:
-    base_url = connection.base_url.rstrip("/")
+    base_url = context.base_url
     collected: list[dict[str, Any]] = []
     offset = 0
     page_limit = min(limit, 50)
 
     while len(collected) < limit:
         response = _tempo_get(
-            connection,
+            context,
             f"{base_url}/{path.lstrip('/')}",
             params={"offset": offset, "limit": page_limit},
             timeout=30,
@@ -323,9 +385,10 @@ def discover_tempo_project_ids(
     if not connection.base_url or not connection.has_api_token:
         raise ValidationError("Tempo base URL and API token are required.")
 
+    context = TempoApiContext.from_admin_connection(connection)
     worklog_response = _tempo_get(
-        connection,
-        f"{connection.base_url.rstrip('/')}/worklogs",
+        context,
+        f"{context.base_url}/worklogs",
         params={
             "from": date_from.isoformat(),
             "to": date_to.isoformat(),
@@ -346,14 +409,12 @@ def discover_tempo_project_ids(
     discovery_errors = []
 
     account_results, account_error = _tempo_paginated_results(
-        connection, "accounts", limit=limit
+        context, "accounts", limit=limit
     )
     project_results, project_error = _tempo_paginated_results(
-        connection, "projects", limit=limit
+        context, "projects", limit=limit
     )
-    team_results, team_error = _tempo_paginated_results(
-        connection, "teams", limit=limit
-    )
+    team_results, team_error = _tempo_paginated_results(context, "teams", limit=limit)
 
     for error in [account_error, project_error, team_error]:
         if error:

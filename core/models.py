@@ -475,6 +475,63 @@ class JiraUserMapping(models.Model):
         return f"{self.jira_account_id} -> {self.employee}"
 
 
+class JiraUserConnection(models.Model):
+    user = models.OneToOneField(
+        User, on_delete=models.CASCADE, related_name="jira_user_connection"
+    )
+    jira_account_id = models.CharField(max_length=255, unique=True)
+    jira_email = models.EmailField(null=True, blank=True)
+    jira_display_name = models.CharField(max_length=255, blank=True, default="")
+    cloud_id = models.CharField(max_length=255)
+    site_url = models.URLField()
+    access_token_encrypted = models.TextField(blank=True, default="")
+    refresh_token_encrypted = models.TextField(blank=True, default="")
+    token_expires_at = models.DateTimeField()
+    scopes = models.JSONField(default=list, blank=True)
+    last_refresh_at = models.DateTimeField(null=True, blank=True)
+    last_refresh_error = models.TextField(blank=True, default="")
+    last_synced_at = models.DateTimeField(null=True, blank=True)
+    last_sync_error = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Jira User Connection"
+        verbose_name_plural = "Jira User Connections"
+
+    def set_access_token(self, token: str):
+        self.access_token_encrypted = encrypt_secret(token)
+
+    def get_access_token(self) -> str:
+        return decrypt_secret(self.access_token_encrypted)
+
+    def set_refresh_token(self, token: str):
+        self.refresh_token_encrypted = encrypt_secret(token)
+
+    def get_refresh_token(self) -> str:
+        return decrypt_secret(self.refresh_token_encrypted)
+
+    def __str__(self):
+        return f"{self.user_id} -> {self.jira_account_id}"
+
+
+class JiraOAuthState(models.Model):
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="jira_oauth_states"
+    )
+    state = models.CharField(max_length=128, unique=True)
+    redirect_to = models.CharField(max_length=512, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Jira OAuth State"
+        verbose_name_plural = "Jira OAuth States"
+        indexes = [models.Index(fields=["created_at"])]
+
+    def __str__(self):
+        return f"{self.user_id}:{self.state[:8]}"
+
+
 class JiraProjectMapping(models.Model):
     jira_project_key = models.CharField(max_length=50, unique=True)
     jira_project_name = models.CharField(max_length=255, blank=True, default="")
@@ -563,6 +620,60 @@ class TempoConnection(models.Model):
 
     def __str__(self):
         return self.base_url or "Tempo Connection"
+
+
+class TempoUserConnection(models.Model):
+    user = models.OneToOneField(
+        User, on_delete=models.CASCADE, related_name="tempo_user_connection"
+    )
+    tempo_account_id = models.CharField(max_length=255, blank=True, default="")
+    tempo_display_name = models.CharField(max_length=255, blank=True, default="")
+    tempo_email = models.EmailField(null=True, blank=True)
+    base_url = models.URLField(default="https://api.tempo.io/4")
+    access_token_encrypted = models.TextField(blank=True, default="")
+    refresh_token_encrypted = models.TextField(blank=True, default="")
+    token_expires_at = models.DateTimeField()
+    scopes = models.JSONField(default=list, blank=True)
+    last_refresh_at = models.DateTimeField(null=True, blank=True)
+    last_refresh_error = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Tempo User Connection"
+        verbose_name_plural = "Tempo User Connections"
+
+    def set_access_token(self, token: str):
+        self.access_token_encrypted = encrypt_secret(token)
+
+    def get_access_token(self) -> str:
+        return decrypt_secret(self.access_token_encrypted)
+
+    def set_refresh_token(self, token: str):
+        self.refresh_token_encrypted = encrypt_secret(token)
+
+    def get_refresh_token(self) -> str:
+        return decrypt_secret(self.refresh_token_encrypted)
+
+    def __str__(self):
+        return f"{self.user_id} -> tempo:{self.tempo_account_id or '?'}"
+
+
+class TempoOAuthState(models.Model):
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="tempo_oauth_states"
+    )
+    state = models.CharField(max_length=128, unique=True)
+    redirect_to = models.CharField(max_length=512, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Tempo OAuth State"
+        verbose_name_plural = "Tempo OAuth States"
+        indexes = [models.Index(fields=["created_at"])]
+
+    def __str__(self):
+        return f"{self.user_id}:{self.state[:8]}"
 
 
 class TempoUserMapping(models.Model):
