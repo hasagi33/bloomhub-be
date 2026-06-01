@@ -56,6 +56,13 @@ class SuggestionBoxAPITests(APITestCase):
         s = Suggestion.objects.get()
         self.assertIsNone(s.employee_id)
 
+    def test_same_user_can_submit_multiple_suggestions(self):
+        self.client.force_authenticate(user=self.regular_user)
+        for text in ("First idea", "Second idea", "Third idea"):
+            r = self.client.post("/api/suggestions/", {"text": text}, format="json")
+            self.assertEqual(r.status_code, status.HTTP_201_CREATED, text)
+        self.assertEqual(Suggestion.objects.filter(employee=self.profile).count(), 3)
+
     def test_unauthenticated_cannot_submit(self):
         resp = self.client.post("/api/suggestions/", {"text": "no auth"}, format="json")
         self.assertIn(

@@ -10750,31 +10750,9 @@ class SurveyViewSet(viewsets.ModelViewSet):
             profile = None
         serializer.save(created_by=profile)
 
-    def _is_locked(self, survey) -> bool:
-        return bool(survey.end_date and survey.end_date < timezone.localdate())
-
-    def _locked_response(self, survey):
-        return Response(
-            {
-                "detail": (
-                    f"This survey ended on {survey.end_date.isoformat()} "
-                    "and can no longer be modified."
-                )
-            },
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-
-    def update(self, request, *args, **kwargs):
-        survey = self.get_object()
-        if self._is_locked(survey):
-            return self._locked_response(survey)
-        return super().update(request, *args, **kwargs)
-
-    def partial_update(self, request, *args, **kwargs):
-        survey = self.get_object()
-        if self._is_locked(survey):
-            return self._locked_response(survey)
-        return super().partial_update(request, *args, **kwargs)
+    # NOTE: We deliberately do NOT block edits past end_date. The end_date is
+    # a constraint on *respondents* (submissions are rejected after it), but
+    # HR / creators must always be able to edit and recall their surveys.
 
     def destroy(self, request, *args, **kwargs):
         survey = self.get_object()
