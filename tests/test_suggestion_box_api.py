@@ -1,4 +1,4 @@
-"""Tests for BHB-454 — Suggestion box API."""
+"""Tests for BHB-454 — Suggestion box API (HR list/update + employee submit)."""
 
 from django.contrib.auth.models import User
 from django.core.management import call_command
