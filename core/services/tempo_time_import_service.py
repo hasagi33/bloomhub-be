@@ -231,6 +231,36 @@ def fetch_tempo_worklogs(
     return response.json().get("results", [])
 
 
+def fetch_tempo_worklogs_for_user(
+    user, filters: TempoImportFilters
+) -> list[dict[str, Any]]:
+    token, user_connection = tempo_get_valid_access_token(user)
+    context = TempoApiContext.from_user_oauth(user_connection, token)
+    params: dict[str, Any] = {
+        "from": filters.date_from.isoformat(),
+        "to": filters.date_to.isoformat(),
+        "limit": 1000,
+    }
+    if filters.tempo_account_id:
+        params["accountId"] = filters.tempo_account_id
+    if filters.tempo_team_id:
+        params["teamId"] = filters.tempo_team_id
+    if filters.tempo_project_id:
+        params["projectId"] = filters.tempo_project_id
+    if filters.jira_issue_key:
+        params["issue"] = filters.jira_issue_key
+
+    response = _tempo_get(
+        context,
+        f"{context.base_url}/worklogs",
+        params=params,
+        timeout=30,
+    )
+    if response.status_code >= 400:
+        raise ValidationError(f"Tempo returned HTTP {response.status_code}.")
+    return response.json().get("results", [])
+
+
 def _payload_results(payload: Any) -> list[dict[str, Any]]:
     if isinstance(payload, list):
         return [item for item in payload if isinstance(item, dict)]

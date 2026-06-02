@@ -16,11 +16,13 @@ from core.models import (
     LeaveBalance,
     LeavePolicy,
     LeaveRequest,
+    Notification,
     ProjectAssignment,
     UserProfile,
     initialize_leave_balances_for_profile,
 )
 from core.permissions import _has_permission
+from core.services.notification_service import create_notification
 
 VACATIONS_MODULE = "Vacations"
 APPROVE_REQUEST_ACTIONS = [
@@ -31,6 +33,50 @@ APPROVE_REQUEST_ACTIONS = [
 HR_APPROVE_ACTIONS = ["adjust_balances", "override_requests", "configure_leave_types"]
 ADJUST_BALANCES_ACTIONS = ["adjust_balances"]
 CONFIGURE_LEAVE_TYPES_ACTIONS = ["configure_leave_types"]
+
+
+def _notify_employee_leave_decision(
+    leave_request: LeaveRequest, *, approved: bool, stage: str
+) -> None:
+    """Create an in-app notification for the employee's leave decision."""
+    stage_label = "Tech Lead" if stage == "lead" else "HR"
+    request_label = leave_request.get_leave_type_display()
+    period = f"{leave_request.start_date} to {leave_request.end_date}"
+
+    if approved:
+        title = f"Leave request approved by {stage_label}"
+        message = (
+            f"Your {request_label} request for {period} was approved by your "
+            f"{stage_label}."
+        )
+        if stage == "lead":
+            message += " It is now awaiting HR review."
+        notif_type = Notification.Type.SUCCESS
+    else:
+        title = f"Leave request rejected by {stage_label}"
+        message = (
+            f"Your {request_label} request for {period} was rejected by your "
+            f"{stage_label}."
+        )
+        if leave_request.rejection_reason:
+            message += f" Reason: {leave_request.rejection_reason}"
+        notif_type = Notification.Type.WARNING
+
+    create_notification(
+        recipient=leave_request.employee,
+        title=title,
+        message=message,
+        module=Notification.Module.VACATIONS,
+        type=notif_type,
+        link=f"/leave-requests/{leave_request.id}",
+        metadata={
+            "leave_request_id": leave_request.id,
+            "leave_type": leave_request.leave_type,
+            "status": leave_request.status,
+            "stage": stage,
+            "approved": approved,
+        },
+    )
 
 
 def get_team_members_for_employee(employee: UserProfile):
@@ -214,6 +260,7 @@ def approve_leave_request_lead(
 
     notify_approver_confirmation(leave_request, approver, approved=True, stage="lead")
     notify_employee_lead_decision(leave_request, approved=True)
+    _notify_employee_leave_decision(leave_request, approved=True, stage="lead")
     notify_hr_lead_approved(leave_request)
 
     return True, None
@@ -270,6 +317,11 @@ def approve_leave_request_hr(
 
     notify_approver_confirmation(leave_request, approver, approved=True, stage="hr")
     notify_employee_hr_decision(leave_request, approved=True)
+    _notify_employee_leave_decision(leave_request, approved=True, stage="hr")
+
+    from core.services.tempo_absence_sync_service import enqueue_leave_sync_on_commit
+
+    enqueue_leave_sync_on_commit(leave_request.id)
 
     return True, None
 
@@ -311,6 +363,7 @@ def reject_leave_request(
         notify_employee_lead_decision(leave_request, approved=False)
     else:
         notify_employee_hr_decision(leave_request, approved=False)
+    _notify_employee_leave_decision(leave_request, approved=False, stage=stage)
 
     return True, None
 
@@ -347,6 +400,10 @@ def cancel_leave_request(leave_request: LeaveRequest) -> tuple[bool, str | None]
 
     leave_request.status = LeaveRequest.Status.CANCELLED
     leave_request.save()
+
+    from core.services.tempo_absence_sync_service import enqueue_leave_sync_on_commit
+
+    enqueue_leave_sync_on_commit(leave_request.id)
 
     return True, None
 

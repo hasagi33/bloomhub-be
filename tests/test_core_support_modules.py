@@ -72,6 +72,7 @@ def test_config_settings_postgres_tenant_branch(monkeypatch):
         monkeypatch,
         ENVIRONMENT="prod",
         DATABASE_URL="postgres://user:pass@localhost:5432/bloomhub",
+        JIRA_TOKEN_ENCRYPTION_KEY="test-encryption-key",
         SITE_URL="https://example.com",
         JIRA_TOKEN_ENCRYPTION_KEY="test-encryption-key",
     )

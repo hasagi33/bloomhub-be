@@ -1,4 +1,5 @@
 import sys
+from datetime import time
 from decimal import Decimal
 from pathlib import Path
 
@@ -674,6 +675,116 @@ class TempoOAuthState(models.Model):
 
     def __str__(self):
         return f"{self.user_id}:{self.state[:8]}"
+
+
+class TempoAbsenceSyncSettings(models.Model):
+    enabled = models.BooleanField(default=False)
+    default_jira_issue_key = models.CharField(max_length=50, blank=True, default="")
+    leave_type_issue_keys = models.JSONField(default=dict, blank=True)
+    daily_hours = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=Decimal("8.00"),
+        validators=[MinValueValidator(Decimal("0.01")), MaxValueValidator(24)],
+    )
+    default_start_time = models.TimeField(default=time(9, 0))
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Tempo Absence Sync Settings"
+        verbose_name_plural = "Tempo Absence Sync Settings"
+
+    @classmethod
+    def get_solo(cls):
+        settings_row, _ = cls.objects.get_or_create(pk=1)
+        return settings_row
+
+    def save(self, *args, **kwargs):
+        self.default_jira_issue_key = (
+            (self.default_jira_issue_key or "").strip().upper()
+        )
+        self.leave_type_issue_keys = {
+            str(key): str(value).strip().upper()
+            for key, value in (self.leave_type_issue_keys or {}).items()
+            if str(value).strip()
+        }
+        super().save(*args, **kwargs)
+
+    def issue_key_for(self, leave_type: str) -> str:
+        return (
+            (
+                (self.leave_type_issue_keys or {}).get(leave_type)
+                or self.default_jira_issue_key
+                or ""
+            )
+            .strip()
+            .upper()
+        )
+
+    def __str__(self):
+        return "Tempo Absence Sync Settings"
+
+
+class TempoAbsenceSync(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        SYNCED = "synced", "Synced"
+        FAILED = "failed", "Failed"
+        DELETED = "deleted", "Deleted"
+        SKIPPED = "skipped", "Skipped"
+
+    leave_request = models.ForeignKey(
+        "LeaveRequest", on_delete=models.CASCADE, related_name="tempo_absence_syncs"
+    )
+    employee = models.ForeignKey(
+        "UserProfile", on_delete=models.CASCADE, related_name="tempo_absence_syncs"
+    )
+    work_date = models.DateField()
+    leave_type = models.CharField(max_length=20, choices=LeaveType.choices)
+    jira_issue_key = models.CharField(max_length=50, blank=True, default="")
+    jira_issue_id = models.CharField(max_length=100, blank=True, default="")
+    tempo_worklog_id = models.CharField(max_length=100, blank=True, default="")
+    time_entry = models.ForeignKey(
+        "TimeEntry",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="tempo_absence_syncs",
+    )
+    status = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.PENDING
+    )
+    last_error = models.TextField(blank=True, default="")
+    error_code = models.CharField(max_length=80, blank=True, default="")
+    retry_count = models.PositiveIntegerField(default=0)
+    last_synced_at = models.DateTimeField(null=True, blank=True)
+    payload_snapshot = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Tempo Absence Sync"
+        verbose_name_plural = "Tempo Absence Syncs"
+        ordering = ["-work_date", "leave_request_id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["leave_request", "work_date"],
+                name="unique_tempo_absence_sync_leave_date",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["status", "work_date"]),
+            models.Index(fields=["employee", "work_date"]),
+            models.Index(fields=["tempo_worklog_id"]),
+        ]
+
+    def save(self, *args, **kwargs):
+        self.jira_issue_key = (self.jira_issue_key or "").strip().upper()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.leave_request_id}:{self.work_date}:{self.status}"
 
 
 class TempoUserMapping(models.Model):
