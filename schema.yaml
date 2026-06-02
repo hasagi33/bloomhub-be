@@ -5212,7 +5212,7 @@ paths:
         ``open_at`` / ``close_at`` window) and can apply via the ``apply`` action.
 
         HR / admin users have full access: they can list every listing regardless
-        of status, create new listings, update existing ones, and review the
+        of status, create, update, and delete listings, and review the
         applicant roster via the ``applications`` action.
       parameters:
       - in: query
@@ -5269,7 +5269,7 @@ paths:
         ``open_at`` / ``close_at`` window) and can apply via the ``apply`` action.
 
         HR / admin users have full access: they can list every listing regardless
-        of status, create new listings, update existing ones, and review the
+        of status, create, update, and delete listings, and review the
         applicant roster via the ``applications`` action.
       tags:
       - Internal Mobility
@@ -5304,7 +5304,7 @@ paths:
         ``open_at`` / ``close_at`` window) and can apply via the ``apply`` action.
 
         HR / admin users have full access: they can list every listing regardless
-        of status, create new listings, update existing ones, and review the
+        of status, create, update, and delete listings, and review the
         applicant roster via the ``applications`` action.
       parameters:
       - in: path
@@ -5333,7 +5333,7 @@ paths:
         ``open_at`` / ``close_at`` window) and can apply via the ``apply`` action.
 
         HR / admin users have full access: they can list every listing regardless
-        of status, create new listings, update existing ones, and review the
+        of status, create, update, and delete listings, and review the
         applicant roster via the ``applications`` action.
       parameters:
       - in: path
@@ -5374,7 +5374,7 @@ paths:
         ``open_at`` / ``close_at`` window) and can apply via the ``apply`` action.
 
         HR / admin users have full access: they can list every listing regardless
-        of status, create new listings, update existing ones, and review the
+        of status, create, update, and delete listings, and review the
         applicant roster via the ``applications`` action.
       parameters:
       - in: path
@@ -5405,6 +5405,31 @@ paths:
               schema:
                 $ref: '#/components/schemas/JobListingWrite'
           description: ''
+    delete:
+      operationId: job_listings_destroy
+      description: |-
+        Internal job board.
+
+        Employees see only *active* listings (status ``open`` within the
+        ``open_at`` / ``close_at`` window) and can apply via the ``apply`` action.
+
+        HR / admin users have full access: they can list every listing regardless
+        of status, create, update, and delete listings, and review the
+        applicant roster via the ``applications`` action.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Job Listing.
+        required: true
+      tags:
+      - Internal Mobility
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
   /api/job-listings/{id}/applications/:
     get:
       operationId: job_listings_applications_list
@@ -5415,7 +5440,7 @@ paths:
         ``open_at`` / ``close_at`` window) and can apply via the ``apply`` action.
 
         HR / admin users have full access: they can list every listing regardless
-        of status, create new listings, update existing ones, and review the
+        of status, create, update, and delete listings, and review the
         applicant roster via the ``applications`` action.
       summary: List applications for a listing (HR/admin only)
       parameters:
@@ -5480,7 +5505,7 @@ paths:
         ``open_at`` / ``close_at`` window) and can apply via the ``apply`` action.
 
         HR / admin users have full access: they can list every listing regardless
-        of status, create new listings, update existing ones, and review the
+        of status, create, update, and delete listings, and review the
         applicant roster via the ``applications`` action.
       summary: Apply to an internal job listing
       parameters:
@@ -5529,7 +5554,7 @@ paths:
         ``open_at`` / ``close_at`` window) and can apply via the ``apply`` action.
 
         HR / admin users have full access: they can list every listing regardless
-        of status, create new listings, update existing ones, and review the
+        of status, create, update, and delete listings, and review the
         applicant roster via the ``applications`` action.
       summary: List the current user's applications
       parameters:
