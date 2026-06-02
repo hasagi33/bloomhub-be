@@ -121,6 +121,7 @@ from .models import (
     ReplacementLog,
     Role,
     ScheduledMaintenance,
+    Suggestion,
     Survey,
     TaskTemplate,
     TemplateField,
@@ -298,6 +299,7 @@ from .serializers import (
     ScheduledMaintenanceSerializer,
     SignatureAuditLogSerializer,
     SignDocumentSerializer,
+    SuggestionSerializer,
     SurveySerializer,
     TemplateGeneratedDocumentSerializer,
     TemplateUseSerializer,
@@ -10938,31 +10940,9 @@ class SurveyViewSet(viewsets.ModelViewSet):
             profile = None
         serializer.save(created_by=profile)
 
-    def _is_locked(self, survey) -> bool:
-        return bool(survey.end_date and survey.end_date < timezone.localdate())
-
-    def _locked_response(self, survey):
-        return Response(
-            {
-                "detail": (
-                    f"This survey ended on {survey.end_date.isoformat()} "
-                    "and can no longer be modified."
-                )
-            },
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-
-    def update(self, request, *args, **kwargs):
-        survey = self.get_object()
-        if self._is_locked(survey):
-            return self._locked_response(survey)
-        return super().update(request, *args, **kwargs)
-
-    def partial_update(self, request, *args, **kwargs):
-        survey = self.get_object()
-        if self._is_locked(survey):
-            return self._locked_response(survey)
-        return super().partial_update(request, *args, **kwargs)
+    # NOTE: We deliberately do NOT block edits past end_date. The end_date is
+    # a constraint on *respondents* (submissions are rejected after it), but
+    # HR / creators must always be able to edit and recall their surveys.
 
     def destroy(self, request, *args, **kwargs):
         survey = self.get_object()
@@ -10998,6 +10978,28 @@ class SurveyViewSet(viewsets.ModelViewSet):
             )
         survey.status = SurveyStatus.CLOSED
         survey.save(update_fields=["status"])
+        return Response(self.get_serializer(survey).data)
+
+    @extend_schema(
+        summary="Recall an active or locked survey back to draft",
+        description=(
+            "Forces the survey back to `draft` state. If `end_date` is in the "
+            "past, it is cleared so HR can edit/extend the survey before "
+            "sending it out again. Bypasses the standard end-date lock."
+        ),
+        responses={200: SurveySerializer},
+    )
+    @action(detail=True, methods=["post"], url_path="recall")
+    def recall(self, request, pk=None):
+        from .enums import SurveyStatus
+
+        survey = self.get_object()
+        update_fields = ["status"]
+        survey.status = SurveyStatus.DRAFT
+        if survey.end_date and survey.end_date < timezone.localdate():
+            survey.end_date = None
+            update_fields.append("end_date")
+        survey.save(update_fields=update_fields)
         return Response(self.get_serializer(survey).data)
 
     @extend_schema(
@@ -11553,6 +11555,79 @@ class PulseCheckViewSet(
                 "by_category": by_category,
             }
         )
+
+
+# ──────────────────────────────────────────
+# Suggestion Box (BHB-454)
+# ──────────────────────────────────────────
+
+
+@extend_schema(tags=["Feedback & Surveys"])
+class SuggestionViewSet(
+    mixins.CreateModelMixin,
+    mixins.ListModelMixin,
+    mixins.UpdateModelMixin,
+    viewsets.GenericViewSet,
+):
+    """
+    Suggestion box.
+
+    - POST /api/suggestions/         — submit a suggestion (any authenticated user)
+    - GET  /api/suggestions/         — list (HR / staff only)
+    - PATCH /api/suggestions/{id}/   — update status (HR / staff only)
+    """
+
+    serializer_class = SuggestionSerializer
+    queryset = Suggestion.objects.select_related("employee__user").all()
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _is_hr_or_staff(self, request) -> bool:
+        if getattr(request.user, "is_staff", False) or getattr(
+            request.user, "is_superuser", False
+        ):
+            return True
+        try:
+            profile = request.user.profile
+        except (AttributeError, UserProfile.DoesNotExist):
+            return False
+        role = getattr(profile, "role", None)
+        return bool(role and role.name and "hr" in role.name.lower())
+
+    def list(self, request, *args, **kwargs):
+        if not self._is_hr_or_staff(request):
+            return Response(
+                {"detail": "Suggestions are HR-only to review."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return super().list(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        if not self._is_hr_or_staff(request):
+            return Response(
+                {"detail": "Only HR can change suggestion status."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        if not self._is_hr_or_staff(request):
+            return Response(
+                {"detail": "Only HR can change suggestion status."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return super().partial_update(request, *args, **kwargs)
+
+    def perform_create(self, serializer):
+        # Honor the anonymity flag: drop the FK to the submitter when set.
+        is_anonymous = serializer.validated_data.pop("is_anonymous", False)
+        if is_anonymous:
+            serializer.save(employee=None)
+            return
+        try:
+            profile = self.request.user.profile
+        except (AttributeError, UserProfile.DoesNotExist):
+            profile = None
+        serializer.save(employee=profile)
 
 
 # ---- Jira OAuth (per-user 3LO) ----

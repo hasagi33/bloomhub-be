@@ -200,7 +200,7 @@ class SurveyAPITests(APITestCase):
         self.assertIn("Mine 2", mine_titles)
         self.assertNotIn("Not Mine", mine_titles)
 
-    def test_cannot_edit_survey_past_end_date(self):
+    def test_creator_can_still_edit_survey_past_end_date(self):
         from datetime import date, timedelta
 
         survey = Survey.objects.create(
@@ -214,9 +214,9 @@ class SurveyAPITests(APITestCase):
             {"title": "Renamed"},
             format="json",
         )
-        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
         survey.refresh_from_db()
-        self.assertEqual(survey.title, "Locked")
+        self.assertEqual(survey.title, "Renamed")
 
     def test_cannot_delete_survey_with_responses(self):
         survey = Survey.objects.create(title="Has data", is_anonymous=False)

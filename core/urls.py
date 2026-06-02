@@ -91,6 +91,7 @@ from .views import (
     ScheduledMaintenanceDetailView,
     ScheduledMaintenanceListView,
     SessionView,
+    SuggestionViewSet,
     SurveyViewSet,
     TempoAbsenceSyncFailuresView,
     TempoAbsenceSyncRetryView,
@@ -193,6 +194,7 @@ router.register(
 router.register(r"job-listings", JobListingViewSet, basename="job-listing")
 router.register(r"job-applications", JobApplicationViewSet, basename="job-application")
 router.register(r"surveys", SurveyViewSet, basename="survey")
+router.register(r"suggestions", SuggestionViewSet, basename="suggestion")
 router.register(r"pulse-checks", PulseCheckViewSet, basename="pulse-check")
 router.register(
     r"promotion-history", PromotionHistoryViewSet, basename="promotion-history"
