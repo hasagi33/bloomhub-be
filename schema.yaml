@@ -2721,8 +2721,16 @@ paths:
           description: ''
   /api/cpf-levels/:
     get:
-      operationId: cpf_levels_retrieve
-      description: Get CPF levels, optionally filtered by role
+      operationId: cpf_levels_list
+      description: |-
+        GET list of CPF levels (objects), optionally filtered by role.
+
+        URL forms:
+          GET  /api/cpf-levels/                 → all levels
+          GET  /api/cpf-levels/<role-or-code>/  → role-filtered list OR single level
+                                                 (role match wins; if no role match
+                                                 and a CPFLevel with this name
+                                                 exists, return single object)
       tags:
       - cpf-levels
       security:
@@ -2732,12 +2740,44 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CPFLevelListResponse'
+                type: array
+                items:
+                  $ref: '#/components/schemas/CPFLevel'
+          description: ''
+    patch:
+      operationId: cpf_levels_partial_update
+      description: |-
+        GET list of CPF levels (objects), optionally filtered by role.
+
+        URL forms:
+          GET  /api/cpf-levels/                 → all levels
+          GET  /api/cpf-levels/<role-or-code>/  → role-filtered list OR single level
+                                                 (role match wins; if no role match
+                                                 and a CPFLevel with this name
+                                                 exists, return single object)
+      tags:
+      - cpf-levels
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CPFLevel'
           description: ''
   /api/cpf-levels/{role}/:
     get:
-      operationId: cpf_levels_retrieve_2
-      description: Get CPF levels, optionally filtered by role
+      operationId: cpf_levels_list_2
+      description: |-
+        GET list of CPF levels (objects), optionally filtered by role.
+
+        URL forms:
+          GET  /api/cpf-levels/                 → all levels
+          GET  /api/cpf-levels/<role-or-code>/  → role-filtered list OR single level
+                                                 (role match wins; if no role match
+                                                 and a CPFLevel with this name
+                                                 exists, return single object)
       parameters:
       - in: path
         name: role
@@ -2753,7 +2793,37 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CPFLevelListResponse'
+                type: array
+                items:
+                  $ref: '#/components/schemas/CPFLevel'
+          description: ''
+    patch:
+      operationId: cpf_levels_partial_update_2
+      description: |-
+        GET list of CPF levels (objects), optionally filtered by role.
+
+        URL forms:
+          GET  /api/cpf-levels/                 → all levels
+          GET  /api/cpf-levels/<role-or-code>/  → role-filtered list OR single level
+                                                 (role match wins; if no role match
+                                                 and a CPFLevel with this name
+                                                 exists, return single object)
+      parameters:
+      - in: path
+        name: role
+        schema:
+          type: string
+        required: true
+      tags:
+      - cpf-levels
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CPFLevel'
           description: ''
   /api/departments/:
     get:
@@ -13755,6 +13825,22 @@ components:
             minimum: 1
       required:
       - ids
+    CPFLevel:
+      type: object
+      properties:
+        code:
+          type: string
+          readOnly: true
+        display_name:
+          type: string
+          nullable: true
+          maxLength: 200
+        career_level:
+          type: string
+          nullable: true
+          maxLength: 100
+      required:
+      - code
     CPFLevelChange:
       type: object
       description: Read serialiser for a single CPF level change record.
@@ -13914,23 +14000,6 @@ components:
       - effective_date
       - employee_id
       - new_level
-    CPFLevelListResponse:
-      type: object
-      properties:
-        user_role:
-          type: string
-          nullable: true
-        requested_role:
-          type: string
-        cpf_levels:
-          type: array
-          items:
-            type: string
-        error:
-          type: string
-      required:
-      - cpf_levels
-      - user_role
     CPFProgression:
       type: object
       description: CPF career-progression timeline for a single employee.
@@ -17324,16 +17393,14 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -17791,9 +17858,8 @@ components:
           type: integer
         fiscal_year:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           description: Fiscal year for which budget is allocated
         allocated_budget:
           type: string
@@ -17870,16 +17936,14 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -17904,16 +17968,14 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -17946,16 +18008,14 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -18001,16 +18061,14 @@ components:
           description: Date when the peer session occurred
         duration_minutes:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Duration of the session in minutes
         incentive_id:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           nullable: true
           description: Reference to associated incentive (FK when model exists)
         description:
@@ -19187,9 +19245,8 @@ components:
           type: string
         order:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
         options:
           description: List of option strings for choice questions; ignored otherwise.
         required:
@@ -19210,9 +19267,8 @@ components:
           type: string
         order:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
         options:
           description: List of option strings for choice questions; ignored otherwise.
         required:
@@ -20992,9 +21048,8 @@ components:
           readOnly: true
         fiscal_year:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           description: Fiscal year for which budget is allocated
         allocated_budget:
           type: string
@@ -21050,9 +21105,8 @@ components:
           type: integer
         fiscal_year:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
           description: Fiscal year for which budget is allocated
         allocated_budget:
           type: string

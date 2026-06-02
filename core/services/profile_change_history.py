@@ -81,3 +81,53 @@ def manager_payload_from_ids(manager_user_ids: list[int]) -> dict[str, Any]:
 
     names = [name_by_user_id.get(user_id, str(user_id)) for user_id in manager_user_ids]
     return {"ids": manager_user_ids, "names": names}
+
+
+def cascade_cpf_level_definition_change(
+    *,
+    cpf_code: str,
+    old_career_level: str | None,
+    new_career_level: str | None,
+    changed_by: User | None = None,
+) -> None:
+    """Propagate CPFLevel.career_level edits to all employees at that level.
+
+    Updates each employee's stored career_level and emits a CAREER_LEVEL
+    history row sourced to the CPF definition change.
+    """
+    if old_career_level == new_career_level:
+        return
+
+    employees = UserProfile.objects.filter(cpf_level=cpf_code)
+    for employee in employees:
+        previous = employee.career_level
+        if previous == new_career_level:
+            continue
+        employee.career_level = new_career_level
+        employee.save()
+        log_employee_profile_change(
+            employee=employee,
+            field=EmployeeProfileChangeHistory.TrackedField.CAREER_LEVEL,
+            old_value={"value": previous},
+            new_value={"value": new_career_level},
+            changed_by=changed_by,
+            metadata={
+                "source": "cpf_level_definition_change",
+                "cpf_level": cpf_code,
+            },
+        )
+
+
+def sync_employee_career_level_from_cpf(employee: UserProfile) -> bool:
+    """Set employee.career_level to match CPFLevel.career_level. Returns True if changed."""
+    from core.models import CPFLevel
+
+    if not employee.cpf_level:
+        return False
+    cpf = CPFLevel.objects.filter(name=employee.cpf_level).first()
+    if cpf is None:
+        return False
+    if employee.career_level == cpf.career_level:
+        return False
+    employee.career_level = cpf.career_level
+    return True

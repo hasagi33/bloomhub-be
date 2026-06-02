@@ -221,6 +221,7 @@ from .serializers import (
     ConferenceCourseRegistrationListSerializer,
     CPFLevelChangeSerializer,
     CPFLevelChangeWriteSerializer,
+    CPFLevelSerializer,
     CPFProgressionSerializer,
     DiscordAnnouncementChannelSerializer,
     DocumentCategoryDefaultUpdateSerializer,
@@ -2329,59 +2330,65 @@ class RoleListView(APIView):
 
 
 class CPFLevelListView(APIView):
-    """Get CPF levels, optionally filtered by role"""
+    """GET list of CPF levels (objects), optionally filtered by role.
+
+    URL forms:
+      GET  /api/cpf-levels/                 → all levels
+      GET  /api/cpf-levels/<role-or-code>/  → role-filtered list OR single level
+                                             (role match wins; if no role match
+                                             and a CPFLevel with this name
+                                             exists, return single object)
+    """
 
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
         tags=["cpf-levels"],
-        responses={200: CPFLevelListResponseSerializer},
+        responses={200: CPFLevelSerializer(many=True)},
     )
     def get(self, request, role=None):
-        # Get user's role
-        user_profile = (
-            request.user.profile if hasattr(request.user, "profile") else None
-        )
-        user_role = (
-            user_profile.role.name if user_profile and user_profile.role else None
-        )
-
-        # If role parameter is provided, filter by that role
         if role:
-            try:
-                role_obj = Role.objects.get(name__iexact=role)
-                cpf_levels = role_obj.cpf_levels.order_by("order", "name").values_list(
-                    "name", flat=True
-                )
-
+            role_obj = Role.objects.filter(name__iexact=role).first()
+            if role_obj:
+                qs = role_obj.cpf_levels.order_by("order", "name")
                 return Response(
-                    {
-                        "requested_role": role_obj.name,
-                        "user_role": user_role,
-                        "cpf_levels": list(cpf_levels),
-                    },
+                    CPFLevelSerializer(qs, many=True).data,
                     status=status.HTTP_200_OK,
                 )
-            except Role.DoesNotExist:
+            cpf = CPFLevel.objects.filter(name=role).first()
+            if cpf:
                 return Response(
-                    {
-                        "error": f"Role '{role}' not found",
-                        "requested_role": role,
-                        "user_role": user_role,
-                        "cpf_levels": [],
-                    },
+                    CPFLevelSerializer(cpf).data,
                     status=status.HTTP_200_OK,
                 )
+            return Response([], status=status.HTTP_200_OK)
 
-        # Otherwise return all CPF levels
-        cpf_levels = (
-            CPFLevel.objects.order_by("name").values_list("name", flat=True).distinct()
-        )
-
+        qs = CPFLevel.objects.order_by("order", "name")
         return Response(
-            {"user_role": user_role, "cpf_levels": list(cpf_levels)},
+            CPFLevelSerializer(qs, many=True).data,
             status=status.HTTP_200_OK,
         )
+
+    @extend_schema(tags=["cpf-levels"], responses={200: CPFLevelSerializer})
+    def patch(self, request, role=None):
+        if role is None:
+            return Response(
+                {"detail": "CPF level code required in URL."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not is_compensation_admin(request.user):
+            raise PermissionDenied("HR-only.")
+        try:
+            cpf = CPFLevel.objects.get(name=role)
+        except CPFLevel.DoesNotExist:
+            return Response(
+                {"detail": f"CPF level '{role}' not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        serializer = CPFLevelSerializer(cpf, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 class EmployeeTechLeadsView(APIView):

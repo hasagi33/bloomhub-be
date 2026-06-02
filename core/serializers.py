@@ -37,6 +37,7 @@ from core.models import (
     ChecklistTemplate,
     CompensationPolicy,
     ConferenceCourseRegistration,
+    CPFLevel,
     CPFLevelChange,
     Department,
     DiscordAnnouncementChannel,
@@ -1518,6 +1519,10 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
         old_career_level = normalize_trimmed_string(instance.career_level)
         old_start_date = normalize_iso_date(instance.start_date)
         old_manager_ids = normalize_manager_ids(instance.managers.all())
+        old_employee_id = normalize_trimmed_string(instance.employee_id)
+
+        if "cpf_level" in validated_data:
+            validated_data.pop("career_level", None)
         request = self.context.get("request")
         changed_by = request.user if request and request.user.is_authenticated else None
 
@@ -1536,6 +1541,18 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
 
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
+
+        career_level_synced_from_cpf = False
+        if "cpf_level" in validated_data:
+            from core.models import CPFLevel as _CPFLevel
+
+            cpf_obj = (
+                _CPFLevel.objects.filter(name=instance.cpf_level).first()
+                if instance.cpf_level
+                else None
+            )
+            instance.career_level = cpf_obj.career_level if cpf_obj else None
+            career_level_synced_from_cpf = True
         instance.save()
 
         if managers_data is not None:
@@ -1587,12 +1604,26 @@ class EmployeeProfileSerializer(serializers.ModelSerializer):
                 changed_by=changed_by,
             )
 
-        if "career_level" in validated_data:
+        if "career_level" in validated_data or career_level_synced_from_cpf:
             log_employee_profile_change(
                 employee=instance,
                 field=EmployeeProfileChangeHistory.TrackedField.CAREER_LEVEL,
                 old_value={"value": old_career_level},
                 new_value={"value": normalize_trimmed_string(instance.career_level)},
+                changed_by=changed_by,
+                metadata=(
+                    {"source": "cpf_level_change"}
+                    if career_level_synced_from_cpf
+                    else None
+                ),
+            )
+
+        if "employee_id" in validated_data:
+            log_employee_profile_change(
+                employee=instance,
+                field=EmployeeProfileChangeHistory.TrackedField.EMPLOYEE_ID,
+                old_value={"value": old_employee_id},
+                new_value={"value": normalize_trimmed_string(instance.employee_id)},
                 changed_by=changed_by,
             )
 
@@ -5541,3 +5572,18 @@ class SuggestionSerializer(serializers.ModelSerializer):
         if not value.strip():
             raise serializers.ValidationError("Suggestion text cannot be empty.")
         return value
+
+
+class CPFLevelSerializer(serializers.ModelSerializer):
+    code = serializers.CharField(source="name", read_only=True)
+
+    class Meta:
+        model = CPFLevel
+        fields = ["code", "display_name", "career_level"]
+
+    def update(self, instance, validated_data):
+        validated_data.pop("name", None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        return instance

@@ -25,3 +25,8 @@ media/
 .postgres/
 postgres.log
 .claude/
+
+# DB dumps (never commit)
+*.sql
+*.dump
+local_dump.sql

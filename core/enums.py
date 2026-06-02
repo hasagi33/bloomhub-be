@@ -170,6 +170,7 @@ class TrackedField(models.TextChoices):
     EMPLOYMENT_STATUS = "employment_status", "Employment Status"
     CAREER_LEVEL = "career_level", "Career Level"
     START_DATE = "start_date", "Start Date"
+    EMPLOYEE_ID = "employee_id", "Employee ID"
 
 
 # ──────────────────────────────────────────────────────────────────────────────

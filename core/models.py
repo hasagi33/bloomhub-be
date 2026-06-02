@@ -273,6 +273,8 @@ class CPFLevel(models.Model):
     """Reference table for CPF (Career Progression Framework) levels."""
 
     name = models.CharField(max_length=100, unique=True)
+    display_name = models.CharField(max_length=200, blank=True, null=True)
+    career_level = models.CharField(max_length=100, blank=True, null=True)
     role = models.ForeignKey(
         Role,
         on_delete=models.SET_NULL,
@@ -292,6 +294,26 @@ class CPFLevel(models.Model):
 
     def __str__(self) -> str:  # pragma: no cover - trivial
         return self.name
+
+    def save(self, *args, **kwargs):
+        from core.services.profile_change_history import (
+            cascade_cpf_level_definition_change,
+        )
+
+        old_career_level = None
+        if self.pk:
+            try:
+                old = CPFLevel.objects.get(pk=self.pk)
+                old_career_level = old.career_level
+            except CPFLevel.DoesNotExist:
+                old_career_level = None
+        super().save(*args, **kwargs)
+        if old_career_level != self.career_level:
+            cascade_cpf_level_definition_change(
+                cpf_code=self.name,
+                old_career_level=old_career_level,
+                new_career_level=self.career_level,
+            )
 
 
 class Department(models.Model):
