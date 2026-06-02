@@ -195,7 +195,9 @@ The backend includes a comprehensive employee profile system with role-based acc
 
 ### Pre-commit (optional)
 
-Runs ruff, black, and pytest on every commit; commit is blocked if they fail.
+Runs ruff, black, schema generation, and pytest for changed test files; commit is
+blocked if they fail. Run the full pytest suite manually before pushing larger
+changes.
 
 ```bash
 pre-commit install
@@ -695,3 +697,126 @@ Labels are applied automatically by [gitStream](https://gitstream.cm) based on t
 | migrations | PR touches migration files under migrations/ and also includes test files |
 | migrations + missing-tests | PR has migration files but no test files (only one of these two applies per PR) |
 | python | PR includes at least one .py file |
+
+## Jira OAuth 2.0 (per-user 3LO)
+
+BloomHub supports per-user Atlassian OAuth (3LO) for Jira so each employee imports
+worklogs through their own access token. The legacy admin API token (configured at
+`/api/time-integrations/jira/settings/`) is still used as a fallback for users who
+have not connected.
+
+### 1. Register an Atlassian OAuth 2.0 (3LO) app
+
+1. Go to <https://developer.atlassian.com/console/myapps/> and create an
+   **OAuth 2.0 integration** (3LO).
+2. Add the **Jira API** as a permission and grant the following scopes:
+   - `read:jira-work`
+   - `read:jira-user`
+   - `read:me`
+   - `offline_access` (required to receive a refresh token)
+3. Under **Authorization**, set the **Callback URL** to the frontend route that will
+   forward the `code` + `state` back to the BloomHub API:
+   `https://<frontend-host>/oauth/jira/callback`
+4. Copy the **Client ID** and **Client Secret** into your `.env`.
+
+### 2. Configure environment variables
+
+```
+JIRA_OAUTH_CLIENT_ID=...
+JIRA_OAUTH_CLIENT_SECRET=...
+JIRA_OAUTH_REDIRECT_URI=https://<frontend-host>/oauth/jira/callback
+JIRA_TOKEN_ENCRYPTION_KEY=<long-random-string>
+```
+
+`JIRA_TOKEN_ENCRYPTION_KEY` encrypts the access/refresh tokens at rest (Fernet via
+`core.services.credential_encryption`). It is **required in production**.
+
+### 3. API surface (under `/api/time-integrations/jira/oauth/`)
+
+All endpoints require JWT/session authentication.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET    | `/authorize/` | Returns `{ authorize_url, state }`. FE redirects user to `authorize_url`. |
+| POST   | `/callback/`  | Body: `{ code, state }`. Exchanges code, fetches profile + cloud_id, stores encrypted tokens, returns the connection status payload. |
+| GET    | `/status/`    | Returns `{ connected, jira_account_id, jira_email, jira_display_name, cloud_id, site_url, connected_at, token_expires_at, scopes }`. |
+| DELETE | `/connection/`| Deletes the local `JiraUserConnection` for the current user (Atlassian 3LO has no remote revoke endpoint). |
+
+One-shot user-triggered sync (outside the OAuth subtree):
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST   | `/api/time-integrations/jira/sync/` | Body (all optional): `date_from`, `date_to` (ISO dates). Pulls + commits the authenticated user's Jira worklogs via their OAuth token. Defaults to last 30 days, or since `last_synced_at` if set. Returns `{ date_from, date_to, counts, batch_id, last_synced_at }`. 401 with `code = "jira_reauth_required"` if no connection or refresh failed. |
+
+### 4. Behaviour
+
+- On callback, the backend exchanges the code at `https://auth.atlassian.com/oauth/token`,
+  picks the first site from `accessible-resources` as the user's `cloud_id` + `site_url`,
+  and pulls profile data from `https://api.atlassian.com/me`.
+- A matching `JiraUserMapping` (jira_account_id → employee) is created automatically
+  if the user does not yet have one.
+- Worklog imports (`/time-imports/jira/preview/` + `/commit/`) prefer the per-user
+  token (base = `https://api.atlassian.com/ex/jira/{cloud_id}`) when
+  `filters.employee_id` has a connection, and fall back to the admin token otherwise.
+- Access tokens are refreshed transparently when ≤ 60 s from expiry. If Atlassian
+  rejects the refresh, the stored tokens are cleared and
+  `JiraReauthRequired` propagates as **HTTP 401** with `code = "jira_reauth_required"`,
+  signalling the FE to prompt the user to reconnect.
+- OAuth `state` is single-use, scoped to the requesting user, and expires after 10 minutes.
+
+## Tempo OAuth 2.0 (per-user)
+
+BloomHub also supports per-user Tempo Cloud OAuth so each employee imports worklogs
+through their own Tempo access token. The legacy admin Tempo API token (configured at
+`/api/time-integrations/tempo/settings/`) is still used as a fallback for users who
+have not connected.
+
+### 1. Register a Tempo OAuth 2.0 application
+
+1. In your Atlassian site, open **Tempo** (Timesheets).
+2. Tempo → gear icon → **Settings** → **API integration** → **OAuth 2.0 Applications**
+   (or **Data Access** → **OAuth 2.0 Applications** in newer Tempo).
+3. **New Application**:
+   - **Application type**: `OAuth 2.0`
+   - **Redirect URIs**: register all envs (local + dev + prod):
+     - `http://localhost:3000/oauth/tempo/callback`
+     - `https://bloomhub-fe-dev.vercel.app/oauth/tempo/callback`
+   - **Access**: enable Worklogs view access, plus any extra Tempo namespaces
+     you plan to import. Do not add `scope` to the authorize URL; current Tempo
+     OAuth derives access from the app configuration.
+4. Copy the **Client ID** and **Client Secret**.
+
+### 2. Configure environment variables
+
+```
+TEMPO_OAUTH_CLIENT_ID=...
+TEMPO_OAUTH_CLIENT_SECRET=...
+TEMPO_OAUTH_REDIRECT_URI=http://localhost:3000/oauth/tempo/callback
+TEMPO_OAUTH_JIRA_URL=https://<your-site>.atlassian.net
+```
+
+Tokens are encrypted at rest using the same `JIRA_TOKEN_ENCRYPTION_KEY` /
+`CREDENTIAL_ENCRYPTION_KEY` / `SECRET_KEY` chain as Jira.
+
+### 3. API surface (under `/api/time-integrations/tempo/oauth/`)
+
+All endpoints require JWT/session authentication.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET    | `/authorize/` | Returns `{ authorize_url, state }`. FE redirects user to `authorize_url`. |
+| POST   | `/callback/`  | Body: `{ code, state }`. Exchanges code, stores encrypted tokens, returns the connection status payload. |
+| GET    | `/status/`    | Returns `{ connected, tempo_account_id, tempo_email, tempo_display_name, base_url, connected_at, token_expires_at, scopes }`. |
+| DELETE | `/connection/`| Deletes the local `TempoUserConnection` for the current user. |
+
+### 4. Behaviour
+
+- Backend exchanges the code at `https://api.tempo.io/oauth/token/`.
+- Worklog imports (`/time-imports/tempo/preview/` + `/commit/`) prefer the per-user
+  token when `filters.employee_id` has a Tempo connection, and fall back to the admin
+  Tempo API token otherwise.
+- Access tokens are refreshed transparently when ≤ 60 s from expiry. If Tempo rejects
+  the refresh, the stored tokens are cleared and `TempoReauthRequired` propagates as
+  **HTTP 401** with `code = "tempo_reauth_required"`, signalling the FE to prompt the
+  user to reconnect.
+- OAuth `state` is single-use, scoped to the requesting user, expires after 10 minutes.

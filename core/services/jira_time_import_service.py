@@ -24,11 +24,16 @@ from core.models import (
     JiraConnection,
     JiraIssueMapping,
     JiraProjectMapping,
+    JiraUserConnection,
     JiraUserMapping,
     Project,
     TimeEntry,
     TimeTask,
     UserProfile,
+)
+from core.services.jira_oauth import (
+    JiraReauthRequired,
+    get_valid_access_token,
 )
 from core.services.time_import_batch_service import persist_external_import_batch
 from core.services.time_tracking_service import (
@@ -69,15 +74,77 @@ def require_jira_admin(user):
         )
 
 
-def _jira_get(connection: JiraConnection, url: str, **kwargs):
+@dataclass
+class JiraApiContext:
+    """Auth + base-URL bundle for Jira REST calls. Supports admin basic auth or per-user OAuth bearer."""
+
+    base_url: str
+    auth_email: str = ""
+    api_token: str = ""
+    bearer_token: str = ""
+
+    @classmethod
+    def from_admin_connection(cls, connection: JiraConnection) -> JiraApiContext:
+        return cls(
+            base_url=connection.base_url.rstrip("/"),
+            auth_email=connection.auth_email,
+            api_token=connection.get_api_token(),
+        )
+
+    @classmethod
+    def from_user_oauth(
+        cls, user_connection: JiraUserConnection, access_token: str
+    ) -> JiraApiContext:
+        return cls(
+            base_url=f"https://api.atlassian.com/ex/jira/{user_connection.cloud_id}",
+            bearer_token=access_token,
+        )
+
+    def request_kwargs(self) -> dict:
+        if self.bearer_token:
+            return {
+                "headers": {
+                    "Authorization": f"Bearer {self.bearer_token}",
+                    "Accept": "application/json",
+                },
+                "auth": None,
+            }
+        return {
+            "headers": {"Accept": "application/json"},
+            "auth": (self.auth_email, self.api_token),
+        }
+
+
+def build_jira_api_context_for_employee(
+    employee_id: int | None,
+    *,
+    fallback_connection: JiraConnection,
+) -> JiraApiContext:
+    """Prefer per-user OAuth token for the given employee, else fall back to admin global token."""
+    if employee_id is not None:
+        profile = (
+            UserProfile.objects.filter(id=employee_id).select_related("user").first()
+        )
+        if profile is not None:
+            try:
+                token, user_conn = get_valid_access_token(profile.user)
+                return JiraApiContext.from_user_oauth(user_conn, token)
+            except JiraReauthRequired:
+                # FE will surface a reconnect prompt via /status/; admin token covers the import meanwhile.
+                pass
+    return JiraApiContext.from_admin_connection(fallback_connection)
+
+
+def _jira_get(context: JiraApiContext, url: str, **kwargs):
     max_attempts = 3
     timeout = kwargs.pop("timeout", 30)
+    req_kwargs = context.request_kwargs()
     for attempt in range(1, max_attempts + 1):
         try:
             response = requests.get(
                 url,
-                auth=(connection.auth_email, connection.get_api_token()),
-                headers={"Accept": "application/json"},
+                auth=req_kwargs["auth"],
+                headers=req_kwargs["headers"],
                 timeout=timeout,
                 **kwargs,
             )
@@ -111,10 +178,11 @@ def test_jira_connection(connection: JiraConnection) -> dict[str, Any]:
             "message": "Jira base URL, auth email, and API token are required.",
             "metadata": {},
         }
+    context = JiraApiContext.from_admin_connection(connection)
     try:
         response = _jira_get(
-            connection,
-            f"{connection.base_url.rstrip('/')}/rest/api/3/myself",
+            context,
+            f"{context.base_url}/rest/api/3/myself",
             timeout=15,
         )
     except (requests.RequestException, ValidationError) as exc:
@@ -140,14 +208,22 @@ def fetch_jira_worklogs(
     connection: JiraConnection,
     filters: JiraImportFilters,
 ) -> list[dict[str, Any]]:
-    if not connection.enabled:
-        raise ValidationError("Jira connection is disabled.")
-    if (
-        not connection.base_url
-        or not connection.auth_email
-        or not connection.has_api_token
-    ):
-        raise ValidationError("Jira connection is not configured.")
+    # Prefer per-user OAuth context when filters.employee_id has a JiraUserConnection;
+    # fall back to the admin global token otherwise. Admin connection sanity checks
+    # only apply when we actually need to fall back to it.
+    context = build_jira_api_context_for_employee(
+        filters.employee_id, fallback_connection=connection
+    )
+    using_admin_fallback = not context.bearer_token
+    if using_admin_fallback:
+        if not connection.enabled:
+            raise ValidationError("Jira connection is disabled.")
+        if (
+            not connection.base_url
+            or not connection.auth_email
+            or not connection.has_api_token
+        ):
+            raise ValidationError("Jira connection is not configured.")
 
     jql = (
         f'worklogDate >= "{filters.date_from.isoformat()}" '
@@ -165,21 +241,21 @@ def fetch_jira_worklogs(
         * 1000
     )
     deleted_ids = _fetch_jira_worklog_change_ids(
-        connection,
-        f"{connection.base_url.rstrip('/')}/rest/api/3/worklog/deleted",
+        context,
+        f"{context.base_url}/rest/api/3/worklog/deleted",
         since,
     )
     updated_ids = _fetch_jira_worklog_change_ids(
-        connection,
-        f"{connection.base_url.rstrip('/')}/rest/api/3/worklog/updated",
+        context,
+        f"{context.base_url}/rest/api/3/worklog/updated",
         since,
     )
 
     worklogs: list[dict[str, Any]] = []
-    for issue in _fetch_jira_search_issues(connection, jql):
+    for issue in _fetch_jira_search_issues(context, jql):
         issue_key = issue.get("key", "")
         issue_id = issue.get("id", "")
-        for worklog in _fetch_jira_issue_worklogs(connection, issue_key):
+        for worklog in _fetch_jira_issue_worklogs(context, issue_key):
             row = dict(worklog)
             row["issueKey"] = issue_key
             row["issueId"] = issue_id
@@ -228,12 +304,12 @@ def _deleted_jira_worklog_payloads(worklog_ids: set[str]) -> list[dict[str, Any]
 
 
 def _fetch_jira_search_issues(
-    connection: JiraConnection, jql: str
+    context: JiraApiContext, jql: str
 ) -> list[dict[str, Any]]:
     issues: list[dict[str, Any]] = []
     next_page_token = ""
     max_results = 100
-    url = f"{connection.base_url.rstrip('/')}/rest/api/3/search/jql"
+    url = f"{context.base_url}/rest/api/3/search/jql"
     while True:
         params = {
             "jql": jql,
@@ -243,7 +319,7 @@ def _fetch_jira_search_issues(
         if next_page_token:
             params["nextPageToken"] = next_page_token
         response = _jira_get(
-            connection,
+            context,
             url,
             params=params,
             timeout=30,
@@ -264,7 +340,11 @@ def _jql_quote(value: str) -> str:
 
 
 def fetch_jira_assigned_issues(
-    connection: JiraConnection, *, jira_account_id: str, max_results: int = 1000
+    connection: JiraConnection,
+    *,
+    jira_account_id: str,
+    max_results: int = 1000,
+    employee_id: int | None = None,
 ) -> list[dict[str, Any]]:
     if not connection.enabled:
         raise ValidationError("Jira connection is disabled.")
@@ -275,10 +355,13 @@ def fetch_jira_assigned_issues(
     ):
         raise ValidationError("Jira connection is not configured.")
 
+    context = build_jira_api_context_for_employee(
+        employee_id, fallback_connection=connection
+    )
     issues: list[dict[str, Any]] = []
     next_page_token = ""
     page_size = min(max(max_results, 1), 100)
-    url = f"{connection.base_url.rstrip('/')}/rest/api/3/search/jql"
+    url = f"{context.base_url}/rest/api/3/search/jql"
     jql = f"assignee = {_jql_quote(jira_account_id)} ORDER BY updated DESC"
     while len(issues) < max_results:
         params = {
@@ -297,7 +380,7 @@ def fetch_jira_assigned_issues(
         }
         if next_page_token:
             params["nextPageToken"] = next_page_token
-        response = _jira_get(connection, url, params=params, timeout=30)
+        response = _jira_get(context, url, params=params, timeout=30)
         if response.status_code >= 400:
             raise ValidationError(f"Jira returned HTTP {response.status_code}.")
         payload = response.json()
@@ -399,6 +482,7 @@ def import_assigned_jira_issues(
             connection,
             jira_account_id=mapping.jira_account_id,
             max_results=options.max_results,
+            employee_id=options.employee_id,
         )
     )
     counts = {
@@ -776,11 +860,12 @@ def discover_jira_project_ids(
     ):
         raise ValidationError("Jira base URL, auth email, and API token are required.")
 
+    context = JiraApiContext.from_admin_connection(connection)
     jql = (
         f'worklogDate >= "{date_from.isoformat()}" '
         f'AND worklogDate <= "{date_to.isoformat()}"'
     )
-    issues_raw = _fetch_jira_search_issues(connection, jql)
+    issues_raw = _fetch_jira_search_issues(context, jql)
     issues: dict[str, dict[str, Any]] = {}
     projects: dict[str, dict[str, Any]] = {}
     users: dict[str, dict[str, Any]] = {}
@@ -811,7 +896,7 @@ def discover_jira_project_ids(
                 },
             )
 
-        for worklog in _fetch_jira_issue_worklogs(connection, issue_key):
+        for worklog in _fetch_jira_issue_worklogs(context, issue_key):
             if worklog_count >= limit:
                 break
             row = normalize_jira_worklog({**worklog, "issueKey": issue_key})
@@ -933,15 +1018,15 @@ def discover_jira_project_ids(
 
 
 def _fetch_jira_issue_worklogs(
-    connection: JiraConnection, issue_key: str
+    context: JiraApiContext, issue_key: str
 ) -> list[dict[str, Any]]:
     worklogs: list[dict[str, Any]] = []
     start_at = 0
     max_results = 100
-    url = f"{connection.base_url.rstrip('/')}/rest/api/3/issue/{issue_key}/worklog"
+    url = f"{context.base_url}/rest/api/3/issue/{issue_key}/worklog"
     while True:
         response = _jira_get(
-            connection,
+            context,
             url,
             params={"maxResults": max_results, "startAt": start_at},
             timeout=30,
@@ -961,9 +1046,9 @@ def _fetch_jira_issue_worklogs(
 
 
 def _fetch_jira_worklog_change_ids(
-    connection: JiraConnection, url: str, since: int
+    context: JiraApiContext, url: str, since: int
 ) -> set[str]:
-    response = _jira_get(connection, url, params={"since": since}, timeout=30)
+    response = _jira_get(context, url, params={"since": since}, timeout=30)
     if response.status_code >= 400:
         return set()
     values = response.json().get("values", [])

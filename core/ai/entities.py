@@ -34,7 +34,7 @@ def _employee_record(row: dict[str, Any]) -> dict[str, Any] | None:
         "id": employee_id,
         "name": str(name),
         "email": row.get("email"),
-        "url": f"/employees/{employee_id}",
+        "url": f"/employee/{employee_id}",
     }
 
 

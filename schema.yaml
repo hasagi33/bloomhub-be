@@ -2086,6 +2086,13 @@ paths:
       - jwtAuth: []
       responses:
         '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+        '403':
           description: No response body
   /api/compensation/policies/:
     get:
@@ -4372,7 +4379,7 @@ paths:
           description: No response body
   /api/employees/{employee_id}/bonuses/:
     get:
-      operationId: employees_bonuses_retrieve
+      operationId: employees_bonuses_list
       description: GET /api/employees/{id}/bonuses/ — per-employee bonus history.
       parameters:
       - in: path
@@ -4386,6 +4393,16 @@ paths:
       - jwtAuth: []
       responses:
         '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BonusRecord'
+          description: ''
+        '403':
+          description: No response body
+        '404':
           description: No response body
   /api/employees/{employee_id}/profile-change-history/:
     get:
@@ -8832,6 +8849,20 @@ paths:
         required: true
       tags:
       - projects
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              additionalProperties: {}
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: {}
       security:
       - jwtAuth: []
       responses:
@@ -11171,6 +11202,64 @@ paths:
           description: No response body
         '404':
           description: No response body
+  /api/time-integrations/jira/oauth/authorize/:
+    get:
+      operationId: time_integrations_jira_oauth_authorize_retrieve
+      tags:
+      - Time Tracking
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/time-integrations/jira/oauth/callback/:
+    post:
+      operationId: time_integrations_jira_oauth_callback_create
+      tags:
+      - Time Tracking
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              additionalProperties: {}
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: {}
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+        '400':
+          description: No response body
+        '401':
+          description: No response body
+  /api/time-integrations/jira/oauth/connection/:
+    delete:
+      operationId: time_integrations_jira_oauth_connection_destroy
+      tags:
+      - Time Tracking
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/time-integrations/jira/oauth/status/:
+    get:
+      operationId: time_integrations_jira_oauth_status_retrieve
+      tags:
+      - Time Tracking
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
   /api/time-integrations/jira/project-discovery/:
     post:
       operationId: time_integrations_jira_project_discovery_create
@@ -11239,6 +11328,39 @@ paths:
         '400':
           description: No response body
         '403':
+          description: No response body
+  /api/time-integrations/jira/sync/:
+    post:
+      operationId: time_integrations_jira_sync_create
+      description: |-
+        POST /api/time-integrations/jira/sync/ — pull and commit Jira worklogs for the
+        authenticated user using their per-user OAuth token. Body (all optional):
+        `date_from`, `date_to` (ISO dates). Defaults: last 30 days, or since
+        `last_synced_at`. Returns import counts + last_synced_at.
+      tags:
+      - Time Tracking
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              additionalProperties: {}
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: {}
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+        '400':
+          description: No response body
+        '401':
           description: No response body
   /api/time-integrations/jira/test-connection/:
     post:
@@ -11320,6 +11442,64 @@ paths:
         '403':
           description: No response body
         '404':
+          description: No response body
+  /api/time-integrations/tempo/oauth/authorize/:
+    get:
+      operationId: time_integrations_tempo_oauth_authorize_retrieve
+      tags:
+      - Time Tracking
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/time-integrations/tempo/oauth/callback/:
+    post:
+      operationId: time_integrations_tempo_oauth_callback_create
+      tags:
+      - Time Tracking
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              additionalProperties: {}
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: {}
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+        '400':
+          description: No response body
+        '401':
+          description: No response body
+  /api/time-integrations/tempo/oauth/connection/:
+    delete:
+      operationId: time_integrations_tempo_oauth_connection_destroy
+      tags:
+      - Time Tracking
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/time-integrations/tempo/oauth/status/:
+    get:
+      operationId: time_integrations_tempo_oauth_status_retrieve
+      tags:
+      - Time Tracking
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
           description: No response body
   /api/time-integrations/tempo/project-discovery/:
     post:

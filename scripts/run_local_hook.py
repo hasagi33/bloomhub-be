@@ -46,6 +46,17 @@ def main() -> int:
         ]
     elif hook_name == "pytest":
         command = [python_bin, "-m", "pytest"]
+    elif hook_name == "pytest-changed":
+        test_files = [
+            arg
+            for arg in extra_args
+            if Path(arg).name.startswith("test_") or Path(arg).name.endswith("_test.py")
+        ]
+        if not test_files:
+            print("No changed test files to run.")
+            return 0
+
+        command = [python_bin, "-m", "pytest", *test_files]
     elif hook_name == "pytest-parallel":
         command = [python_bin, str(repo_root / "scripts" / "run_pytest_parallel.py")]
     elif hook_name == "commit-message-bhb":
