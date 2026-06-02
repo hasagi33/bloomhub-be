@@ -43,6 +43,8 @@ from .models import (
     Role,
     SalaryRecord,
     TechnologyTag,
+    TempoAbsenceSync,
+    TempoAbsenceSyncSettings,
     TempoAccountMapping,
     TempoConnection,
     TempoProjectMapping,
@@ -278,6 +280,34 @@ class TempoConnectionAdmin(admin.ModelAdmin):
         "created_at",
         "updated_at",
     )
+
+
+@admin.register(TempoAbsenceSyncSettings)
+class TempoAbsenceSyncSettingsAdmin(admin.ModelAdmin):
+    list_display = ("enabled", "default_jira_issue_key", "daily_hours", "updated_at")
+    readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(TempoAbsenceSync)
+class TempoAbsenceSyncAdmin(admin.ModelAdmin):
+    list_display = (
+        "leave_request",
+        "employee",
+        "work_date",
+        "leave_type",
+        "status",
+        "jira_issue_key",
+        "tempo_worklog_id",
+        "retry_count",
+    )
+    list_filter = ("status", "leave_type", "work_date")
+    search_fields = (
+        "leave_request__employee__full_name",
+        "jira_issue_key",
+        "tempo_worklog_id",
+        "last_error",
+    )
+    readonly_fields = ("created_at", "updated_at", "last_synced_at")
 
 
 @admin.register(TempoUserMapping)

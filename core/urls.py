@@ -92,6 +92,9 @@ from .views import (
     ScheduledMaintenanceListView,
     SessionView,
     SurveyViewSet,
+    TempoAbsenceSyncFailuresView,
+    TempoAbsenceSyncRetryView,
+    TempoAbsenceSyncSettingsView,
     TempoImportCommitView,
     TempoImportPreviewView,
     TempoMappingsView,
@@ -101,6 +104,7 @@ from .views import (
     TempoOAuthStatusView,
     TempoProjectDiscoveryView,
     TempoSettingsView,
+    TempoSyncView,
     TempoTestConnectionView,
     TimeDocumentImportColumnMapView,
     TimeDocumentImportUploadView,
@@ -469,6 +473,21 @@ urlpatterns = [
         name="time_tempo_settings",
     ),
     path(
+        "time-integrations/tempo/absence-sync/settings/",
+        TempoAbsenceSyncSettingsView.as_view(),
+        name="time_tempo_absence_sync_settings",
+    ),
+    path(
+        "time-integrations/tempo/absence-sync/failures/",
+        TempoAbsenceSyncFailuresView.as_view(),
+        name="time_tempo_absence_sync_failures",
+    ),
+    path(
+        "time-integrations/tempo/absence-sync/<int:leave_request_id>/retry/",
+        TempoAbsenceSyncRetryView.as_view(),
+        name="time_tempo_absence_sync_retry",
+    ),
+    path(
         "time-integrations/tempo/test-connection/",
         TempoTestConnectionView.as_view(),
         name="time_tempo_test_connection",
@@ -502,6 +521,11 @@ urlpatterns = [
         "time-integrations/tempo/oauth/connection/",
         TempoOAuthDisconnectView.as_view(),
         name="time_tempo_oauth_disconnect",
+    ),
+    path(
+        "time-integrations/tempo/sync/",
+        TempoSyncView.as_view(),
+        name="time_tempo_sync",
     ),
     path(
         "time-imports/tempo/preview/",

@@ -11,6 +11,7 @@ from core.models import (
     LeaveBalance,
     LeavePolicy,
     LeaveRequest,
+    Notification,
     Project,
     ProjectAssignment,
 )
@@ -193,6 +194,12 @@ def test_leave_approval_rejection_and_balance_changes(monkeypatch):
         "core.services.mail.leave_notifications.notify_employee_hr_decision",
         lambda *a, **k: calls.append(("hr_dec", a, k)),
     )
+    notifications = []
+    monkeypatch.setattr(
+        leave_service,
+        "create_notification",
+        lambda **kwargs: notifications.append(kwargs) or True,
+    )
 
     ok, msg = leave_service.approve_leave_request_lead(request, lead_profile, "ok")
     assert ok is True and msg is None
@@ -210,6 +217,12 @@ def test_leave_approval_rejection_and_balance_changes(monkeypatch):
         request.start_date, request.end_date
     )
     assert calls
+    assert notifications[1]["title"] == "Leave request approved by HR"
+    assert notifications[1]["type"] == Notification.Type.SUCCESS
+    assert notifications[0]["module"] == Notification.Module.VACATIONS
+    assert notifications[0]["title"] == "Leave request approved by Tech Lead"
+    assert notifications[0]["type"] == Notification.Type.SUCCESS
+    assert notifications[0]["link"] == f"/leave-requests/{request.id}"
 
     request2_start = _next_monday_at_least(14)
     request2 = LeaveRequest.objects.create(
@@ -223,6 +236,27 @@ def test_leave_approval_rejection_and_balance_changes(monkeypatch):
     assert ok is True and msg is None
     request2.refresh_from_db()
     assert request2.status == LeaveRequest.Status.REJECTED
+    assert notifications[2]["title"] == "Leave request rejected by Tech Lead"
+    assert notifications[2]["type"] == Notification.Type.WARNING
+
+    request3_start = _next_monday_at_least(21)
+    request3 = LeaveRequest.objects.create(
+        employee=emp_profile,
+        leave_type=LeaveType.VACATION,
+        start_date=request3_start,
+        end_date=request3_start + timedelta(days=1),
+        reason="hr retry",
+    )
+    ok, msg = leave_service.approve_leave_request_lead(request3, lead_profile, "ok")
+    assert ok is True and msg is None
+    ok, msg = leave_service.reject_leave_request(request3, hr_profile, "nope")
+    assert ok is True and msg is None
+    request3.refresh_from_db()
+    assert request3.status == LeaveRequest.Status.REJECTED
+    assert notifications[3]["title"] == "Leave request approved by Tech Lead"
+    assert notifications[4]["title"] == "Leave request rejected by HR"
+    assert notifications[4]["type"] == Notification.Type.WARNING
+    assert len(notifications) == 5
 
     request.status = LeaveRequest.Status.APPROVED
     request.save(update_fields=["status"])

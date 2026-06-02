@@ -58,6 +58,7 @@ from .constants import (
 )
 from .enums import (
     ProjectAssignmentStatus,
+    ReviewNoteVisibility,
     TimeEntryAuditEventType,
     TimeEntrySourceChangeFlag,
     TimeEntrySourceType,
@@ -124,6 +125,8 @@ from .models import (
     TaskTemplate,
     TemplateField,
     TemplateGeneratedDocument,
+    TempoAbsenceSync,
+    TempoAbsenceSyncSettings,
     TempoAccountMapping,
     TempoConnection,
     TempoOAuthState,
@@ -298,6 +301,7 @@ from .serializers import (
     SurveySerializer,
     TemplateGeneratedDocumentSerializer,
     TemplateUseSerializer,
+    TempoAbsenceSyncSettingsSerializer,
     TempoAccountMappingSerializer,
     TempoConnectionSerializer,
     TempoImportCommitSerializer,
@@ -444,6 +448,7 @@ from .services.tempo_time_import_service import (
     commit_tempo_worklogs,
     discover_tempo_project_ids,
     fetch_tempo_worklogs,
+    fetch_tempo_worklogs_for_user,
     preview_tempo_worklogs,
     require_tempo_admin,
     test_tempo_connection,
@@ -4441,6 +4446,15 @@ class LeaveRequestViewSet(viewsets.ModelViewSet):
         """Save the leave request with the current user as employee."""
         serializer.save()
 
+    def perform_update(self, serializer):
+        instance = serializer.save()
+        if instance.status == LeaveRequest.Status.APPROVED:
+            from core.services.tempo_absence_sync_service import (
+                enqueue_leave_sync_on_commit,
+            )
+
+            enqueue_leave_sync_on_commit(instance.id)
+
     @extend_schema(
         request=LeaveRequestApproveSerializer,
         responses={200: LeaveRequestDetailSerializer},
@@ -4831,6 +4845,31 @@ class PerformanceReviewViewSet(viewsets.ModelViewSet):
     def _get_actor_profile(self):
         return self.request.user.profile
 
+    def _get_review_for_nested_read(self, pk):
+        """Fetch a review through the scoped queryset without object permission checks."""
+        try:
+            return self.get_queryset().get(pk=pk)
+        except PerformanceReview.DoesNotExist:
+            return None
+
+    def _visible_review_notes(self, review):
+        notes = review.notes.select_related("author__user", "edited_by__user")
+        user = self.request.user
+        if (
+            user.is_staff
+            or user.is_superuser
+            or has_review_permission(user, "view_any_review_history")
+        ):
+            return notes
+
+        profile = _get_user_profile(user)
+        if profile is None:
+            return notes.none()
+
+        return notes.filter(
+            Q(visibility=ReviewNoteVisibility.SHARED) | Q(author=profile)
+        )
+
     def _log_history(
         self,
         review,
@@ -5010,10 +5049,18 @@ class PerformanceReviewViewSet(viewsets.ModelViewSet):
     )
     @action(detail=True, methods=["get", "post"], url_path="notes")
     def notes(self, request, pk=None):
-        review = self.get_object()
+        review = self._get_review_for_nested_read(pk)
+        if review is None:
+            return Response(
+                {"error": "Performance review not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
         if request.method == "GET":
-            serializer = PerformanceReviewNoteSerializer(review.notes.all(), many=True)
+            serializer = PerformanceReviewNoteSerializer(
+                self._visible_review_notes(review),
+                many=True,
+            )
             return Response(serializer.data, status=status.HTTP_200_OK)
 
         serializer = PerformanceReviewNoteSerializer(data=request.data)
@@ -5101,7 +5148,12 @@ class PerformanceReviewViewSet(viewsets.ModelViewSet):
     )
     @action(detail=True, methods=["get", "post"], url_path="action-points")
     def action_points(self, request, pk=None):
-        review = self.get_object()
+        review = self._get_review_for_nested_read(pk)
+        if review is None:
+            return Response(
+                {"error": "Performance review not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
         if request.method == "GET":
             serializer = PerformanceReviewActionPointSerializer(
@@ -5197,7 +5249,12 @@ class PerformanceReviewViewSet(viewsets.ModelViewSet):
         parser_classes=[parsers.MultiPartParser, parsers.FormParser],
     )
     def attachments(self, request, pk=None):
-        review = self.get_object()
+        review = self._get_review_for_nested_read(pk)
+        if review is None:
+            return Response(
+                {"error": "Performance review not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
         if request.method == "GET":
             serializer = PerformanceReviewAttachmentSerializer(
@@ -7475,6 +7532,86 @@ class TempoSettingsView(APIView):
         serializer.is_valid(raise_exception=True)
         connection = serializer.save()
         return Response(TempoConnectionSerializer(connection).data)
+
+
+@extend_schema(tags=["Time Tracking"])
+class TempoAbsenceSyncSettingsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(responses={200: TempoAbsenceSyncSettingsSerializer, 403: None})
+    def get(self, request):
+        require_tempo_admin(request.user)
+        return Response(
+            TempoAbsenceSyncSettingsSerializer(TempoAbsenceSyncSettings.get_solo()).data
+        )
+
+    @extend_schema(
+        request=TempoAbsenceSyncSettingsSerializer,
+        responses={200: TempoAbsenceSyncSettingsSerializer, 400: None, 403: None},
+    )
+    def patch(self, request):
+        require_tempo_admin(request.user)
+        settings_row = TempoAbsenceSyncSettings.get_solo()
+        serializer = TempoAbsenceSyncSettingsSerializer(
+            settings_row, data=request.data, partial=True
+        )
+        serializer.is_valid(raise_exception=True)
+        settings_row = serializer.save()
+        return Response(TempoAbsenceSyncSettingsSerializer(settings_row).data)
+
+
+@extend_schema(tags=["Time Tracking"])
+class TempoAbsenceSyncFailuresView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(responses={200: None, 403: None})
+    def get(self, request):
+        require_tempo_admin(request.user)
+        rows = (
+            TempoAbsenceSync.objects.select_related(
+                "leave_request", "employee__user", "time_entry"
+            )
+            .filter(status=TempoAbsenceSync.Status.FAILED)
+            .order_by("-updated_at")[:100]
+        )
+        return Response(
+            [
+                {
+                    "id": row.id,
+                    "leave_request_id": row.leave_request_id,
+                    "employee_id": row.employee_id,
+                    "employee_name": row.employee.full_name
+                    or row.employee.user.get_full_name()
+                    or row.employee.user.username,
+                    "work_date": row.work_date,
+                    "leave_type": row.leave_type,
+                    "jira_issue_key": row.jira_issue_key,
+                    "jira_issue_id": row.jira_issue_id,
+                    "tempo_worklog_id": row.tempo_worklog_id,
+                    "time_entry_id": row.time_entry_id,
+                    "status": row.status,
+                    "error_code": row.error_code,
+                    "last_error": row.last_error,
+                    "retry_count": row.retry_count,
+                    "updated_at": row.updated_at,
+                }
+                for row in rows
+            ]
+        )
+
+
+@extend_schema(tags=["Time Tracking"])
+class TempoAbsenceSyncRetryView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(request=None, responses={200: None, 403: None, 404: None})
+    def post(self, request, leave_request_id: int):
+        require_tempo_admin(request.user)
+        if not LeaveRequest.objects.filter(pk=leave_request_id).exists():
+            raise NotFound("Leave request not found.")
+        from core.services.tempo_absence_sync_service import sync_leave_request
+
+        return Response(sync_leave_request(leave_request_id))
 
 
 @extend_schema(tags=["Time Tracking"])
@@ -11854,3 +11991,86 @@ class TempoOAuthDisconnectView(APIView):
     def delete(self, request):
         TempoUserConnection.objects.filter(user=request.user).delete()
         return Response(status=_drf_status.HTTP_204_NO_CONTENT)
+
+
+@extend_schema(tags=["Time Tracking"])
+class TempoSyncView(APIView):
+    """POST /api/time-integrations/tempo/sync/ — pull and commit Tempo worklogs for
+    the authenticated user using their per-user OAuth token. Body (all optional):
+    `date_from`, `date_to` (ISO dates). Defaults to the last 30 days."""
+
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        request=OpenApiTypes.OBJECT, responses={200: None, 400: None, 401: None}
+    )
+    def post(self, request):
+        from datetime import date as _date
+        from datetime import timedelta as _timedelta
+
+        connection = TempoUserConnection.objects.filter(user=request.user).first()
+        if connection is None:
+            return Response(
+                {
+                    "detail": "No Tempo connection. Connect via /oauth/authorize/ first.",
+                    "code": "tempo_reauth_required",
+                },
+                status=_drf_status.HTTP_401_UNAUTHORIZED,
+            )
+
+        profile = UserProfile.objects.filter(user=request.user).first()
+        if profile is None:
+            return Response(
+                {"detail": "Authenticated user has no employee profile."},
+                status=_drf_status.HTTP_400_BAD_REQUEST,
+            )
+
+        today = _date.today()
+        default_from = today - _timedelta(days=30)
+        try:
+            date_from = (
+                _date.fromisoformat(request.data["date_from"])
+                if request.data.get("date_from")
+                else default_from
+            )
+            date_to = (
+                _date.fromisoformat(request.data["date_to"])
+                if request.data.get("date_to")
+                else today
+            )
+        except (TypeError, ValueError):
+            return Response(
+                {"detail": "date_from / date_to must be ISO dates (YYYY-MM-DD)."},
+                status=_drf_status.HTTP_400_BAD_REQUEST,
+            )
+        if date_from > date_to:
+            return Response(
+                {"detail": "date_from must be <= date_to."},
+                status=_drf_status.HTTP_400_BAD_REQUEST,
+            )
+
+        filters = TempoImportFilters(
+            date_from=date_from,
+            date_to=date_to,
+            employee_id=profile.id,
+        )
+        try:
+            worklogs = fetch_tempo_worklogs_for_user(request.user, filters)
+            result = commit_tempo_worklogs(
+                user=request.user, filters=filters, raw_worklogs=worklogs
+            )
+        except TempoReauthRequired as exc:
+            return Response(
+                {"detail": str(exc), "code": "tempo_reauth_required"},
+                status=_drf_status.HTTP_401_UNAUTHORIZED,
+            )
+
+        return Response(
+            {
+                "date_from": date_from.isoformat(),
+                "date_to": date_to.isoformat(),
+                "counts": result["counts"],
+                "batch_id": result["batch_id"],
+                "last_synced_at": timezone.now(),
+            }
+        )

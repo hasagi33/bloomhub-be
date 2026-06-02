@@ -6,6 +6,7 @@ from django.core.management import call_command
 from rest_framework import status
 from rest_framework.test import APITestCase
 
+from core.enums import ReviewNoteVisibility
 from core.models import PerformanceReview, PerformanceReviewHistoryEvent, Permission
 
 
@@ -147,6 +148,89 @@ class PerformanceReviewAPITestCase(APITestCase):
         )
         self.assertEqual(update_response.status_code, status.HTTP_200_OK)
         self.assertEqual(update_response.data["content"], "Updated by employee")
+
+    def test_employee_can_view_shared_review_notes_and_action_points(self):
+        self._grant_permissions(
+            self.reviewer_user,
+            [
+                "create_review_direct_report",
+                "add_shared_feedback",
+                "add_private_feedback",
+            ],
+        )
+
+        self._auth_as(self.reviewer_user)
+        shared_note_response = self.client.post(
+            f"/api/performance-reviews/{self.review.id}/notes/",
+            {"visibility": "shared", "content": "Shared note"},
+            format="json",
+        )
+        self.assertEqual(shared_note_response.status_code, status.HTTP_201_CREATED)
+
+        private_note_response = self.client.post(
+            f"/api/performance-reviews/{self.review.id}/notes/",
+            {"visibility": "private", "content": "Private note"},
+            format="json",
+        )
+        self.assertEqual(private_note_response.status_code, status.HTTP_201_CREATED)
+
+        action_point_response = self.client.post(
+            f"/api/performance-reviews/{self.review.id}/action-points/",
+            {
+                "title": "Improve onboarding",
+                "description": "Complete the onboarding checklist",
+            },
+            format="json",
+        )
+        self.assertEqual(action_point_response.status_code, status.HTTP_201_CREATED)
+
+        self._auth_as(self.employee_user)
+        notes_response = self.client.get(
+            f"/api/performance-reviews/{self.review.id}/notes/"
+        )
+        self.assertEqual(notes_response.status_code, status.HTTP_200_OK)
+        notes = notes_response.json()
+        self.assertEqual(len(notes), 1)
+        self.assertEqual(notes[0]["visibility"], ReviewNoteVisibility.SHARED)
+        self.assertEqual(notes[0]["content"], "Shared note")
+
+        action_points_response = self.client.get(
+            f"/api/performance-reviews/{self.review.id}/action-points/"
+        )
+        self.assertEqual(action_points_response.status_code, status.HTTP_200_OK)
+        action_points = action_points_response.json()
+        self.assertEqual(len(action_points), 1)
+        self.assertEqual(action_points[0]["title"], "Improve onboarding")
+
+    def test_employee_can_view_review_attachments(self):
+        self._grant_permissions(
+            self.reviewer_user,
+            ["create_review_direct_report", "attach_documents"],
+        )
+
+        self._auth_as(self.reviewer_user)
+        upload_response = self.client.post(
+            f"/api/performance-reviews/{self.review.id}/attachments/",
+            {
+                "file": SimpleUploadedFile(
+                    "notes.txt",
+                    b"review attachment",
+                    content_type="text/plain",
+                ),
+                "description": "shared attachment",
+            },
+            format="multipart",
+        )
+        self.assertEqual(upload_response.status_code, status.HTTP_201_CREATED)
+
+        self._auth_as(self.employee_user)
+        attachments_response = self.client.get(
+            f"/api/performance-reviews/{self.review.id}/attachments/"
+        )
+        self.assertEqual(attachments_response.status_code, status.HTTP_200_OK)
+        attachments = attachments_response.json()
+        self.assertEqual(len(attachments), 1)
+        self.assertEqual(attachments[0]["description"], "shared attachment")
 
     def test_status_transition_creates_history_and_completed_at(self):
         self._grant_permissions(self.reviewer_user, ["create_review_direct_report"])

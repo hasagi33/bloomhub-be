@@ -81,6 +81,8 @@ from core.models import (
     TechnologyTag,
     TemplateField,
     TemplateGeneratedDocument,
+    TempoAbsenceSync,
+    TempoAbsenceSyncSettings,
     TempoAccountMapping,
     TempoConnection,
     TempoProjectMapping,
@@ -928,6 +930,31 @@ class TempoConnectionSerializer(serializers.ModelSerializer):
         instance.full_clean()
         instance.save()
         return instance
+
+
+class TempoAbsenceSyncSettingsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TempoAbsenceSyncSettings
+        fields = [
+            "enabled",
+            "default_jira_issue_key",
+            "leave_type_issue_keys",
+            "daily_hours",
+            "default_start_time",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["created_at", "updated_at"]
+
+    def validate_default_jira_issue_key(self, value):
+        return (value or "").strip().upper()
+
+    def validate_leave_type_issue_keys(self, value):
+        return {
+            str(key): str(issue_key).strip().upper()
+            for key, issue_key in (value or {}).items()
+            if str(issue_key).strip()
+        }
 
 
 class TempoUserMappingSerializer(serializers.ModelSerializer):
@@ -2491,6 +2518,10 @@ class LeaveRequestDetailSerializer(serializers.ModelSerializer):
     approver_name = serializers.CharField(
         source="approver.user.get_full_name", read_only=True, allow_null=True
     )
+    tempo_sync_status = serializers.SerializerMethodField()
+    tempo_sync_error_count = serializers.SerializerMethodField()
+    tempo_synced_days = serializers.SerializerMethodField()
+    tempo_failed_days = serializers.SerializerMethodField()
 
     class Meta:
         model = LeaveRequest
@@ -2519,6 +2550,10 @@ class LeaveRequestDetailSerializer(serializers.ModelSerializer):
             "approved_date",
             "approval_comments",
             "rejection_reason",
+            "tempo_sync_status",
+            "tempo_sync_error_count",
+            "tempo_synced_days",
+            "tempo_failed_days",
             "created_at",
             "updated_at",
         ]
@@ -2543,6 +2578,42 @@ class LeaveRequestDetailSerializer(serializers.ModelSerializer):
         except Exception:
             pass
         return None
+
+    def _sync_counts(self, obj):
+        cached = getattr(obj, "_tempo_sync_counts", None)
+        if cached is not None:
+            return cached
+        rows = obj.tempo_absence_syncs.values("status").annotate(
+            count=models.Count("id")
+        )
+        counts = {row["status"]: row["count"] for row in rows}
+        obj._tempo_sync_counts = counts
+        return counts
+
+    def get_tempo_sync_status(self, obj):
+        counts = self._sync_counts(obj)
+        if not counts:
+            return "not_started"
+        if counts.get(TempoAbsenceSync.Status.FAILED):
+            return "failed"
+        if counts.get(TempoAbsenceSync.Status.PENDING):
+            return "pending"
+        if counts.get(TempoAbsenceSync.Status.SYNCED):
+            return "synced"
+        if counts.get(TempoAbsenceSync.Status.DELETED):
+            return "deleted"
+        if counts.get(TempoAbsenceSync.Status.SKIPPED):
+            return "skipped"
+        return "not_started"
+
+    def get_tempo_sync_error_count(self, obj):
+        return self._sync_counts(obj).get(TempoAbsenceSync.Status.FAILED, 0)
+
+    def get_tempo_synced_days(self, obj):
+        return self._sync_counts(obj).get(TempoAbsenceSync.Status.SYNCED, 0)
+
+    def get_tempo_failed_days(self, obj):
+        return self._sync_counts(obj).get(TempoAbsenceSync.Status.FAILED, 0)
 
 
 class LeaveRequestCreateSerializer(serializers.ModelSerializer):

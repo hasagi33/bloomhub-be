@@ -218,6 +218,7 @@ class TimeEntrySourceType(models.TextChoices):
     JIRA = "jira", "Jira"
     TEMPO = "tempo", "Tempo"
     DOCUMENT_IMPORT = "document_import", "Document Import"
+    BLOOMHUB_LEAVE = "bloomhub_leave", "BloomHub Leave"
 
 
 class ImportBatchSource(models.TextChoices):
