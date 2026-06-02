@@ -237,6 +237,55 @@ class JobBoardAPITestCase(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.json()["id"], self.draft.id)
 
+    def test_employee_cannot_edit_listing(self):
+        self.client.force_authenticate(user=self.emp_user)
+        response = self.client.patch(
+            f"/api/job-listings/{self.active_eng.id}/",
+            {"title": "Principal Backend Engineer"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.active_eng.refresh_from_db()
+        self.assertEqual(self.active_eng.title, "Senior Backend Engineer")
+
+    def test_hr_can_edit_open_listing(self):
+        self.client.force_authenticate(user=self.hr_user)
+        response = self.client.patch(
+            f"/api/job-listings/{self.active_eng.id}/",
+            {
+                "title": "Principal Backend Engineer",
+                "description": "Own platform strategy.",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.active_eng.refresh_from_db()
+        self.assertEqual(self.active_eng.title, "Principal Backend Engineer")
+        self.assertEqual(self.active_eng.description, "Own platform strategy.")
+
+    def test_hr_can_publish_draft_listing(self):
+        self.client.force_authenticate(user=self.hr_user)
+        response = self.client.patch(
+            f"/api/job-listings/{self.draft.id}/",
+            {"status": JobListingStatus.OPEN},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.draft.refresh_from_db()
+        self.assertEqual(self.draft.status, JobListingStatus.OPEN)
+
+    def test_employee_cannot_delete_listing(self):
+        self.client.force_authenticate(user=self.emp_user)
+        response = self.client.delete(f"/api/job-listings/{self.active_eng.id}/")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(JobListing.objects.filter(id=self.active_eng.id).exists())
+
+    def test_hr_can_delete_open_listing(self):
+        self.client.force_authenticate(user=self.hr_user)
+        response = self.client.delete(f"/api/job-listings/{self.active_eng.id}/")
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(JobListing.objects.filter(id=self.active_eng.id).exists())
+
     # ── applications-per-listing ──
 
     def test_applications_list_requires_hr(self):

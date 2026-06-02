@@ -8450,6 +8450,7 @@ class JobListingViewSet(
     mixins.RetrieveModelMixin,
     mixins.CreateModelMixin,
     mixins.UpdateModelMixin,
+    mixins.DestroyModelMixin,
     viewsets.GenericViewSet,
 ):
     """
@@ -8459,7 +8460,7 @@ class JobListingViewSet(
     ``open_at`` / ``close_at`` window) and can apply via the ``apply`` action.
 
     HR / admin users have full access: they can list every listing regardless
-    of status, create new listings, update existing ones, and review the
+    of status, create, update, and delete listings, and review the
     applicant roster via the ``applications`` action.
     """
 
@@ -8496,7 +8497,13 @@ class JobListingViewSet(
         return JobListingListSerializer
 
     def get_permissions(self):
-        if self.action in ("create", "update", "partial_update", "applications"):
+        if self.action in (
+            "create",
+            "update",
+            "partial_update",
+            "destroy",
+            "applications",
+        ):
             return [IsAuthenticated(), IsHrOrAdmin()]
         return [IsAuthenticated()]
 
